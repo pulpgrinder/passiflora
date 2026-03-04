@@ -2,17 +2,22 @@
 bin/
 zipdata.c
 menu.c
+src/www/generated/
+src/www/systemid.js
+
+# IDE
+.vs/
 
 # Android build artifacts
-android/.gradle/
-android/app/build/
-android/app/.cxx/
-android/build/
-android/local.properties
-android/gradlew
-android/gradlew.bat
-android/gradle/
-android/app/src/main/res/mipmap-*/
+src/android/.gradle/
+src/android/app/build/
+src/android/app/.cxx/
+src/android/build/
+src/android/local.properties
+src/android/gradlew
+src/android/gradlew.bat
+src/android/gradle/
+src/android/app/src/main/res/mipmap-*/
 
 # Logs
 logs

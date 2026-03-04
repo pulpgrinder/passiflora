@@ -25,7 +25,7 @@ if "%VERSION%"=="" set VERSION=1.0.0
 
 set SCRIPT_DIR=%~dp0
 if "%SCRIPT_DIR:~-1%"=="\" set SCRIPT_DIR=%SCRIPT_DIR:~0,-1%
-set ANDROID_DIR=%SCRIPT_DIR%\android
+set ANDROID_DIR=%SCRIPT_DIR%\src\android
 
 REM ── Locate Android SDK ──
 if "%ANDROID_HOME%"=="" (
@@ -93,24 +93,24 @@ REM ── Update app_name from PROGNAME ──
 set STRINGS=%RES_DIR%\values\strings.xml
 if exist "%STRINGS%" (
     powershell -NoProfile -Command ^
-        "$c = Get-Content -Raw '%STRINGS%'; $c = $c -replace '>.*?</string>', '>%PROGNAME%</string>'; Set-Content -NoNewline '%STRINGS%' $c"
+        "$f = '%STRINGS%'; $c = [IO.File]::ReadAllText($f); $c = $c -replace '(?m)>.*?</string>', '>%PROGNAME%</string>'; [IO.File]::WriteAllText($f, $c)"
 )
 
 REM ── Update applicationId / versionName if non-default ──
 set APP_GRADLE=%ANDROID_DIR%\app\build.gradle
 if not "%BUNDLE_ID%"=="com.example.passiflora" (
     powershell -NoProfile -Command ^
-        "$c = Get-Content -Raw '%APP_GRADLE%'; $c = $c -replace 'applicationId \"com.example.passiflora\"', 'applicationId \"%BUNDLE_ID%\"'; Set-Content -NoNewline '%APP_GRADLE%' $c"
+        "$f = '%APP_GRADLE%'; $c = [IO.File]::ReadAllText($f); $c = $c -replace 'applicationId \""com.example.passiflora\""', 'applicationId \""%BUNDLE_ID%\""'; [IO.File]::WriteAllText($f, $c)"
 )
 if not "%VERSION%"=="1.0.0" (
     powershell -NoProfile -Command ^
-        "$c = Get-Content -Raw '%APP_GRADLE%'; $c = $c -replace 'versionName \"1.0.0\"', 'versionName \"%VERSION%\"'; Set-Content -NoNewline '%APP_GRADLE%' $c"
+        "$f = '%APP_GRADLE%'; $c = [IO.File]::ReadAllText($f); $c = $c -replace 'versionName \""1.0.0\""', 'versionName \""%VERSION%\""'; [IO.File]::WriteAllText($f, $c)"
 )
 
 REM ── Build ──
 echo mkandroid: building debug APK...
 pushd "%ANDROID_DIR%"
-call "%GRADLE%" assembleDebug --quiet
+call "%GRADLE%" assembleDebug --quiet --project-cache-dir "%SCRIPT_DIR%\bin\Android\gradle-cache"
 if !errorlevel! neq 0 (
     echo mkandroid: Gradle build failed >&2
     popd
@@ -119,7 +119,7 @@ if !errorlevel! neq 0 (
 popd
 
 REM ── Copy APK to bin\Android\ ──
-set APK_DIR=%ANDROID_DIR%\app\build\outputs\apk\debug
+set APK_DIR=%SCRIPT_DIR%\bin\Android\gradle-build\app\outputs\apk\debug
 set APK=
 for %%F in ("%APK_DIR%\*.apk") do (
     set APK=%%F

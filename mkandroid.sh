@@ -17,7 +17,7 @@ BUNDLE_ID="${2:-com.example.passiflora}"
 VERSION="${3:-1.0.0}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ANDROID_DIR="$SCRIPT_DIR/android"
+ANDROID_DIR="$SCRIPT_DIR/src/android"
 
 # ── Locate Android SDK ─────────────────────────────────────────────
 if [ -z "$ANDROID_HOME" ]; then
@@ -102,10 +102,11 @@ fi
 
 # ── Build ──────────────────────────────────────────────────────────
 echo "mkandroid: building debug APK..."
-(cd "$ANDROID_DIR" && "$GRADLE" assembleDebug --quiet)
+(cd "$ANDROID_DIR" && "$GRADLE" assembleDebug --quiet \
+    --project-cache-dir "$SCRIPT_DIR/bin/Android/gradle-cache")
 
 # ── Copy APK to bin/Android/ ───────────────────────────────────────
-APK=$(find "$ANDROID_DIR/app/build/outputs/apk/debug" \
+APK=$(find "$SCRIPT_DIR/bin/Android/gradle-build/app/outputs/apk/debug" \
       -name "*.apk" 2>/dev/null | head -1)
 if [ -n "$APK" ]; then
     mkdir -p "$SCRIPT_DIR/bin/Android"

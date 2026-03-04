@@ -1,0 +1,7 @@
+{{progname}}
+    About
+    Quit
+File
+    Open
+Misc
+    More stuff

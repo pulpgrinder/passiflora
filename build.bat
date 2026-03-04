@@ -8,7 +8,7 @@ REM   windows   — Build the Windows exe (default)
 REM   android   — Build the Android APK
 REM   icons     — Generate icon sets
 REM   clean     — Remove build artifacts
-REM   all       — windows + icons
+REM   all       — windows (alias)
 REM
 REM Requires (for windows target):
 REM   - GCC (MinGW-w64) on PATH   — or set WIN_CC
@@ -56,6 +56,8 @@ del /Q "%SCRIPT_DIR%\zipdata.c" 2>nul
 del /Q "%SCRIPT_DIR%\menu.c" 2>nul
 del /Q "%SCRIPT_DIR%\win_menu.c" 2>nul
 del /Q "%SCRIPT_DIR%\wv2loader.h" 2>nul
+del /Q "%SCRIPT_DIR%\src\www\systemid.js" 2>nul
+if exist "%SCRIPT_DIR%\src\www\generated" rmdir /S /Q "%SCRIPT_DIR%\src\www\generated" 2>nul
 if exist "%WIN_BINDIR%" (
     del /Q "%WIN_BINDIR%\%PROGNAME%.exe" 2>nul
     del /Q "%WIN_BINDIR%\app.rc" 2>nul
@@ -66,9 +68,10 @@ if exist "%SCRIPT_DIR%\bin\Android" (
     del /Q "%SCRIPT_DIR%\bin\Android\*.apk" 2>nul
     rmdir "%SCRIPT_DIR%\bin\Android" 2>nul
 )
-if exist "%SCRIPT_DIR%\android\app\build" rmdir /S /Q "%SCRIPT_DIR%\android\app\build" 2>nul
-if exist "%SCRIPT_DIR%\android\.gradle" rmdir /S /Q "%SCRIPT_DIR%\android\.gradle" 2>nul
-if exist "%SCRIPT_DIR%\android\app\.cxx" rmdir /S /Q "%SCRIPT_DIR%\android\app\.cxx" 2>nul
+if exist "%SCRIPT_DIR%\bin\Android\gradle-build" rmdir /S /Q "%SCRIPT_DIR%\bin\Android\gradle-build" 2>nul
+if exist "%SCRIPT_DIR%\bin\Android\gradle-cache" rmdir /S /Q "%SCRIPT_DIR%\bin\Android\gradle-cache" 2>nul
+if exist "%SCRIPT_DIR%\src\android\.gradle" rmdir /S /Q "%SCRIPT_DIR%\src\android\.gradle" 2>nul
+if exist "%SCRIPT_DIR%\src\android\app\.cxx" rmdir /S /Q "%SCRIPT_DIR%\src\android\app\.cxx" 2>nul
 rmdir "%SCRIPT_DIR%\bin" 2>nul
 echo [clean] Done.
 goto :eof
@@ -77,18 +80,22 @@ REM ================================================================
 REM  icons
 REM ================================================================
 :do_icons
-echo [icons] Generating icon sets...
-call "%SCRIPT_DIR%\src\icons\buildiconset.bat"
+call "%SCRIPT_DIR%\buildicons.bat"
 if errorlevel 1 exit /b 1
-echo [icons] Done.
 goto :eof
 
 REM ================================================================
 REM  android
 REM ================================================================
 :do_android
+echo [android] Generating systemid.js for Android...
+echo // Auto-generated file — DO NOT EDIT. This file is overwritten on every build.> src\www\systemid.js
+echo PASSIFLORA_OS_NAME = "Android";>> src\www\systemid.js
 echo [android] Generating zipdata.c...
 call "%SCRIPT_DIR%\mkzipfile.bat" %CONTENT% zipdata.c
+if errorlevel 1 exit /b 1
+echo [android] Generating menus.json from src\android\menus\menu.txt...
+call "%SCRIPT_DIR%\mkmenu_json.bat" src\android\menus\menu.txt %PROGNAME% src\www\generated\android\menus.json
 if errorlevel 1 exit /b 1
 echo [android] Building APK...
 call "%SCRIPT_DIR%\mkandroid.bat" %PROGNAME% %BUNDLE_ID% %VERSION%
@@ -97,11 +104,9 @@ echo [android] Done.
 goto :eof
 
 REM ================================================================
-REM  all (windows + icons)
+REM  all
 REM ================================================================
 :do_all
-call :do_icons
-if errorlevel 1 exit /b 1
 call :do_windows
 if errorlevel 1 exit /b 1
 goto :eof
@@ -111,7 +116,12 @@ REM  windows
 REM ================================================================
 :do_windows
 
-REM ── Step 1: Generate zipdata.c ──
+REM ── Step 1: Generate systemid.js ──
+echo [windows] Generating systemid.js for Windows...
+echo // Auto-generated file — DO NOT EDIT. This file is overwritten on every build.> src\www\systemid.js
+echo PASSIFLORA_OS_NAME = "Windows";>> src\www\systemid.js
+
+REM ── Step 2: Generate zipdata.c ──
 echo [windows] Generating zipdata.c from %CONTENT%...
 call "%SCRIPT_DIR%\mkzipfile.bat" %CONTENT% zipdata.c
 if errorlevel 1 (
@@ -120,8 +130,8 @@ if errorlevel 1 (
 )
 
 REM ── Step 2: Generate win_menu.c ──
-echo [windows] Generating win_menu.c from Windows\menu.txt...
-call "%SCRIPT_DIR%\mkmenu.bat" Windows\menu.txt %PROGNAME% win_menu.c
+echo [windows] Generating win_menu.c from src\Windows\menus\menu.txt...
+call "%SCRIPT_DIR%\mkmenu.bat" src\Windows\menus\menu.txt %PROGNAME% win_menu.c
 if errorlevel 1 (
     echo [ERROR] mkmenu.bat failed >&2
     exit /b 1
