@@ -17,7 +17,9 @@ BUNDLE_ID="${2:-com.example.passiflora}"
 VERSION="${3:-1.0.0}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ANDROID_DIR="$SCRIPT_DIR/src/android"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ANDROID_DIR="$PROJECT_ROOT/src/android"
+BUILD_TYPE="${BUILD_TYPE:-debug}"
 
 # ── Locate Android SDK ─────────────────────────────────────────────
 if [ -z "$ANDROID_HOME" ]; then
@@ -67,7 +69,7 @@ if [ ! -x "$ANDROID_DIR/gradlew" ]; then
 fi
 
 # ── Copy Android icons into res/ if builticons exist ───────────────
-ICON_SRC="$SCRIPT_DIR/src/icons/builticons/android/app/src/main/res"
+ICON_SRC="$PROJECT_ROOT/src/icons/builticons/android/app/src/main/res"
 RES_DIR="$ANDROID_DIR/app/src/main/res"
 if [ -d "$ICON_SRC" ]; then
     # Copy all mipmap and drawable directories
@@ -101,16 +103,17 @@ if [ "$VERSION" != "1.0.0" ]; then
 fi
 
 # ── Build ──────────────────────────────────────────────────────────
-echo "mkandroid: building debug APK..."
-(cd "$ANDROID_DIR" && "$GRADLE" assembleDebug --quiet \
-    --project-cache-dir "$SCRIPT_DIR/bin/Android/gradle-cache")
+GRADLE_TASK="assemble$(echo "$BUILD_TYPE" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
+echo "mkandroid: building $BUILD_TYPE APK ($GRADLE_TASK)..."
+(cd "$ANDROID_DIR" && "$GRADLE" "$GRADLE_TASK" --quiet \
+    --project-cache-dir "$PROJECT_ROOT/bin/Android/gradle-cache")
 
 # ── Copy APK to bin/Android/ ───────────────────────────────────────
-APK=$(find "$SCRIPT_DIR/bin/Android/gradle-build/app/outputs/apk/debug" \
+APK=$(find "$PROJECT_ROOT/bin/Android/gradle-build/app/outputs/apk/$BUILD_TYPE" \
       -name "*.apk" 2>/dev/null | head -1)
 if [ -n "$APK" ]; then
-    mkdir -p "$SCRIPT_DIR/bin/Android"
-    cp "$APK" "$SCRIPT_DIR/bin/Android/${PROGNAME}.apk"
+    mkdir -p "$PROJECT_ROOT/bin/Android"
+    cp "$APK" "$PROJECT_ROOT/bin/Android/${PROGNAME}.apk"
     echo "mkandroid: bin/Android/${PROGNAME}.apk created"
 else
     echo "mkandroid: APK not found in build output" >&2

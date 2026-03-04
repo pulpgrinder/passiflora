@@ -25,7 +25,10 @@ if "%VERSION%"=="" set VERSION=1.0.0
 
 set SCRIPT_DIR=%~dp0
 if "%SCRIPT_DIR:~-1%"=="\" set SCRIPT_DIR=%SCRIPT_DIR:~0,-1%
-set ANDROID_DIR=%SCRIPT_DIR%\src\android
+set PROJECT_ROOT=%SCRIPT_DIR%\..
+for %%I in ("%PROJECT_ROOT%") do set PROJECT_ROOT=%%~fI
+set ANDROID_DIR=%PROJECT_ROOT%\src\android
+if "%BUILD_TYPE%"=="" set BUILD_TYPE=debug
 
 REM ── Locate Android SDK ──
 if "%ANDROID_HOME%"=="" (
@@ -75,7 +78,7 @@ if not exist "%ANDROID_DIR%\gradlew.bat" (
 )
 
 REM ── Copy Android icons into res\ if builticons exist ──
-set ICON_SRC=%SCRIPT_DIR%\src\icons\builticons\android\app\src\main\res
+set ICON_SRC=%PROJECT_ROOT%\src\icons\builticons\android\app\src\main\res
 set RES_DIR=%ANDROID_DIR%\app\src\main\res
 if exist "%ICON_SRC%" (
     for /d %%D in ("%ICON_SRC%\mipmap-*" "%ICON_SRC%\drawable-*") do (
@@ -108,9 +111,14 @@ if not "%VERSION%"=="1.0.0" (
 )
 
 REM ── Build ──
-echo mkandroid: building debug APK...
+REM Capitalize first letter of BUILD_TYPE for Gradle task name
+set _BT_FIRST=%BUILD_TYPE:~0,1%
+set _BT_REST=%BUILD_TYPE:~1%
+for %%A in (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) do set _BT_FIRST=!_BT_FIRST:%%A=%%A!
+set GRADLE_TASK=assemble!_BT_FIRST!!_BT_REST!
+echo mkandroid: building %BUILD_TYPE% APK (!GRADLE_TASK!)...
 pushd "%ANDROID_DIR%"
-call "%GRADLE%" assembleDebug --quiet --project-cache-dir "%SCRIPT_DIR%\bin\Android\gradle-cache"
+call "%GRADLE%" !GRADLE_TASK! --quiet --project-cache-dir "%PROJECT_ROOT%\bin\Android\gradle-cache"
 if !errorlevel! neq 0 (
     echo mkandroid: Gradle build failed >&2
     popd
@@ -119,7 +127,7 @@ if !errorlevel! neq 0 (
 popd
 
 REM ── Copy APK to bin\Android\ ──
-set APK_DIR=%SCRIPT_DIR%\bin\Android\gradle-build\app\outputs\apk\debug
+set APK_DIR=%PROJECT_ROOT%\bin\Android\gradle-build\app\outputs\apk\%BUILD_TYPE%
 set APK=
 for %%F in ("%APK_DIR%\*.apk") do (
     set APK=%%F
@@ -130,8 +138,8 @@ if "%APK%"=="" (
     echo mkandroid: APK not found in build output >&2
     exit /b 1
 )
-mkdir "%SCRIPT_DIR%\bin\Android" 2>nul
-copy /Y "%APK%" "%SCRIPT_DIR%\bin\Android\%PROGNAME%.apk" >nul
+mkdir "%PROJECT_ROOT%\bin\Android" 2>nul
+copy /Y "%APK%" "%PROJECT_ROOT%\bin\Android\%PROGNAME%.apk" >nul
 echo mkandroid: bin\Android\%PROGNAME%.apk created
 
 endlocal

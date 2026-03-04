@@ -22,6 +22,19 @@ android {
         }
     }
 
+    signingConfigs {
+        // Test keystore shipped with the repo — NOT for production use.
+        // Override with environment variables for a real keystore:
+        //   RELEASE_KEYSTORE, RELEASE_KEYSTORE_PASSWORD,
+        //   RELEASE_KEY_ALIAS, RELEASE_KEY_PASSWORD
+        release {
+            storeFile     file(System.getenv("RELEASE_KEYSTORE") ?: "../../release.jks")
+            storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: "testtest"
+            keyAlias      System.getenv("RELEASE_KEY_ALIAS") ?: "mykey"
+            keyPassword   System.getenv("RELEASE_KEY_PASSWORD") ?: "testtest"
+        }
+    }
+
     externalNativeBuild {
         cmake {
             path file("../CMakeLists.txt")
@@ -31,11 +44,17 @@ android {
     buildTypes {
         release {
             minifyEnabled false
+            signingConfig signingConfigs.release
         }
     }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
+    }
+    packaging {
+        jniLibs {
+            useLegacyPackaging false
+        }
     }
 }

@@ -14,7 +14,7 @@ What it *doesn't* do:
 * Engage in baroque configuration gymnastics
 * Generate 600 terabyte binaries for a helloworld program
 
-Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. This made sense back in the bad old days of incompatible browsers, but things have improved immensely since then. It's my belief that it's now preferable to work through whatever minor inconsistencies that remain than take the multi-megabyte hit of bundling an entire browser in the executable.
+Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Doing that made sense back in the bad old days of incompatible browsers, but things have improved immensely since then. It's my belief that it's now preferable to work through whatever minor inconsistencies that remain than take the enormous hit of bundling an entire browser in the executable.
 
 ## Prerequisites
 
@@ -91,7 +91,7 @@ Additional targets from Windows:
 1. Make sure you have the dependencies listed above installed.
 2. Check out a fresh copy of this repo.
 3. Edit the Makefile (Mac, Linux, Android, iOS) or `build.bat` (native Windows).
-   Use `PROGNAME = YourAppName` in the Makefile, or `set PROGNAME=YourAppName` in `build.bat`.
+   Use `PROGNAME = YourAppName` in the Makefile (`set PROGNAME=YourAppName` in `build.bat` for windows).
 4. Put all your HTML/JavaScript/CSS/images/whatever in `src/www`.
 
 ## Building
@@ -126,11 +126,59 @@ Additional targets from Windows:
 
 `build clean` — Remove all build artifacts.
 
-## Customizing the App
+### Android Release Builds
+
+By default, `make android` and `build android` produce a **debug** APK. To build a signed **release** APK, set the `BUILD_TYPE` environment variable:
+
+**macOS/Linux:**
+```
+BUILD_TYPE=release make android
+```
+
+**Windows:**
+```
+set BUILD_TYPE=release
+build android
+```
+
+#### Test keystore (included)
+
+A test keystore (`src/android/release.jks`, password `testtest`) is included in the repo for convenience. It is used automatically when you build a release APK with no further configuration. **Do not ship apps signed with the test keystore** — it is for development and testing only.
+
+#### Using a real keystore for production
+
+1. Generate a keystore:
+
+```
+keytool -genkey -v -keystore my-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias mykey
+```
+
+2. Set these environment variables before building:
+
+```
+export RELEASE_KEYSTORE=/path/to/my-release.jks
+export RELEASE_KEYSTORE_PASSWORD=your-store-password
+export RELEASE_KEY_ALIAS=mykey
+export RELEASE_KEY_PASSWORD=your-key-password
+```
+
+(On Windows, use `set` instead of `export`.)
+
+3. Build:
+
+```
+BUILD_TYPE=release make android
+```
+
+The environment variables override the test keystore defaults in `src/android/app/build.gradle`. **Keep your production keystore and passwords out of version control**. 
+
+## Making the App Your Own
+
+Obviously you're gonna want to put your own HTML, JavaScript, CSS, images, and such inside the src/www folder. Here are some other customizations you'll probably want to make before building something for release.
 
 ### Icons
 
-Change `roundicon.png` and `squareicon.png` in `src/icons` to whatever images you like. These should be pretty big — around 1,000 pixels square or more. The `squareicon.png` file should be square (duh!), while the `roundicon.png` should be a square image consisting of a round image on a transparent background.
+Change `roundicon.png` and `squareicon.png` in `src/icons` to whatever images you like. These should be pretty big — around 1,000 pixels square or more. The `squareicon.png` file should be square (duh!), while the `roundicon.png` should be a square image consisting of a round image on a transparent background. Look at the supplied example if this seems confusing.
 
 All of the scads of other icons for the various different systems are generated from these.
 
@@ -140,15 +188,15 @@ Once you've updated the icons, run:
 
 or
 
-`buildicons.bat` (Windows)
+`winscripts\buildicons.bat` (Windows)
 
-to generate a new icon set. (On Windows you can also use `build.bat icons`.)
+to generate a new icon set (on Windows `build.bat icons` would also work).
 
 Note that these may need some manual tweaking for legibility, particularly at the smaller sizes, but it's still a substantial time savings over generating them all individually. Icons are *not* regenerated automatically during a normal build, so your hand-tuned versions won't be overwritten.
 
 ### Menus
 
-Underneath `src`, each platform has a folder which contains a `menu.txt` file. These are used to generate menus. They will appear in the menu bar (for platforms that have a menu bar, e.g., Mac and Windows). They will also be converted to JSON and placed in `src/www/generated/<platform>/menus.json`. These can be used to build your own custom menus on mobile platforms.
+Underneath `src`, each platform has a folder which contains a `menu.txt` file. These are used to generate menus. They will appear in the menu bar (for platforms that have a menu bar, e.g., Mac and Windows). They will also be converted to JavaScript and placed in `src/www/generated/PassifloraMenus.js`, which assigns the menu data to the `PASSIFLORA_MENUS` variable. These can be used to build your own custom menus on mobile platforms.
 
 The format should be clear — the different levels of a menu are expressed with indentation.
 
@@ -170,7 +218,7 @@ The default `handlemenu` just pops an alert.
 
 ## Miscellaneous
 
-After building for a platform, a generated `src/www/systemid.js` will contain something like:
+After building for a platform, a generated `src/www/generated/systemid.js` will contain something like:
 
 `PASSIFLORA_OS_NAME = "iOS";`
 

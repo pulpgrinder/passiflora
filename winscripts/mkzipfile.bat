@@ -11,7 +11,7 @@ setlocal enabledelayedexpansion
 
 set SRCDIR=%~1
 set OUTPUT=%~2
-if "%OUTPUT%"=="" set OUTPUT=zipdata.c
+if "%OUTPUT%"=="" set OUTPUT=src\C\generated\zipdata.c
 
 if "%SRCDIR%"=="" (
     echo Usage: %~nx0 ^<directory^> [output_file] >&2

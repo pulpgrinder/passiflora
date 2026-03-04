@@ -19,7 +19,7 @@ set TEMPLATE=%~1
 set PROGNAME=%~2
 set OUTPUT=%~3
 if "%PROGNAME%"=="" set PROGNAME=passiflora
-if "%OUTPUT%"=="" set OUTPUT=src\www\generated\menus.json
+if "%OUTPUT%"=="" set OUTPUT=src\www\generated\PassifloraMenus.js
 
 if "%TEMPLATE%"=="" (
     echo Usage: %~nx0 ^<template^> [progname] [output] >&2

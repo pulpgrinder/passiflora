@@ -67,77 +67,83 @@ WIN_BINARY     = $(WIN_BINDIR)/$(PROGNAME).exe
 BINDIR  = bin/$(OS_NAME)
 BINARY  = $(BINDIR)/$(PROGNAME)
 
-SYSTEMID_JS = src/www/systemid.js
+SYSTEMID_JS = src/www/generated/systemid.js
+
+# C source layout
+SRCDIR = src/C
+GENDIR = src/C/generated
 
 all: $(BINARY) bundle
 
-zipdata.c: $(CONTENT)
-	sh mkzipfile.sh $(CONTENT) zipdata.c
+$(GENDIR)/zipdata.c: $(CONTENT)
+	@mkdir -p $(GENDIR)
+	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
 
-menu.c: $(MENU_TEMPLATE) mkmenu.sh
-	sh mkmenu.sh $(MENU_TEMPLATE) $(PROGNAME) menu.c
+$(GENDIR)/menu.c: $(MENU_TEMPLATE) nixscripts/mkmenu.sh
+	@mkdir -p $(GENDIR)
+	sh nixscripts/mkmenu.sh $(MENU_TEMPLATE) $(PROGNAME) $(GENDIR)/menu.c
 
-win_menu.c: src/Windows/menus/menu.txt mkmenu.sh
-	sh mkmenu.sh src/Windows/menus/menu.txt $(PROGNAME) win_menu.c
+$(GENDIR)/win_menu.c: src/Windows/menus/menu.txt nixscripts/mkmenu.sh
+	@mkdir -p $(GENDIR)
+	sh nixscripts/mkmenu.sh src/Windows/menus/menu.txt $(PROGNAME) $(GENDIR)/win_menu.c
 
-# JSON menus for iOS and Android (consumed by the web app)
-IOS_MENU_JSON     = src/www/generated/iOS/menus.json
-ANDROID_MENU_JSON = src/www/generated/android/menus.json
+# Generated JS menu file (consumed by the web app)
+MENU_JS = src/www/generated/PassifloraMenus.js
 
-$(IOS_MENU_JSON): src/iOS/menus/menu.txt mkmenu_json.sh
-	sh mkmenu_json.sh src/iOS/menus/menu.txt $(PROGNAME) $(IOS_MENU_JSON)
-
-$(ANDROID_MENU_JSON): src/android/menus/menu.txt mkmenu_json.sh
-	sh mkmenu_json.sh src/android/menus/menu.txt $(PROGNAME) $(ANDROID_MENU_JSON)
-
-$(BINARY): passiflora.c zipzip.c UI.c menu.c
-	@printf '// Auto-generated file — DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "%s";\n' "$(OS_NAME)" > $(SYSTEMID_JS)
-	sh mkzipfile.sh $(CONTENT) zipdata.c
+$(BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.c $(SRCDIR)/UI.c $(GENDIR)/menu.c
+	@mkdir -p $(dir $(SYSTEMID_JS))
+	@printf '// Auto-generated file \xe2\x80\x94 DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "%s";\n' "$(OS_NAME)" > $(SYSTEMID_JS)
+	sh nixscripts/mkmenu_json.sh $(MENU_TEMPLATE) $(PROGNAME) $(MENU_JS)
+	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
 	mkdir -p $(BINDIR)
-	$(CC) $(CFLAGS) $(UI_CFLAGS) -o $@ passiflora.c UI.c $(LDFLAGS) $(UI_LDFLAGS)
+	$(CC) $(CFLAGS) $(UI_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(LDFLAGS) $(UI_LDFLAGS)
 
 icons:
 	bash src/icons/buildiconset.sh
 
 bundle: $(BINARY)
 ifeq ($(UNAME_S),Darwin)
-	sh mkbundle.sh $(PROGNAME) $(BINARY) $(ICNS) $(BUNDLE_ID) $(VERSION)
+	sh nixscripts/mkbundle.sh $(PROGNAME) $(BINARY) $(ICNS) $(BUNDLE_ID) $(VERSION)
 endif
 
 # ── iOS (cross-compile from macOS) ──────────────────────────────────
 ios: $(IOS_BINARY) ios-bundle
 
-$(IOS_BINARY): passiflora.c zipzip.c UI.c menu.c $(IOS_MENU_JSON)
+$(IOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.c $(SRCDIR)/UI.c $(GENDIR)/menu.c
 ifeq ($(UNAME_S),Darwin)
-	@printf '// Auto-generated file — DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "iOS";\n' > $(SYSTEMID_JS)
-	sh mkzipfile.sh $(CONTENT) zipdata.c
+	@mkdir -p $(dir $(SYSTEMID_JS))
+	@printf '// Auto-generated file \xe2\x80\x94 DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "iOS";\n' > $(SYSTEMID_JS)
+	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt $(PROGNAME) $(MENU_JS)
+	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
 	mkdir -p $(IOS_BINDIR)
-	$(IOS_CC) $(IOS_CFLAGS) -o $@ passiflora.c UI.c $(IOS_LDFLAGS)
+	$(IOS_CC) $(IOS_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(IOS_LDFLAGS)
 else
 	@echo "iOS target requires macOS with Xcode." >&2; exit 1
 endif
 
 ios-bundle: $(IOS_BINARY)
 ifeq ($(UNAME_S),Darwin)
-	sh mkiosbundle.sh $(PROGNAME) $(IOS_BINARY) src/icons/builticons/ios/AppIcon-1024.png $(BUNDLE_ID) $(VERSION)
+	sh nixscripts/mkiosbundle.sh $(PROGNAME) $(IOS_BINARY) src/icons/builticons/ios/AppIcon-1024.png $(BUNDLE_ID) $(VERSION)
 endif
 
 # ── iOS Simulator (build + install + launch) ───────────────────────
 iossim: $(SIMOS_BINARY) iossim-bundle iossim-run
 
-$(SIMOS_BINARY): passiflora.c zipzip.c UI.c menu.c $(IOS_MENU_JSON)
+$(SIMOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.c $(SRCDIR)/UI.c $(GENDIR)/menu.c
 ifeq ($(UNAME_S),Darwin)
-	@printf '// Auto-generated file — DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "iOS";\n' > $(SYSTEMID_JS)
-	sh mkzipfile.sh $(CONTENT) zipdata.c
+	@mkdir -p $(dir $(SYSTEMID_JS))
+	@printf '// Auto-generated file \xe2\x80\x94 DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "iOS";\n' > $(SYSTEMID_JS)
+	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt $(PROGNAME) $(MENU_JS)
+	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
 	mkdir -p $(SIMOS_BINDIR)
-	$(SIMOS_CC) $(SIMOS_CFLAGS) -o $@ passiflora.c UI.c $(SIMOS_LDFLAGS)
+	$(SIMOS_CC) $(SIMOS_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(SIMOS_LDFLAGS)
 else
 	@echo "iOS Simulator target requires macOS with Xcode." >&2; exit 1
 endif
 
 iossim-bundle: $(SIMOS_BINARY)
 ifeq ($(UNAME_S),Darwin)
-	sh mkiosbundle.sh $(PROGNAME) $(SIMOS_BINARY) src/icons/builticons/ios/AppIcon-1024.png $(BUNDLE_ID) $(VERSION) $(SIMOS_BINDIR)
+	sh nixscripts/mkiosbundle.sh $(PROGNAME) $(SIMOS_BINARY) src/icons/builticons/ios/AppIcon-1024.png $(BUNDLE_ID) $(VERSION) $(SIMOS_BINDIR)
 endif
 
 iossim-run: iossim-bundle
@@ -165,7 +171,7 @@ WV2_NUGET_VER  = 1.0.2903.40
 WV2_NUGET_URL  = https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/$(WV2_NUGET_VER)
 WV2_LOADER_H   = wv2loader.h
 
-windows: win_menu.c $(WV2_LOADER_H) $(WIN_BINARY)
+windows: $(GENDIR)/win_menu.c $(WV2_LOADER_H) $(WIN_BINARY)
 
 # Download WebView2Loader.dll and convert to an embedded C header
 $(WV2_LOADER_H):
@@ -187,41 +193,48 @@ $(WV2_LOADER_H):
 	@rm -f $(WIN_BINDIR)/WebView2Loader.dll
 	@echo "$(WV2_LOADER_H) generated (embedded WebView2Loader.dll)"
 
-$(WIN_BINARY): passiflora.c zipzip.c UI.c win_menu.c $(WV2_LOADER_H)
-	@printf '// Auto-generated file — DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "Windows";\n' > $(SYSTEMID_JS)
-	sh mkzipfile.sh $(CONTENT) zipdata.c
+$(WIN_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.c $(SRCDIR)/UI.c $(GENDIR)/win_menu.c $(WV2_LOADER_H)
+	@mkdir -p $(dir $(SYSTEMID_JS))
+	@printf '// Auto-generated file \xe2\x80\x94 DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "Windows";\n' > $(SYSTEMID_JS)
+	sh nixscripts/mkmenu_json.sh src/Windows/menus/menu.txt $(PROGNAME) $(MENU_JS)
+	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
 	mkdir -p $(WIN_BINDIR)
 	@if [ -f src/icons/builticons/windows/app.ico ] && \
 	    command -v $(WIN_WINDRES) >/dev/null 2>&1; then \
 		echo '1 ICON "src/icons/builticons/windows/app.ico"' \
 		    > $(WIN_BINDIR)/app.rc; \
 		$(WIN_WINDRES) $(WIN_BINDIR)/app.rc -o $(WIN_BINDIR)/app_res.o; \
-		$(WIN_CC) $(WIN_CFLAGS) -o $@ passiflora.c UI.c \
+		$(WIN_CC) $(WIN_CFLAGS) -I. -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c \
 		    $(WIN_BINDIR)/app_res.o $(WIN_LDFLAGS); \
 	else \
-		$(WIN_CC) $(WIN_CFLAGS) -o $@ passiflora.c UI.c $(WIN_LDFLAGS); \
+		$(WIN_CC) $(WIN_CFLAGS) -I. -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(WIN_LDFLAGS); \
 	fi
 
 # ── Linux (native build on Linux) ──────────────────────────────────
-linux: menu.c
+linux: $(GENDIR)/menu.c
 ifeq ($(UNAME_S),Linux)
-	@printf '// Auto-generated file — DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "Linux";\n' > $(SYSTEMID_JS)
-	sh mkzipfile.sh $(CONTENT) zipdata.c
+	@mkdir -p $(dir $(SYSTEMID_JS))
+	@printf '// Auto-generated file \xe2\x80\x94 DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "Linux";\n' > $(SYSTEMID_JS)
+	sh nixscripts/mkmenu_json.sh src/Linux/menus/menu.txt $(PROGNAME) $(MENU_JS)
+	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
 	mkdir -p $(BINDIR)
-	$(CC) $(CFLAGS) $(UI_CFLAGS) -o $(BINARY) passiflora.c UI.c $(LDFLAGS) $(UI_LDFLAGS)
+	$(CC) $(CFLAGS) $(UI_CFLAGS) -o $(BINARY) $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(LDFLAGS) $(UI_LDFLAGS)
 else
 	@echo "Linux target requires building on a Linux system." >&2
 	@echo "  Install: sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev" >&2; exit 1
 endif
 
 # ── Android (Gradle + NDK) ─────────────────────────────────
-android: menu.c $(ANDROID_MENU_JSON)
-	@printf '// Auto-generated file — DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "Android";\n' > $(SYSTEMID_JS)
-	sh mkzipfile.sh $(CONTENT) zipdata.c
-	sh mkandroid.sh $(PROGNAME) $(BUNDLE_ID) $(VERSION)
+android: $(GENDIR)/menu.c
+	@mkdir -p $(dir $(SYSTEMID_JS))
+	@printf '// Auto-generated file \xe2\x80\x94 DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "Android";\n' > $(SYSTEMID_JS)
+	sh nixscripts/mkmenu_json.sh src/android/menus/menu.txt $(PROGNAME) $(MENU_JS)
+	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
+	sh nixscripts/mkandroid.sh $(PROGNAME) $(BUNDLE_ID) $(VERSION)
 
 clean:
-	rm -f $(BINARY) zipdata.c menu.c
+	rm -f $(BINARY)
+	rm -rf $(GENDIR)
 	rm -rf $(APP_BUNDLE)
 	rm -f $(IOS_BINARY)
 	rm -rf $(IOS_APP_BUNDLE)
@@ -229,7 +242,7 @@ clean:
 	rm -rf $(SIMOS_APP_BUNDLE)
 	rm -f $(WIN_BINARY)
 	rm -f $(WIN_BINDIR)/app.rc $(WIN_BINDIR)/app_res.o
-	rm -f wv2loader.h win_menu.c
+	rm -f wv2loader.h
 	rm -f $(SYSTEMID_JS)
 	rm -rf src/www/generated
 	rm -rf bin/Android/gradle-build bin/Android/gradle-cache src/android/.gradle src/android/app/.cxx

@@ -52,11 +52,9 @@ REM  clean
 REM ================================================================
 :do_clean
 echo [clean] Removing build artifacts...
-del /Q "%SCRIPT_DIR%\zipdata.c" 2>nul
-del /Q "%SCRIPT_DIR%\menu.c" 2>nul
-del /Q "%SCRIPT_DIR%\win_menu.c" 2>nul
+if exist "%SCRIPT_DIR%\src\C\generated" rmdir /S /Q "%SCRIPT_DIR%\src\C\generated" 2>nul
 del /Q "%SCRIPT_DIR%\wv2loader.h" 2>nul
-del /Q "%SCRIPT_DIR%\src\www\systemid.js" 2>nul
+del /Q "%SCRIPT_DIR%\src\www\generated\systemid.js" 2>nul
 if exist "%SCRIPT_DIR%\src\www\generated" rmdir /S /Q "%SCRIPT_DIR%\src\www\generated" 2>nul
 if exist "%WIN_BINDIR%" (
     del /Q "%WIN_BINDIR%\%PROGNAME%.exe" 2>nul
@@ -80,7 +78,7 @@ REM ================================================================
 REM  icons
 REM ================================================================
 :do_icons
-call "%SCRIPT_DIR%\buildicons.bat"
+call "%SCRIPT_DIR%\winscripts\buildicons.bat"
 if errorlevel 1 exit /b 1
 goto :eof
 
@@ -89,16 +87,18 @@ REM  android
 REM ================================================================
 :do_android
 echo [android] Generating systemid.js for Android...
-echo // Auto-generated file — DO NOT EDIT. This file is overwritten on every build.> src\www\systemid.js
-echo PASSIFLORA_OS_NAME = "Android";>> src\www\systemid.js
+mkdir src\www\generated 2>nul
+echo // Auto-generated file — DO NOT EDIT. This file is overwritten on every build.> src\www\generated\systemid.js
+echo PASSIFLORA_OS_NAME = "Android";>> src\www\generated\systemid.js
 echo [android] Generating zipdata.c...
-call "%SCRIPT_DIR%\mkzipfile.bat" %CONTENT% zipdata.c
+mkdir src\C\generated 2>nul
+call "%SCRIPT_DIR%\winscripts\mkzipfile.bat" %CONTENT% src\C\generated\zipdata.c
 if errorlevel 1 exit /b 1
-echo [android] Generating menus.json from src\android\menus\menu.txt...
-call "%SCRIPT_DIR%\mkmenu_json.bat" src\android\menus\menu.txt %PROGNAME% src\www\generated\android\menus.json
+echo [android] Generating PassifloraMenus.js from src\android\menus\menu.txt...
+call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\android\menus\menu.txt %PROGNAME% src\www\generated\PassifloraMenus.js
 if errorlevel 1 exit /b 1
 echo [android] Building APK...
-call "%SCRIPT_DIR%\mkandroid.bat" %PROGNAME% %BUNDLE_ID% %VERSION%
+call "%SCRIPT_DIR%\winscripts\mkandroid.bat" %PROGNAME% %BUNDLE_ID% %VERSION%
 if errorlevel 1 exit /b 1
 echo [android] Done.
 goto :eof
@@ -118,20 +118,30 @@ REM ================================================================
 
 REM ── Step 1: Generate systemid.js ──
 echo [windows] Generating systemid.js for Windows...
-echo // Auto-generated file — DO NOT EDIT. This file is overwritten on every build.> src\www\systemid.js
-echo PASSIFLORA_OS_NAME = "Windows";>> src\www\systemid.js
+mkdir src\www\generated 2>nul
+echo // Auto-generated file — DO NOT EDIT. This file is overwritten on every build.> src\www\generated\systemid.js
+echo PASSIFLORA_OS_NAME = "Windows";>> src\www\generated\systemid.js
 
 REM ── Step 2: Generate zipdata.c ──
 echo [windows] Generating zipdata.c from %CONTENT%...
-call "%SCRIPT_DIR%\mkzipfile.bat" %CONTENT% zipdata.c
+mkdir src\C\generated 2>nul
+call "%SCRIPT_DIR%\winscripts\mkzipfile.bat" %CONTENT% src\C\generated\zipdata.c
 if errorlevel 1 (
     echo [ERROR] mkzipfile.bat failed >&2
     exit /b 1
 )
 
-REM ── Step 2: Generate win_menu.c ──
+REM ── Step 2b: Generate PassifloraMenus.js for Windows ──
+echo [windows] Generating PassifloraMenus.js from src\Windows\menus\menu.txt...
+call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\Windows\menus\menu.txt %PROGNAME% src\www\generated\PassifloraMenus.js
+if errorlevel 1 (
+    echo [ERROR] mkmenu_json.bat failed >&2
+    exit /b 1
+)
+
+REM ── Step 2c: Generate win_menu.c ──
 echo [windows] Generating win_menu.c from src\Windows\menus\menu.txt...
-call "%SCRIPT_DIR%\mkmenu.bat" src\Windows\menus\menu.txt %PROGNAME% win_menu.c
+call "%SCRIPT_DIR%\winscripts\mkmenu.bat" src\Windows\menus\menu.txt %PROGNAME% src\C\generated\win_menu.c
 if errorlevel 1 (
     echo [ERROR] mkmenu.bat failed >&2
     exit /b 1
@@ -200,7 +210,7 @@ if exist "%_ICON_PATH%" (
     )
 )
 
-%WIN_CC% %WIN_CFLAGS% -o "%WIN_BINDIR%\%PROGNAME%.exe" passiflora.c UI.c %RES_OBJ% %WIN_LDFLAGS%
+%WIN_CC% %WIN_CFLAGS% -I. -o "%WIN_BINDIR%\%PROGNAME%.exe" src\C\passiflora.c src\C\UI.c %RES_OBJ% %WIN_LDFLAGS%
 if errorlevel 1 (
     echo [ERROR] Compilation failed >&2
     exit /b 1

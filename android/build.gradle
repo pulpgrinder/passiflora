@@ -1,6 +1,0 @@
-plugins {
-    id 'com.android.application' version '8.13.2' apply false
-}
-
-// Keep Gradle build outputs under bin/Android/ alongside the other platforms.
-layout.buildDirectory = file("../../bin/Android/gradle-build")

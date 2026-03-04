@@ -1,9 +1,7 @@
 # Build output
 bin/
-zipdata.c
-menu.c
+src/C/generated/
 src/www/generated/
-src/www/systemid.js
 
 # IDE
 .vs/

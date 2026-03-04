@@ -19,7 +19,7 @@ set TEMPLATE=%~1
 set PROGNAME=%~2
 set OUTPUT=%~3
 if "%PROGNAME%"=="" set PROGNAME=passiflora
-if "%OUTPUT%"=="" set OUTPUT=menu.c
+if "%OUTPUT%"=="" set OUTPUT=src\C\generated\menu.c
 
 if "%TEMPLATE%"=="" (
     echo Usage: %~nx0 ^<template^> [progname] [output] >&2

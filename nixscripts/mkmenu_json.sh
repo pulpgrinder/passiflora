@@ -27,7 +27,7 @@ set -e
 
 TEMPLATE="$1"
 PROGNAME="${2:-passiflora}"
-OUTPUT="${3:-src/www/generated/menus.json}"
+OUTPUT="${3:-src/www/generated/PassifloraMenus.js}"
 
 if [ -z "$TEMPLATE" ] || [ ! -f "$TEMPLATE" ]; then
     echo "Usage: $0 <template> [progname] [output]" >&2
@@ -82,7 +82,8 @@ BEGIN {
     count = NR
 }
 END {
-    printf "[\n"
+    printf "// Auto-generated file \xe2\x80\x94 DO NOT EDIT. This file is overwritten on every build.\n"
+    printf "PASSIFLORA_MENUS = [\n"
     first_menu = 1
     in_menu = 0
 

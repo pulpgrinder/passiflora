@@ -55,8 +55,10 @@ if ($outDir -and -not (Test-Path $outDir)) {
 }
 
 $json = $menus | ConvertTo-Json -Depth 10
+$header = "// Auto-generated file \u2014 DO NOT EDIT. This file is overwritten on every build.`n"
+$content = $header + "PASSIFLORA_MENUS = " + $json + "`n"
 [System.IO.File]::WriteAllText(
     $output,
-    $json,
+    $content,
     [System.Text.UTF8Encoding]::new($false)
 )

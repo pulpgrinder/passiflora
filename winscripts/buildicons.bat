@@ -6,6 +6,8 @@ REM
 setlocal
 set SCRIPT_DIR=%~dp0
 if "%SCRIPT_DIR:~-1%"=="\" set SCRIPT_DIR=%SCRIPT_DIR:~0,-1%
+set PROJECT_ROOT=%SCRIPT_DIR%\..
+for %%I in ("%PROJECT_ROOT%") do set PROJECT_ROOT=%%~fI
 
-call "%SCRIPT_DIR%\src\icons\buildiconset.bat"
+call "%PROJECT_ROOT%\src\icons\buildiconset.bat"
 if errorlevel 1 exit /b 1
