@@ -10,11 +10,15 @@ Passiflora is a no-nonsense cross-platform packager that wraps HTML/JavaScript/C
 
 What it *doesn't* do:
 
-* Require that you install 50,000 npm packages
+* Require that you install 50 million dubious npm packages (or a whole freakin' rust ecosystem, for the love of all that's holy)
 * Engage in baroque configuration gymnastics
-* Generate 600 terabyte binaries for a "Hello, world!" program
+* Generate 60 petabyte binaries for a "Hello, world!" program
 
 Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Doing that made sense back in the bad old days of incompatible browsers, but things have improved immensely since then. It's my belief that it's now preferable to work through whatever minor inconsistencies that remain than take the enormous hit of bundling an entire browser in the executable.
+
+Binary sizes for a bare program that simply displays "Hello, world!":
+
+Passiflora: 
 
 ## Prerequisites
 
