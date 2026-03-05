@@ -19,11 +19,9 @@ What it *doesn't* do:
 * Generate 60 petabyte binaries for a "Hello, world!" program
 * Engage in baroque configuration gymnastics
 
-Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Similarly, Passiflora doesn't provide a lot of integration with the native OS -- things like file open/save (i.e., upload/download), access to the mic, camera and speaker, gps data, etc. can now be done from HTML. Doing these things made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then. It's my belief that it's now preferable to work through whatever inconsistencies and shortcomings that remain than take the enormous hit of bundling an entire browser and native API in the executable. It's possible that some native integration will be added in the future, but the plan is to to continue doing everything with web technology that *can* be done with web technology.
+Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Similarly, Passiflora doesn't provide a lot of integration with the native OS -- things like file open/save (i.e., upload/download), access to the mic, camera and speaker, gps data, etc. can now be done from HTML. Doing these things made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then. It's my belief that it's now preferable to work through whatever inconsistencies and shortcomings that remain than take the enormous hit of bundling an entire browser and native API in the executable. It's possible that some native integration will be added in the future, but the plan is to continue doing everything with web technology that *can* be done with web technology.
 
-Binary sizes for a bare program that simply displays "Hello, world!":
-
-Passiflora: 3.6 MB
+A representative Passiflora "Hello, world!" executable (in this case, a macOS app bundle) weighs only 3.6 MB.
 
 ## Prerequisites
 
@@ -75,7 +73,7 @@ On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and
 
 <tr>
   <td><strong>iOS Simulator</strong></td>
-  <td>Xcode with Simulator runtime installed</td>
+  <td>Xcode (full install) with an iOS SDK and a Simulator runtime</td>
   <td>&mdash;</td>
   <td>&mdash;</td>
 </tr>
@@ -135,6 +133,7 @@ On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and
 3. Edit the Makefile (Mac, Linux, Android, iOS) or `build.bat` (native Windows).
    Use `PROGNAME = YourAppName` in the Makefile (`set PROGNAME=YourAppName` in `build.bat` for windows).
 4. Put all your HTML/JavaScript/CSS/images/whatever in `src/www`.
+5. There is no 5. See below for additional tweaks you might want to make (custom icons, etc)
 
 ## Building
 
@@ -142,9 +141,9 @@ On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and
 
 `make` — Build a macOS app bundle (plain `make` with no arguments builds for whatever platform you're on).
 
-`make ios` — Build for a physical iPhone or iPad.
+`make ios` — Cross-compile for a physical iPhone or iPad.
 
-`make iossim` — Build for the iOS Simulator. Also launches the simulator (if it's not already running), transfers the app to it, and runs it.
+`make iossim` — Cross-compile for the iOS Simulator. Also launches the simulator (if it's not already running), transfers the app to it, and runs it.
 
 `make windows` — Cross-compile a Windows binary
 
@@ -156,7 +155,7 @@ On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and
 
 `build` or `build.bat` — Build a Windows EXE.
 
-`build android` — Build an Android APK.
+`build android` — Cross-compile an Android APK.
 
 `build clean` — Remove all build artifacts.
 
@@ -248,7 +247,7 @@ After building for a platform, a generated `src/www/generated/systemid.js` will 
 
 This can be used in case you need your JavaScript code to do different things on different platforms. This file is auto-generated on every build and should not be edited by hand.
 
-## Make Targets Summary
+## Make/Build Targets Summary
 
 | Target | Description |
 |--------|-------------|
@@ -264,15 +263,23 @@ This can be used in case you need your JavaScript code to do different things on
 | `make sign-ios` | Interactively sign the iOS app bundle |
 | `make sign-iossim` | Interactively sign the iOS Simulator app bundle |
 | `make sign-android` | Sign the Android APK with a local keystore |
+| `build` or `build windows` | Build Windows exe (Windows) |
+| `build android` | Build Android APK (Windows) |
+| `build icons` | Generate icon sets (Windows) |
+| `build clean` | Remove all build artifacts (Windows) |
+| `build sign-android` | Sign the Android APK with a local keystore (Windows) |
 
+## Code Signing
 
-## Code Signing for macOS and iOS
+Passiflora provides code-signing targets for macOS, iOS, iOS Simulator and Android builds.
 
-Passiflora provides interactive signing targets for macOS, iOS, and iOS Simulator builds:
+**IMPORTANT: Never, ever, ever put your signing certificates, keystores, passwords, etc. into a folder managed by git or another version control system. Ever.**
 
-* `make sign-macos` — Sign the macOS app bundle
-* `make sign-ios` — Sign the iOS app bundle (physical device)
-* `make sign-iossim` — Sign the iOS Simulator app bundle
+### Code Signing for macOS and iOS
+
+* `make sign-macos` — Build and sign a macOS app bundle
+* `make sign-ios` — Build and sign an iOS app bundle (for a physical device)
+* `make sign-iossim` — Build and sign iOS Simulator app bundle. Also starts the simulator if one isn't already running.
 
 These targets invoke the interactive script `nixscripts/signapp.sh`, which:
 
@@ -281,9 +288,9 @@ These targets invoke the interactive script `nixscripts/signapp.sh`, which:
 3. Prompts you to select an identity or choose ad-hoc signing.
 4. Signs the app bundle with your chosen identity and displays signature details.
 
-**Signing options explained:**
+#### Apple signing certificates
 
-**IMPORTANT: Never, ever, ever put your signing certificates, keystores, passwords, etc. into a folder managed by git or another version control system. Ever.**
+To use anything other than a self-generated ad hoc certificate, you'll need to be a member of the Apple Developer program, https://developer.apple.com/
 
 * **macOS:**
   * Developer ID Application — For distribution outside the App Store.
@@ -304,7 +311,7 @@ If no identities are found, ad-hoc signing is always available. The script will 
 
 Each signing target automatically builds the corresponding app bundle first, so there is no need to run a separate build step beforehand.
 
-## Code Signing for Android
+### Code Signing for Android
 
 `make sign-android` (or `build sign-android` on Windows) builds the Android APK and then signs it with a local keystore. The target will:
 
@@ -348,7 +355,7 @@ export RELEASE_KEY_PASSWORD=your-key-password
 BUILD_TYPE=release make android
 ```
 
-The environment variables override the test keystore defaults in `src/android/app/build.gradle`. **Keep your production keystore and passwords out of version control**. 
+The environment variables override the test keystore defaults in `src/android/app/build.gradle`.
 
 **Usage:**
 
