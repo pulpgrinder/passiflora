@@ -12,7 +12,7 @@ What it *doesn't* do:
 
 * Require that you install 50,000 npm packages
 * Engage in baroque configuration gymnastics
-* Generate 600 terabyte binaries for a helloworld program
+* Generate 600 terabyte binaries for a "Hello, world!" program
 
 Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Doing that made sense back in the bad old days of incompatible browsers, but things have improved immensely since then. It's my belief that it's now preferable to work through whatever minor inconsistencies that remain than take the enormous hit of bundling an entire browser in the executable.
 
@@ -237,7 +237,7 @@ or
 
 to generate a new icon set (on Windows `build.bat icons` would also work).
 
-Note that these may need some manual tweaking for legibility, particularly at the smaller sizes, but it's still a substantial time savings over generating them all individually. Icons are *not* regenerated automatically during a normal build, so your hand-tuned versions won't be overwritten.
+Note that these may need some manual tweaking for legibility, particularly at the smaller sizes, but it's still a substantial time savings over generating them all individually. Icons are *not* regenerated automatically during a normal build, so your hand-tuned versions won't be overwritten (unless, of course, you run `make icons` or `build icons`).
 
 ### Menus
 
@@ -304,7 +304,7 @@ These targets invoke the interactive script `nixscripts/signapp.sh`, which:
 
 **Signing options explained:**
 
-**IMPORTANT: Never, ever, ever put your signing certificates, keystores, passwords, etc. into a folder managed by git or another version control system. Ever. **
+**IMPORTANT: Never, ever, ever put your signing certificates, keystores, passwords, etc. into a folder managed by git or another version control system. Ever.**
 
 * **macOS:**
   * Developer ID Application — For distribution outside the App Store.
@@ -354,6 +354,6 @@ build sign-android          # Windows
 
 You will be prompted interactively for the keystore file and password. The signed APK is written to `bin/Android/<progname>.apk`.
 
-**IMPORTANT: Repeat: Never commit your keystore or passwords to git or another version control system.**
+**IMPORTANT: This bears repeating. Never, ever, ever put your signing certificates, keystores, passwords, etc. into a folder managed by git or another version control system. Ever.**
 
 
