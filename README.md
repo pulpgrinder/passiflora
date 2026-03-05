@@ -79,7 +79,7 @@ On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and
   </td>
   <td>
     <code>sudo apt install mingw-w64 xxd unzip</code><br>
-    (curl pre-installed)
+    curl is often pre-installed. If not,<code>sudo apt install curl</code>
   </td>
   <td>
     <em>(nothing beyond base)</em><br>
@@ -119,7 +119,7 @@ On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and
 
 <sup>†</sup> Install the NDK via the Android SDK Manager. You can use Android Studio or the standalone SDK. The included `gradlew` wrapper can substitute for a system Gradle install.
 
-## Quick Start
+## Configuring
 
 1. Make sure you have the dependencies listed above installed.
 2. Check out a fresh copy of this repo.
@@ -137,9 +137,9 @@ On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and
 
 `make iossim` — Build for the iOS Simulator. Also launches the simulator (if it's not already running), transfers the app to it, and runs it.
 
-`make windows` — Cross-compile a Windows binary (requires mingw-w64).
+`make windows` — Cross-compile a Windows binary
 
-`make android` — Build an Android APK (requires Android SDK/NDK).
+`make android` — Build an Android APK
 
 `make clean` — Remove all build artifacts.
 
@@ -147,7 +147,7 @@ On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and
 
 `make` or `make linux` — Build a native Linux binary.
 
-`make windows` — Cross-compile a Windows binary (requires mingw-w64).
+`make windows` — Cross-compile a Windows binary
 
 `make android` — Build an Android APK.
 
@@ -155,13 +155,14 @@ On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and
 
 #### Desktop Integration (Ubuntu / GNOME)
 
-The Linux build outputs a `.desktop` file and icon PNG alongside the binary in `bin/Linux/`. To see the Passiflora icon in the Ubuntu dock, launcher, and file manager instead of a generic gear, copy the `.desktop` file:
+The first time you run the Linux binary, it automatically installs its icon and a `.desktop` file so the app shows up properly in the GNOME dock, launcher, and file manager:
 
-```
-cp bin/Linux/HeckinChonker.desktop ~/.local/share/applications/
-```
+* **Icon** → `~/.local/share/icons/hicolor/256x256/apps/PROGNAME.png` (written from embedded PNG data)
+* **Desktop entry** → `~/.local/share/applications/PROGNAME.desktop`
 
-The `.desktop` file uses absolute paths, so it works as long as the binary stays in its build location. If you move the binary elsewhere, regenerate by running `make linux` again from the new location (or edit the `.desktop` file's `Exec` and `Icon` paths by hand).
+If you move the binary to a new location, the next launch updates the `Exec=` path in the `.desktop` file automatically. No manual steps are needed.
+
+> **Note:** After the first run, the file manager (Nautilus/Files) may not display the custom icon for the binary until you navigate away from the directory and back. This is a Nautilus caching behaviour and not something the application can control.
 
 ### On Windows
 

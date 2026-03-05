@@ -95,6 +95,23 @@ $(BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.c $(SRCDIR)/UI.c $(GENDIR)/me
 	@printf '// Auto-generated file \xe2\x80\x94 DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "%s";\n' "$(OS_NAME)" > $(SYSTEMID_JS)
 	sh nixscripts/mkmenu_json.sh $(MENU_TEMPLATE) $(PROGNAME) $(MENU_JS)
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
+ifeq ($(UNAME_S),Linux)
+	@# Generate linux_icon.h with embedded icon (or stub if no icon available)
+	@mkdir -p $(GENDIR)
+	@_ICON="$(LINUX_ICON_PNG)"; \
+	if [ ! -f "$$_ICON" ]; then _ICON="$(LINUX_ICON_FALLBACK)"; fi; \
+	if [ -f "$$_ICON" ]; then \
+		echo "/* Generated — app icon embedded as byte array */" > $(LINUX_ICON_H); \
+		echo "static const unsigned char linux_icon_png[] = {" >> $(LINUX_ICON_H); \
+		xxd -i < "$$_ICON" >> $(LINUX_ICON_H); \
+		echo "};" >> $(LINUX_ICON_H); \
+		echo "static const unsigned int linux_icon_png_len = sizeof(linux_icon_png);" >> $(LINUX_ICON_H); \
+	else \
+		echo "/* No icon available */" > $(LINUX_ICON_H); \
+		echo "static const unsigned char linux_icon_png[] = {0};" >> $(LINUX_ICON_H); \
+		echo "static const unsigned int linux_icon_png_len = 0;" >> $(LINUX_ICON_H); \
+	fi
+endif
 	mkdir -p $(BINDIR)
 	$(CC) $(CFLAGS) $(UI_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(LDFLAGS) $(UI_LDFLAGS)
 
@@ -251,9 +268,7 @@ ifeq ($(UNAME_S),Linux)
 		echo "static const unsigned char linux_icon_png[] = {" >> $(LINUX_ICON_H); \
 		xxd -i < "$$_ICON" >> $(LINUX_ICON_H); \
 		echo "};" >> $(LINUX_ICON_H); \
-		echo "static const unsigned int linux_icon_png_len = \\" >> $(LINUX_ICON_H); \
-		wc -c < "$$_ICON" | tr -d ' ' >> $(LINUX_ICON_H); \
-		echo ";" >> $(LINUX_ICON_H); \
+		echo "static const unsigned int linux_icon_png_len = sizeof(linux_icon_png);" >> $(LINUX_ICON_H); \
 	else \
 		echo "/* No icon available */" > $(LINUX_ICON_H); \
 		echo "static const unsigned char linux_icon_png[] = {0};" >> $(LINUX_ICON_H); \
@@ -261,25 +276,6 @@ ifeq ($(UNAME_S),Linux)
 	fi
 	mkdir -p $(BINDIR)
 	$(CC) $(CFLAGS) $(UI_CFLAGS) -o $(BINARY) $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(LDFLAGS) $(UI_LDFLAGS)
-	@# -- Desktop integration: icon + .desktop file -------------------
-	@_ICON="$(LINUX_ICON_PNG)"; \
-	if [ ! -f "$$_ICON" ]; then _ICON="$(LINUX_ICON_FALLBACK)"; fi; \
-	if [ -f "$$_ICON" ]; then \
-		cp "$$_ICON" "$(BINDIR)/$(PROGNAME).png"; \
-		_ABS_ICON="$$(cd $(BINDIR) && pwd)/$(PROGNAME).png"; \
-		if command -v gio >/dev/null 2>&1; then \
-			gio set "$(BINARY)" metadata::custom-icon "file://$$_ABS_ICON"; \
-		fi; \
-	fi
-	@printf '[Desktop Entry]\nType=Application\nName=$(PROGNAME)\nExec=%s\nIcon=%s\nTerminal=false\nCategories=Utility;\nStartupWMClass=$(PROGNAME)\n' \
-		"$$(cd $(BINDIR) && pwd)/$(PROGNAME)" \
-		"$$(cd $(BINDIR) && pwd)/$(PROGNAME).png" \
-		> $(BINDIR)/$(PROGNAME).desktop
-	@echo ""
-	@echo "Desktop integration (optional): to see the app icon in"
-	@echo "Ubuntu's launcher and dock, run:"
-	@echo "  cp $(BINDIR)/$(PROGNAME).desktop ~/.local/share/applications/"
-	@echo ""
 else
 	@echo "Linux target requires building on a Linux system." >&2
 	@echo "  Install: sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev" >&2; exit 1
@@ -356,10 +352,10 @@ clean:
 	rm -rf src/www/generated
 	rm -rf bin/Android/gradle-build bin/Android/gradle-cache src/android/.gradle src/android/app/.cxx
 	rm -f bin/Android/*.apk
-	-rmdir -p $(BINDIR) 2>/dev/null || true
-	-rmdir -p $(IOS_BINDIR) 2>/dev/null || true
-	-rmdir -p $(SIMOS_BINDIR) 2>/dev/null || true
-	-rmdir -p $(WIN_BINDIR) 2>/dev/null || true
-	-rmdir -p bin/Android 2>/dev/null || true
+ifeq ($(UNAME_S),Linux)
+	rm -f $(HOME)/.local/share/icons/hicolor/256x256/apps/$(PROGNAME).png
+	rm -f $(HOME)/.local/share/applications/$(PROGNAME).desktop
+	-gtk-update-icon-cache -f -t $(HOME)/.local/share/icons/hicolor 2>/dev/null || true
+endif
 
 .PHONY: all clean icons bundle sign-macos ios ios-bundle sign-ios iossim iossim-bundle sign-iossim iossim-run windows linux android sign-android

@@ -1050,8 +1050,10 @@ void ui_open(int port)
 #elif defined(__linux__)
 
 #include <gtk/gtk.h>
+#include <glib/gstdio.h>
 #include <webkit2/webkit2.h>
 #include <string.h>
+#include <limits.h>
 
 /* Generated menu data — MENU_PROGNAME, menu_template[] */
 #include "generated/menu.c"
@@ -1080,8 +1082,8 @@ static void linux_call_handlemenu(const char *title)
     snprintf(js, sizeof js,
         "if(typeof handlemenu==='function')handlemenu('%s')", escaped);
 
-    webkit_web_view_run_javascript(g_linux_webview, js,
-                                   NULL, NULL, NULL);
+    webkit_web_view_evaluate_javascript(g_linux_webview, js, -1,
+                                        NULL, NULL, NULL, NULL, NULL);
 }
 
 /* ---- Menu item callbacks ---- */
@@ -1164,6 +1166,145 @@ static void on_window_destroy(GtkWidget *widget, gpointer data)
     gtk_main_quit();
 }
 
+/* ---- Self-install desktop integration (icon + .desktop file) ---- */
+static gboolean g_installed_desktop = FALSE;
+static gboolean g_installed_icon = FALSE;
+
+static void linux_ensure_desktop_integration(void)
+{
+    if (linux_icon_png_len == 0) return;
+
+    /* Resolve our own absolute path via /proc/self/exe */
+    char exe_path[PATH_MAX];
+    ssize_t n = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+    if (n <= 0) return;
+    exe_path[n] = '\0';
+
+    const char *home = g_get_home_dir();
+    if (!home) return;
+
+    /* ---- Install icon into hicolor theme if missing ---- */
+    char *icon_dir = g_strdup_printf(
+        "%s/.local/share/icons/hicolor/256x256/apps", home);
+    g_mkdir_with_parents(icon_dir, 0755);
+
+    char *icon_path = g_strdup_printf("%s/%s.png", icon_dir, MENU_PROGNAME);
+
+    /* Write icon if missing or if size doesn't match (e.g. stale stub) */
+    gboolean need_icon = TRUE;
+    if (g_file_test(icon_path, G_FILE_TEST_EXISTS)) {
+        GStatBuf st;
+        if (g_stat(icon_path, &st) == 0 &&
+            (gsize)st.st_size == linux_icon_png_len)
+            need_icon = FALSE;
+    }
+    if (need_icon) {
+        g_file_set_contents(icon_path,
+                            (const gchar *)linux_icon_png,
+                            (gssize)linux_icon_png_len, NULL);
+        /* Ask GTK to refresh the icon cache (best-effort) */
+        char *cache_cmd = g_strdup_printf(
+            "gtk-update-icon-cache -f -t '%s/.local/share/icons/hicolor'",
+            home);
+        g_spawn_command_line_async(cache_cmd, NULL);
+        g_free(cache_cmd);
+        g_installed_icon = TRUE;
+    }
+    g_free(icon_path);
+    g_free(icon_dir);
+
+    /* ---- Set file-manager icon on the binary itself (GIO metadata) ---- */
+    {
+        char *icon_uri = g_strdup_printf(
+            "file://%s/.local/share/icons/hicolor/256x256/apps/%s.png",
+            home, MENU_PROGNAME);
+        GFile *exe_file = g_file_new_for_path(exe_path);
+        GError *gio_err = NULL;
+        gboolean ok = g_file_set_attribute_string(exe_file,
+            "metadata::custom-icon", icon_uri,
+            G_FILE_QUERY_INFO_NONE, NULL, &gio_err);
+        if (!ok) {
+            fprintf(stderr, "[passiflora] gio metadata::custom-icon failed: %s\n",
+                    gio_err ? gio_err->message : "unknown");
+            if (gio_err) g_error_free(gio_err);
+        } else {
+            fprintf(stderr, "[passiflora] gio metadata::custom-icon set to %s\n",
+                    icon_uri);
+            /* Touch parent directory so file managers notice the change */
+            char *exe_dir = g_path_get_dirname(exe_path);
+            GFile *dir_file = g_file_new_for_path(exe_dir);
+            guint64 now = (guint64)(g_get_real_time() / 1000000) * 1000000;
+            g_file_set_attribute_uint64(dir_file,
+                G_FILE_ATTRIBUTE_TIME_MODIFIED, now / 1000000,
+                G_FILE_QUERY_INFO_NONE, NULL, NULL);
+            g_object_unref(dir_file);
+            g_free(exe_dir);
+        }
+        g_object_unref(exe_file);
+        g_free(icon_uri);
+    }
+
+    /* ---- Create or update .desktop file ---- */
+    char *desktop_dir = g_strdup_printf(
+        "%s/.local/share/applications", home);
+    g_mkdir_with_parents(desktop_dir, 0755);
+
+    char *desktop_path = g_strdup_printf(
+        "%s/%s.desktop", desktop_dir, MENU_PROGNAME);
+    g_free(desktop_dir);
+
+    /* Read existing file (if any) to check whether Exec= is current */
+    gboolean needs_write = TRUE;
+    char *existing = NULL;
+    if (g_file_get_contents(desktop_path, &existing, NULL, NULL)) {
+        char *expected_exec = g_strdup_printf("Exec=%s\n", exe_path);
+        if (strstr(existing, expected_exec))
+            needs_write = FALSE;
+        g_free(expected_exec);
+        g_free(existing);
+    }
+
+    if (needs_write) {
+        char *contents = g_strdup_printf(
+                 "[Desktop Entry]\n"
+                 "Type=Application\n"
+                 "Name=%s\n"
+                 "Exec=%s\n"
+                 "Icon=%s\n"
+                 "Terminal=false\n"
+                 "Categories=Utility;\n"
+                 "StartupWMClass=%s\n",
+                 MENU_PROGNAME, exe_path, MENU_PROGNAME, MENU_PROGNAME);
+        g_file_set_contents(desktop_path, contents, -1, NULL);
+        g_free(contents);
+        g_installed_desktop = TRUE;
+    }
+    g_free(desktop_path);
+}
+
+/* ---- Notify user about desktop setup once the page has loaded ---- */
+static void on_page_loaded(WebKitWebView *wv, WebKitLoadEvent event,
+                           gpointer data)
+{
+    (void)data;
+    if (event != WEBKIT_LOAD_FINISHED) return;
+
+    if (g_installed_desktop || g_installed_icon) {
+        const char *msg = g_installed_desktop
+            ? "alert('Program is new or has been moved. "
+              ".desktop entry has been adjusted. "
+              "You may need to navigate away in the file manager "
+              "and back for the icon to appear.')"
+            : "alert('App icon has been installed. "
+              "You may need to navigate away in the file manager "
+              "and back for the icon to appear.')";
+        webkit_web_view_evaluate_javascript(wv,
+            msg, -1, NULL, NULL, NULL, NULL, NULL);
+        g_installed_desktop = FALSE;
+        g_installed_icon = FALSE;
+    }
+}
+
 /* ---- Entry point ---- */
 void ui_open(int port)
 {
@@ -1172,20 +1313,32 @@ void ui_open(int port)
     /* Set program name so GNOME can match WM_CLASS to .desktop file */
     g_set_prgname(MENU_PROGNAME);
 
+    /* Install icon + .desktop file if needed (self-contained binary) */
+    linux_ensure_desktop_integration();
+
     /* Main window */
     GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(window), MENU_PROGNAME);
     gtk_window_set_default_size(GTK_WINDOW(window), 1024, 768);
 
     /* Set window icon from embedded PNG */
+    fprintf(stderr, "[passiflora] icon: embedded %u bytes, first byte 0x%02x\n",
+            linux_icon_png_len,
+            linux_icon_png_len > 0 ? linux_icon_png[0] : 0);
     if (linux_icon_png_len > 0) {
         GInputStream *stream = g_memory_input_stream_new_from_data(
             linux_icon_png, linux_icon_png_len, NULL);
-        GdkPixbuf *icon = gdk_pixbuf_new_from_stream(stream, NULL, NULL);
+        GError *perr = NULL;
+        GdkPixbuf *icon = gdk_pixbuf_new_from_stream(stream, NULL, &perr);
         if (icon) {
             gtk_window_set_icon(GTK_WINDOW(window), icon);
             gtk_window_set_default_icon(icon);   /* dock / taskbar */
             g_object_unref(icon);
+            fprintf(stderr, "[passiflora] icon: set successfully\n");
+        } else {
+            fprintf(stderr, "[passiflora] icon: pixbuf failed: %s\n",
+                    perr ? perr->message : "unknown");
+            if (perr) g_error_free(perr);
         }
         g_object_unref(stream);
     }
@@ -1203,6 +1356,8 @@ void ui_open(int port)
 
     /* WebKit web view */
     g_linux_webview = WEBKIT_WEB_VIEW(webkit_web_view_new());
+    g_signal_connect(g_linux_webview, "load-changed",
+                     G_CALLBACK(on_page_loaded), NULL);
     gtk_box_pack_start(GTK_BOX(vbox), GTK_WIDGET(g_linux_webview),
                        TRUE, TRUE, 0);
 
