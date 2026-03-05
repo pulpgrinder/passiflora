@@ -1,3 +1,5 @@
+![Passiflora](src/icons/squareicon.png)
+
 # Passiflora
 
 Passiflora is a no-nonsense cross-platform packager that wraps HTML/JavaScript/CSS/etc. in an executable (similar to Electron and its ilk). Supported platforms include:
@@ -13,12 +15,14 @@ What it *doesn't* do:
 * Require that you install 50 million dubious npm packages (or a whole freakin' rust ecosystem, for the love of all that's holy)
 * Engage in baroque configuration gymnastics
 * Generate 60 petabyte binaries for a "Hello, world!" program
+* Provide a monster library to talk to the native OS. Many things that formerly required this (file open/save, upload/download), access to the mic, camera and speaker, gps data, etc. can now be done from HTML. 
 
 Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Doing that made sense back in the bad old days of incompatible browsers, but things have improved immensely since then. It's my belief that it's now preferable to work through whatever minor inconsistencies that remain than take the enormous hit of bundling an entire browser in the executable.
 
 Binary sizes for a bare program that simply displays "Hello, world!":
 
-Passiflora: 
+Passiflora: 3.6 MB
+
 
 ## Prerequisites
 
