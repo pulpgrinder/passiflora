@@ -1056,6 +1056,9 @@ void ui_open(int port)
 /* Generated menu data — MENU_PROGNAME, menu_template[] */
 #include "generated/menu.c"
 
+/* Embedded app icon PNG (generated at build time) */
+#include "generated/linux_icon.h"
+
 static WebKitWebView *g_linux_webview = NULL;
 
 /* ---- Call handlemenu() in the WebView ---- */
@@ -1166,10 +1169,27 @@ void ui_open(int port)
 {
     gtk_init(NULL, NULL);
 
+    /* Set program name so GNOME can match WM_CLASS to .desktop file */
+    g_set_prgname(MENU_PROGNAME);
+
     /* Main window */
     GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(window), "");
+    gtk_window_set_title(GTK_WINDOW(window), MENU_PROGNAME);
     gtk_window_set_default_size(GTK_WINDOW(window), 1024, 768);
+
+    /* Set window icon from embedded PNG */
+    if (linux_icon_png_len > 0) {
+        GInputStream *stream = g_memory_input_stream_new_from_data(
+            linux_icon_png, linux_icon_png_len, NULL);
+        GdkPixbuf *icon = gdk_pixbuf_new_from_stream(stream, NULL, NULL);
+        if (icon) {
+            gtk_window_set_icon(GTK_WINDOW(window), icon);
+            gtk_window_set_default_icon(icon);   /* dock / taskbar */
+            g_object_unref(icon);
+        }
+        g_object_unref(stream);
+    }
+
     g_signal_connect(window, "destroy",
                      G_CALLBACK(on_window_destroy), NULL);
 

@@ -106,6 +106,14 @@ ifeq ($(UNAME_S),Darwin)
 	sh nixscripts/mkbundle.sh $(PROGNAME) $(BINARY) $(ICNS) $(BUNDLE_ID) $(VERSION)
 endif
 
+sign: bundle
+sign-macos: bundle
+ifeq ($(UNAME_S),Darwin)
+	sh nixscripts/signapp.sh macos $(APP_BUNDLE) $(BUNDLE_ID)
+else
+	@echo "sign-macos target requires macOS." >&2; exit 1
+endif
+
 # ── iOS (cross-compile from macOS) ──────────────────────────────────
 ios: $(IOS_BINARY) ios-bundle
 
@@ -126,6 +134,13 @@ ifeq ($(UNAME_S),Darwin)
 	sh nixscripts/mkiosbundle.sh $(PROGNAME) $(IOS_BINARY) src/icons/builticons/ios/AppIcon-1024.png $(BUNDLE_ID) $(VERSION)
 endif
 
+sign-ios: ios-bundle
+ifeq ($(UNAME_S),Darwin)
+	sh nixscripts/signapp.sh ios $(IOS_APP_BUNDLE) $(BUNDLE_ID)
+else
+	@echo "sign-ios target requires macOS." >&2; exit 1
+endif
+
 # ── iOS Simulator (build + install + launch) ───────────────────────
 iossim: $(SIMOS_BINARY) iossim-bundle iossim-run
 
@@ -144,6 +159,13 @@ endif
 iossim-bundle: $(SIMOS_BINARY)
 ifeq ($(UNAME_S),Darwin)
 	sh nixscripts/mkiosbundle.sh $(PROGNAME) $(SIMOS_BINARY) src/icons/builticons/ios/AppIcon-1024.png $(BUNDLE_ID) $(VERSION) $(SIMOS_BINDIR)
+endif
+
+sign-iossim: iossim-bundle
+ifeq ($(UNAME_S),Darwin)
+	sh nixscripts/signapp.sh iossim $(SIMOS_APP_BUNDLE) $(BUNDLE_ID)
+else
+	@echo "sign-iossim target requires macOS." >&2; exit 1
 endif
 
 iossim-run: iossim-bundle
@@ -211,14 +233,53 @@ $(WIN_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.c $(SRCDIR)/UI.c $(GENDIR
 	fi
 
 # ── Linux (native build on Linux) ──────────────────────────────────
+LINUX_ICON_PNG      = src/icons/builticons/linux/icon-256.png
+LINUX_ICON_FALLBACK = src/icons/builticons/macos/AppIcon.iconset/icon_256x256.png
+LINUX_ICON_H        = src/C/generated/linux_icon.h
+
 linux: $(GENDIR)/menu.c
 ifeq ($(UNAME_S),Linux)
 	@mkdir -p $(dir $(SYSTEMID_JS))
 	@printf '// Auto-generated file \xe2\x80\x94 DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "Linux";\n' > $(SYSTEMID_JS)
 	sh nixscripts/mkmenu_json.sh src/Linux/menus/menu.txt $(PROGNAME) $(MENU_JS)
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
+	@mkdir -p $(GENDIR)
+	@_ICON="$(LINUX_ICON_PNG)"; \
+	if [ ! -f "$$_ICON" ]; then _ICON="$(LINUX_ICON_FALLBACK)"; fi; \
+	if [ -f "$$_ICON" ]; then \
+		echo "/* Generated — app icon embedded as byte array */" > $(LINUX_ICON_H); \
+		echo "static const unsigned char linux_icon_png[] = {" >> $(LINUX_ICON_H); \
+		xxd -i < "$$_ICON" >> $(LINUX_ICON_H); \
+		echo "};" >> $(LINUX_ICON_H); \
+		echo "static const unsigned int linux_icon_png_len = \\" >> $(LINUX_ICON_H); \
+		wc -c < "$$_ICON" | tr -d ' ' >> $(LINUX_ICON_H); \
+		echo ";" >> $(LINUX_ICON_H); \
+	else \
+		echo "/* No icon available */" > $(LINUX_ICON_H); \
+		echo "static const unsigned char linux_icon_png[] = {0};" >> $(LINUX_ICON_H); \
+		echo "static const unsigned int linux_icon_png_len = 0;" >> $(LINUX_ICON_H); \
+	fi
 	mkdir -p $(BINDIR)
 	$(CC) $(CFLAGS) $(UI_CFLAGS) -o $(BINARY) $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(LDFLAGS) $(UI_LDFLAGS)
+	@# -- Desktop integration: icon + .desktop file -------------------
+	@_ICON="$(LINUX_ICON_PNG)"; \
+	if [ ! -f "$$_ICON" ]; then _ICON="$(LINUX_ICON_FALLBACK)"; fi; \
+	if [ -f "$$_ICON" ]; then \
+		cp "$$_ICON" "$(BINDIR)/$(PROGNAME).png"; \
+		_ABS_ICON="$$(cd $(BINDIR) && pwd)/$(PROGNAME).png"; \
+		if command -v gio >/dev/null 2>&1; then \
+			gio set "$(BINARY)" metadata::custom-icon "file://$$_ABS_ICON"; \
+		fi; \
+	fi
+	@printf '[Desktop Entry]\nType=Application\nName=$(PROGNAME)\nExec=%s\nIcon=%s\nTerminal=false\nCategories=Utility;\nStartupWMClass=$(PROGNAME)\n' \
+		"$$(cd $(BINDIR) && pwd)/$(PROGNAME)" \
+		"$$(cd $(BINDIR) && pwd)/$(PROGNAME).png" \
+		> $(BINDIR)/$(PROGNAME).desktop
+	@echo ""
+	@echo "Desktop integration (optional): to see the app icon in"
+	@echo "Ubuntu's launcher and dock, run:"
+	@echo "  cp $(BINDIR)/$(PROGNAME).desktop ~/.local/share/applications/"
+	@echo ""
 else
 	@echo "Linux target requires building on a Linux system." >&2
 	@echo "  Install: sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev" >&2; exit 1
@@ -231,6 +292,54 @@ android: $(GENDIR)/menu.c
 	sh nixscripts/mkmenu_json.sh src/android/menus/menu.txt $(PROGNAME) $(MENU_JS)
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
 	sh nixscripts/mkandroid.sh $(PROGNAME) $(BUNDLE_ID) $(VERSION)
+
+# ── Android signing (local keystore) ───────────────────────
+ANDROID_APK = bin/Android/$(PROGNAME).apk
+
+sign-android: android
+	@if [ ! -f "$(ANDROID_APK)" ]; then \
+		echo "sign-android: APK not found: $(ANDROID_APK)" >&2; \
+		echo "  Run 'make android' first." >&2; \
+		exit 1; \
+	fi
+	@printf 'Keystore file: '; read KS_FILE; \
+	if [ ! -f "$$KS_FILE" ]; then \
+		echo "sign-android: keystore not found: $$KS_FILE" >&2; \
+		exit 1; \
+	fi; \
+	printf 'Keystore password: '; \
+	stty -echo 2>/dev/null; read KS_PASS; stty echo 2>/dev/null; echo; \
+	APKSIGNER=""; \
+	if [ -n "$$ANDROID_HOME" ]; then \
+		APKSIGNER=$$(find "$$ANDROID_HOME/build-tools" -name apksigner -type f 2>/dev/null | sort -V | tail -1); \
+	fi; \
+	if [ -z "$$APKSIGNER" ]; then \
+		if command -v apksigner >/dev/null 2>&1; then \
+			APKSIGNER=apksigner; \
+		else \
+			echo "sign-android: apksigner not found. Set ANDROID_HOME or add build-tools to PATH." >&2; \
+			exit 1; \
+		fi; \
+	fi; \
+	echo "sign-android: zipaligning APK..."; \
+	ZIPALIGN=""; \
+	if [ -n "$$ANDROID_HOME" ]; then \
+		ZIPALIGN=$$(find "$$ANDROID_HOME/build-tools" -name zipalign -type f 2>/dev/null | sort -V | tail -1); \
+	fi; \
+	if [ -z "$$ZIPALIGN" ] && command -v zipalign >/dev/null 2>&1; then \
+		ZIPALIGN=zipalign; \
+	fi; \
+	if [ -n "$$ZIPALIGN" ]; then \
+		$$ZIPALIGN -f 4 "$(ANDROID_APK)" "$(ANDROID_APK).aligned"; \
+		mv "$(ANDROID_APK).aligned" "$(ANDROID_APK)"; \
+	else \
+		echo "sign-android: warning: zipalign not found, skipping alignment." >&2; \
+	fi; \
+	echo "sign-android: signing $(ANDROID_APK)..."; \
+	printf '%s' "$$KS_PASS" | $$APKSIGNER sign --ks "$$KS_FILE" --ks-pass stdin "$(ANDROID_APK)"; \
+	echo "sign-android: verifying signature..."; \
+	$$APKSIGNER verify "$(ANDROID_APK)"; \
+	echo "sign-android: $(ANDROID_APK) signed successfully."
 
 clean:
 	rm -f $(BINARY)
@@ -253,4 +362,4 @@ clean:
 	-rmdir -p $(WIN_BINDIR) 2>/dev/null || true
 	-rmdir -p bin/Android 2>/dev/null || true
 
-.PHONY: all clean icons bundle ios ios-bundle iossim iossim-bundle iossim-run windows linux android
+.PHONY: all clean icons bundle sign-macos ios ios-bundle sign-ios iossim iossim-bundle sign-iossim iossim-run windows linux android sign-android

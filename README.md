@@ -18,73 +18,106 @@ Passiflora uses the system's own web browser control rather than bundling an ent
 
 ## Prerequisites
 
-### All Platforms
+The table below shows what to install for each combination of target platform and build host. Start with the **all** row for your host OS, then add anything listed in the row for your target.
 
-* C compiler (`cc` / `gcc` / `clang`)
-* `make`
-* ImageMagick — icon generation (`magick` / `convert`)
-  * macOS: `brew install imagemagick`
-  * Linux: `sudo apt install imagemagick`
-  * Windows: `winget install ImageMagick.ImageMagick` (or https://imagemagick.org)
+On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and curl are pre-installed on Windows 10/11.
 
-### macOS (native build: `make`)
+<table>
+<tr>
+  <th></th>
+  <th colspan="3" align="center"><em>on</em></th>
+</tr>
+<tr>
+  <th><em>To build</em></th>
+  <th>macOS</th>
+  <th>Linux (Debian/Ubuntu)</th>
+  <th>Windows</th>
+</tr>
 
-* Xcode Command Line Tools — `xcode-select --install`
-  Provides: clang, Cocoa.framework, WebKit.framework, xcrun, iconutil, codesign
+<tr>
+  <td><strong>all</strong><br>(base toolchain)</td>
+  <td>
+    <code>xcode-select --install</code><br>
+    <code>brew install imagemagick</code>
+  </td>
+  <td>
+    <code>sudo apt install build-essential imagemagick</code>
+  </td>
+  <td>
+    MinGW-w64 &mdash; <a href="https://www.mingw-w64.org">mingw-w64.org</a> or MSYS2:<br>
+    <code>pacman -S mingw-w64-x86_64-gcc</code><br>
+    <code>winget install ImageMagick.ImageMagick</code>
+  </td>
+</tr>
 
-Additional targets built from macOS:
+<tr>
+  <td><strong>macOS</strong></td>
+  <td><em>(nothing beyond base)</em></td>
+  <td>&mdash;</td>
+  <td>&mdash;</td>
+</tr>
 
-* **iOS** (`make ios`) — Xcode (full install) with an iOS SDK
-* **iOS Simulator** (`make iossim`) — Xcode with Simulator runtime installed
-* **Windows cross-compile** (`make windows`):
-  * mingw-w64 — `brew install mingw-w64`
-  * curl (pre-installed on macOS)
-  * xxd (pre-installed via vim)
-* **Android** (`make android`):
-  * Android SDK (Android Studio or standalone)
-  * Android NDK (install via SDK Manager)
-  * Java 17+ — `brew install openjdk@17`
-  * Gradle — `brew install gradle` (or use the generated `gradlew` wrapper)
+<tr>
+  <td><strong>iOS</strong></td>
+  <td>Xcode (full install) with an iOS SDK</td>
+  <td>&mdash;</td>
+  <td>&mdash;</td>
+</tr>
 
-### Linux (native build: `make` or `make linux`)
+<tr>
+  <td><strong>iOS Simulator</strong></td>
+  <td>Xcode with Simulator runtime installed</td>
+  <td>&mdash;</td>
+  <td>&mdash;</td>
+</tr>
 
-* GCC — `sudo apt install build-essential`
-* GTK 3 development files — `sudo apt install libgtk-3-dev`
-* WebKit2GTK — `sudo apt install libwebkit2gtk-4.1-dev`
-  (falls back to webkit2gtk-4.0 if 4.1 is unavailable)
-* pkg-config — `sudo apt install pkg-config`
+<tr>
+  <td><strong>Windows</strong></td>
+  <td>
+    <code>brew install mingw-w64</code><br>
+    (curl, xxd pre-installed)
+  </td>
+  <td>
+    <code>sudo apt install mingw-w64 xxd unzip</code><br>
+    (curl pre-installed)
+  </td>
+  <td>
+    <em>(nothing beyond base)</em><br>
+    WebView2 Runtime (pre-installed on Win&nbsp;10+)<br>
+    Optional: <code>windres</code> (from MinGW-w64) embeds app icon
+  </td>
+</tr>
 
-One-liner (Debian / Ubuntu):
+<tr>
+  <td><strong>Linux</strong></td>
+  <td>&mdash;</td>
+  <td>
+    <code>sudo apt install pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev</code><br>
+    (falls back to <code>webkit2gtk-4.0</code> if 4.1 is unavailable)
+  </td>
+  <td>&mdash;</td>
+</tr>
 
-```
-sudo apt install build-essential pkg-config libgtk-3-dev \
-                 libwebkit2gtk-4.1-dev imagemagick
-```
+<tr>
+  <td><strong>Android</strong></td>
+  <td>
+    Android SDK + NDK<sup>†</sup><br>
+    <code>brew install openjdk@17 gradle</code>
+  </td>
+  <td>
+    Android SDK + NDK<sup>†</sup><br>
+    <code>sudo apt install openjdk-17-jdk gradle</code>
+  </td>
+  <td>
+    Android SDK + NDK<sup>†</sup><br>
+    Java 17+, Gradle
+  </td>
+</tr>
+</table>
 
-Additional targets from Linux:
+**&mdash;** = not supported from that host.
 
-* **Android** (`make android`):
-  * Android SDK / NDK
-  * Java 17+ — `sudo apt install openjdk-17-jdk`
-  * Gradle — `sudo apt install gradle` (or use the generated `gradlew` wrapper)
-
-### Windows (native build: `build.bat`)
-
-* MinGW-w64 (GCC for Windows) — https://www.mingw-w64.org or MSYS2: `pacman -S mingw-w64-x86_64-gcc`
-* PowerShell 5.1+ (pre-installed on Windows 10/11)
-* curl (pre-installed on Windows 10/11)
-* Microsoft Edge WebView2 Runtime — pre-installed on Windows 10 (April 2018+) and Windows 11. The WebView2Loader.dll is downloaded automatically at build time from NuGet and embedded into the executable.
-
-Optional:
-
-* windres (from MinGW-w64) — embeds app.ico into the executable
-
-Additional targets from Windows:
-
-* **Android** (`build.bat android`):
-  * Android SDK / NDK
-  * Java 17+
-  * Gradle
+<sup>†</sup> Install the NDK via the Android SDK Manager. You can use Android Studio or the standalone SDK. The included `gradlew` wrapper can substitute for a system Gradle install.
 
 ## Quick Start
 
@@ -114,9 +147,21 @@ Additional targets from Windows:
 
 `make` or `make linux` — Build a native Linux binary.
 
+`make windows` — Cross-compile a Windows binary (requires mingw-w64).
+
 `make android` — Build an Android APK.
 
 `make clean` — Remove all build artifacts.
+
+#### Desktop Integration (Ubuntu / GNOME)
+
+The Linux build outputs a `.desktop` file and icon PNG alongside the binary in `bin/Linux/`. To see the Passiflora icon in the Ubuntu dock, launcher, and file manager instead of a generic gear, copy the `.desktop` file:
+
+```
+cp bin/Linux/HeckinChonker.desktop ~/.local/share/applications/
+```
+
+The `.desktop` file uses absolute paths, so it works as long as the binary stays in its build location. If you move the binary elsewhere, regenerate by running `make linux` again from the new location (or edit the `.desktop` file's `Exec` and `Icon` paths by hand).
 
 ### On Windows
 
@@ -236,5 +281,79 @@ This can be used in case you need your JavaScript code to do different things on
 | `make android` | Build Android APK |
 | `make icons` | Generate icon sets for all platforms |
 | `make clean` | Remove all build artifacts |
+| `make sign-macos` | Interactively sign the macOS app bundle |
+| `make sign-ios` | Interactively sign the iOS app bundle |
+| `make sign-iossim` | Interactively sign the iOS Simulator app bundle |
+| `make sign-android` | Sign the Android APK with a local keystore |
+
+
+## Code Signing for macOS and iOS
+
+Passiflora provides interactive signing targets for macOS, iOS, and iOS Simulator builds:
+
+* `make sign-macos` — Sign the macOS app bundle
+* `make sign-ios` — Sign the iOS app bundle (physical device)
+* `make sign-iossim` — Sign the iOS Simulator app bundle
+
+These targets invoke the interactive script `nixscripts/signapp.sh`, which:
+
+1. Lists all available code signing identities on your Mac.
+2. Describes each signing option (Developer ID, Apple Development, Distribution, Ad-hoc, etc.).
+3. Prompts you to select an identity or choose ad-hoc signing.
+4. Signs the app bundle with your chosen identity and displays signature details.
+
+**Signing options explained:**
+
+**IMPORTANT: Never, ever, ever put your signing certificates, keystores, passwords, etc. into a folder managed by git or another version control system. Ever. **
+
+* **macOS:**
+  * Developer ID Application — For distribution outside the App Store.
+  * Apple Development / Mac Developer — For local development/testing.
+  * Apple Distribution / 3rd Party Mac Developer Application — For Mac App Store submission.
+  * Ad-hoc — No identity; runs only on your Mac (Gatekeeper blocks elsewhere).
+
+* **iOS:**
+  * Apple Development / iPhone Developer — For running on your own devices.
+  * Apple Distribution / iPhone Distribution — For App Store or enterprise distribution.
+  * Ad-hoc — Minimal signature; will NOT install on devices without a provisioning profile.
+
+* **iOS Simulator:**
+  * Apple Development — Standard development signing for Simulator.
+  * Ad-hoc — Usually sufficient for Simulator use.
+
+If no identities are found, ad-hoc signing is always available. The script will guide you through the process and show signature details when complete.
+
+Each signing target automatically builds the corresponding app bundle first, so there is no need to run a separate build step beforehand.
+
+## Code Signing for Android
+
+`make sign-android` (or `build sign-android` on Windows) builds the Android APK and then signs it with a local keystore. The target will:
+
+1. Build the APK (runs the `android` target first).
+2. Prompt you for the keystore file path.
+3. Prompt you for the keystore password.
+4. Zipalign the APK (if `zipalign` is available).
+5. Sign the APK using `apksigner` from the Android SDK build-tools.
+6. Verify the signature.
+
+**Prerequisites:**
+
+* Android SDK with build-tools installed (`apksigner` and optionally `zipalign`). These are located automatically via `ANDROID_HOME`; alternatively, add the build-tools directory to your `PATH`.
+* A Java keystore (`.jks` or `.keystore` file). Generate one with:
+
+```
+keytool -genkey -v -keystore my-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias mykey
+```
+
+**Usage:**
+
+```
+make sign-android          # macOS / Linux
+build sign-android          # Windows
+```
+
+You will be prompted interactively for the keystore file and password. The signed APK is written to `bin/Android/<progname>.apk`.
+
+**IMPORTANT: Repeat: Never commit your keystore or passwords to git or another version control system.**
 
 

@@ -174,7 +174,7 @@ static void send_response(int fd, int code, const char *status,
         "Content-Length: %zu\r\n"
         "X-Content-Type-Options: nosniff\r\n"
         "X-Frame-Options: DENY\r\n"
-        "Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'\r\n"
+        "Content-Security-Policy: default-src 'self'; script-src 'self'\r\n"
         "Referrer-Policy: no-referrer\r\n"
         "Connection: close\r\n"
         "\r\n",

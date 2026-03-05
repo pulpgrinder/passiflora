@@ -6,6 +6,10 @@ src/www/generated/
 # IDE
 .vs/
 
+# Keystores — never commit real signing keys
+*.jks
+*.keystore
+
 # Android build artifacts
 src/android/.gradle/
 src/android/app/build/

@@ -41,10 +41,11 @@ if "%TARGET%"=="" set TARGET=windows
 if /I "%TARGET%"=="clean" goto :do_clean
 if /I "%TARGET%"=="icons" goto :do_icons
 if /I "%TARGET%"=="android" goto :do_android
+if /I "%TARGET%"=="sign-android" goto :do_sign_android
 if /I "%TARGET%"=="all" goto :do_all
 if /I "%TARGET%"=="windows" goto :do_windows
 echo Unknown target: %TARGET%
-echo Usage: %~nx0 [windows^|android^|icons^|clean^|all]
+echo Usage: %~nx0 [windows^|android^|sign-android^|icons^|clean^|all]
 exit /b 1
 
 REM ================================================================
@@ -101,6 +102,87 @@ echo [android] Building APK...
 call "%SCRIPT_DIR%\winscripts\mkandroid.bat" %PROGNAME% %BUNDLE_ID% %VERSION%
 if errorlevel 1 exit /b 1
 echo [android] Done.
+goto :eof
+
+REM ================================================================
+REM  sign-android
+REM ================================================================
+:do_sign_android
+call :do_android
+if errorlevel 1 exit /b 1
+
+set ANDROID_APK=%SCRIPT_DIR%\bin\Android\%PROGNAME%.apk
+if not exist "%ANDROID_APK%" (
+    echo [sign-android] APK not found: %ANDROID_APK% >&2
+    exit /b 1
+)
+
+set /p KS_FILE="Keystore file: "
+if "%KS_FILE%"=="" (
+    echo [sign-android] No keystore file specified. >&2
+    exit /b 1
+)
+if not exist "%KS_FILE%" (
+    echo [sign-android] Keystore not found: %KS_FILE% >&2
+    exit /b 1
+)
+for /f "delims=" %%P in ('powershell -NoProfile -Command "[Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR((Read-Host 'Keystore password' -AsSecureString)))"') do set KS_PASS=%%P
+if "%KS_PASS%"=="" (
+    echo [sign-android] No password specified. >&2
+    exit /b 1
+)
+
+REM ── Locate apksigner ──
+set APKSIGNER=
+if defined ANDROID_HOME (
+    for /f "delims=" %%F in ('dir /b /s "%ANDROID_HOME%\build-tools\apksigner.bat" 2^>nul') do (
+        set APKSIGNER=%%F
+    )
+)
+if "%APKSIGNER%"=="" (
+    where apksigner >nul 2>&1
+    if !errorlevel! equ 0 (
+        set APKSIGNER=apksigner
+    ) else (
+        echo [sign-android] apksigner not found. Set ANDROID_HOME or add build-tools to PATH. >&2
+        exit /b 1
+    )
+)
+
+REM ── Locate zipalign ──
+set ZIPALIGN=
+if defined ANDROID_HOME (
+    for /f "delims=" %%F in ('dir /b /s "%ANDROID_HOME%\build-tools\zipalign.exe" 2^>nul') do (
+        set ZIPALIGN=%%F
+    )
+)
+if not "%ZIPALIGN%"=="" (
+    echo [sign-android] Zipaligning APK...
+    "%ZIPALIGN%" -f 4 "%ANDROID_APK%" "%ANDROID_APK%.aligned"
+    if errorlevel 1 (
+        echo [sign-android] zipalign failed >&2
+        exit /b 1
+    )
+    move /Y "%ANDROID_APK%.aligned" "%ANDROID_APK%" >nul
+) else (
+    echo [sign-android] Warning: zipalign not found, skipping alignment.
+)
+
+echo [sign-android] Signing %ANDROID_APK%...
+echo %KS_PASS%| call "%APKSIGNER%" sign --ks "%KS_FILE%" --ks-pass stdin "%ANDROID_APK%"
+if errorlevel 1 (
+    echo [sign-android] Signing failed >&2
+    exit /b 1
+)
+
+echo [sign-android] Verifying signature...
+call "%APKSIGNER%" verify "%ANDROID_APK%"
+if errorlevel 1 (
+    echo [sign-android] Verification failed >&2
+    exit /b 1
+)
+
+echo [sign-android] %ANDROID_APK% signed successfully.
 goto :eof
 
 REM ================================================================

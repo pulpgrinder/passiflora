@@ -292,4 +292,19 @@ $CONVERT -size 960x1600  canvas:"#bbb" "$ANDROID/drawable-port-xxhdpi/splash.png
 $CONVERT -size 1280x1920 canvas:"#bbb" "$ANDROID/drawable-port-xxxhdpi/splash.png"
 
 # ================================================================
+#  Linux — PNG icons at standard sizes for GTK window icon
+# ================================================================
+info 'Generating Linux icons...'
+LINUX="$DST_PATH/linux"
+mkdir -p "$LINUX"
+
+$CONVERT "$SQUARE_FILE" -resize 16x16     "$LINUX/icon-16.png"
+$CONVERT "$SQUARE_FILE" -resize 32x32     "$LINUX/icon-32.png"
+$CONVERT "$SQUARE_FILE" -resize 48x48     "$LINUX/icon-48.png"
+$CONVERT "$SQUARE_FILE" -resize 64x64     "$LINUX/icon-64.png"
+$CONVERT "$SQUARE_FILE" -resize 128x128   "$LINUX/icon-128.png"
+$CONVERT "$SQUARE_FILE" -resize 256x256   "$LINUX/icon-256.png"
+$CONVERT "$SQUARE_FILE" -resize 512x512   "$LINUX/icon-512.png"
+
+# ================================================================
 info 'All done! Icons generated in:'"$DST_PATH"
