@@ -8,8 +8,9 @@ Passiflora is a no-nonsense cross-platform packager that wraps HTML/JavaScript/C
 * iOS (build on macOS only)
 * Android (build on macOS, Windows, or Linux)
 * Windows (build on macOS, Windows, or Linux)
-* Linux (build on Linux; definitely needs testing)
+* Linux (build on Linux)
 
+Note that this should be considered **experimental** at this point. Please report any issues.
 What it *doesn't* do:
 
 * Require that you install 50 million dubious npm packages (or a whole freakin' rust ecosystem, for the love of all that's holy)
