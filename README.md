@@ -4,7 +4,7 @@
 
 Passiflora is a no-nonsense cross-platform packager that wraps HTML/JavaScript/CSS/etc. in an executable (similar to Electron and its ilk). Note that this should be considered **experimental** at this point. Please report any issues.
 
-Supported platforms include:
+Supported target platforms include:
 
 * macOS (build on macOS only, alas)
 * iOS (likewise)
@@ -16,10 +16,10 @@ Supported platforms include:
 What it *doesn't* do:
 
 * Require that you install 50 million dubious npm packages (or a whole freakin' rust ecosystem, for the love of all that's holy)
-* Engage in baroque configuration gymnastics
 * Generate 60 petabyte binaries for a "Hello, world!" program
+* Engage in baroque configuration gymnastics
 
-Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Similarly, Passiflora doesn't provide a lot of integration with the native OS -- things like file open/save (i.e., upload/download), access to the mic, camera and speaker, gps data, etc. can now be done from HTML. Doing these things made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then.It's my belief that it's now preferable to work through whatever inconsistencies and shortcomings that remain than take the enormous hit of bundling an entire browser and native API in the executable. It's possible that some native integration will be added in the future, but the plan is to to continue doing everything with web technology that *can* be done with web technology.
+Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Similarly, Passiflora doesn't provide a lot of integration with the native OS -- things like file open/save (i.e., upload/download), access to the mic, camera and speaker, gps data, etc. can now be done from HTML. Doing these things made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then. It's my belief that it's now preferable to work through whatever inconsistencies and shortcomings that remain than take the enormous hit of bundling an entire browser and native API in the executable. It's possible that some native integration will be added in the future, but the plan is to to continue doing everything with web technology that *can* be done with web technology.
 
 Binary sizes for a bare program that simply displays "Hello, world!":
 
@@ -34,10 +34,10 @@ On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and
 <table>
 <tr>
   <th></th>
-  <th colspan="3" align="center"><em>on</em></th>
+  <th colspan="3" align="center"><em>Host platform</em></th>
 </tr>
 <tr>
-  <th><em>To build</em></th>
+  <th><em>Target platform</em></th>
   <th>macOS</th>
   <th>Linux (Debian/Ubuntu)</th>
   <th>Windows</th>
@@ -46,15 +46,15 @@ On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and
 <tr>
   <td><strong>all</strong><br>(base toolchain)</td>
   <td>
-    <code>xcode-select --install</code><br>
+    <code>xcode-select --install</code><br><br>
     <code>brew install imagemagick</code>
   </td>
   <td>
     <code>sudo apt install build-essential imagemagick</code>
   </td>
   <td>
-    MinGW-w64 &mdash; <a href="https://www.mingw-w64.org">mingw-w64.org</a> or MSYS2:<br>
-    <code>pacman -S mingw-w64-x86_64-gcc</code><br>
+    MinGW-w64 &mdash; <a href="https://www.mingw-w64.org">mingw-w64.org</a> or MSYS2:<br><br>
+    <code>pacman -S mingw-w64-x86_64-gcc</code><br><br>
     <code>winget install ImageMagick.ImageMagick</code>
   </td>
 </tr>
@@ -148,9 +148,17 @@ On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and
 
 `make windows` — Cross-compile a Windows binary
 
-`make android` — Build an Android APK
+`make android` — Cross-compile an Android APK
 
 `make clean` — Remove all build artifacts.
+
+### On Windows
+
+`build` or `build.bat` — Build a Windows EXE.
+
+`build android` — Build an Android APK.
+
+`build clean` — Remove all build artifacts.
 
 ### On Linux
 
@@ -158,7 +166,7 @@ On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and
 
 `make windows` — Cross-compile a Windows binary
 
-`make android` — Build an Android APK.
+`make android` — Cross-compile an Android APK.
 
 `make clean` — Remove all build artifacts.
 
@@ -172,14 +180,6 @@ The first time you run the Linux binary, it automatically installs its icon and 
 If you move the binary to a new location, the next launch updates the `Exec=` path in the `.desktop` file automatically. No manual steps are needed.
 
 > **Note:** After the first run, the file manager (Nautilus/Files) may not display the custom icon for the binary until you navigate away from the directory and back. This is a Nautilus caching behaviour and not something the application can control.
-
-### On Windows
-
-`build` or `build.bat` — Build a Windows EXE.
-
-`build android` — Build an Android APK.
-
-`build clean` — Remove all build artifacts.
 
 ### Android Release Builds
 
@@ -195,37 +195,6 @@ BUILD_TYPE=release make android
 set BUILD_TYPE=release
 build android
 ```
-
-#### Test keystore (included)
-
-A test keystore (`src/android/release.jks`, password `testtest`) is included in the repo for convenience. It is used automatically when you build a release APK with no further configuration. **Do not ship apps signed with the test keystore** — it is for development and testing only.
-
-#### Using a real keystore for production
-
-1. Generate a keystore:
-
-```
-keytool -genkey -v -keystore my-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias mykey
-```
-
-2. Set these environment variables before building:
-
-```
-export RELEASE_KEYSTORE=/path/to/my-release.jks
-export RELEASE_KEYSTORE_PASSWORD=your-store-password
-export RELEASE_KEY_ALIAS=mykey
-export RELEASE_KEY_PASSWORD=your-key-password
-```
-
-(On Windows, use `set` instead of `export`.)
-
-3. Build:
-
-```
-BUILD_TYPE=release make android
-```
-
-The environment variables override the test keystore defaults in `src/android/app/build.gradle`. **Keep your production keystore and passwords out of version control**. 
 
 ## Making the App Your Own
 
@@ -349,11 +318,37 @@ Each signing target automatically builds the corresponding app bundle first, so 
 **Prerequisites:**
 
 * Android SDK with build-tools installed (`apksigner` and optionally `zipalign`). These are located automatically via `ANDROID_HOME`; alternatively, add the build-tools directory to your `PATH`.
-* A Java keystore (`.jks` or `.keystore` file). Generate one with:
+
+#### Test keystore (included)
+
+A test keystore (`src/android/release.jks`, password `testtest`) is included in the repo for convenience. It is used automatically when you build a release APK with no further configuration. **Do not ship apps signed with the test keystore** — it is for development and testing only.
+
+#### Using a real keystore for production
+
+1. Generate a keystore (somewhere *NOT* in the Passiflora tree):
 
 ```
 keytool -genkey -v -keystore my-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias mykey
 ```
+
+2. Set these environment variables before building:
+
+```
+export RELEASE_KEYSTORE=/path/to/my-release.jks
+export RELEASE_KEYSTORE_PASSWORD=your-store-password
+export RELEASE_KEY_ALIAS=mykey
+export RELEASE_KEY_PASSWORD=your-key-password
+```
+
+(On Windows, use `set` instead of `export`.)
+
+3. Build:
+
+```
+BUILD_TYPE=release make android
+```
+
+The environment variables override the test keystore defaults in `src/android/app/build.gradle`. **Keep your production keystore and passwords out of version control**. 
 
 **Usage:**
 
