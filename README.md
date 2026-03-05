@@ -1,4 +1,4 @@
-![Passiflora](src/icons/roundicon.png)
+![Passiflora](logo.png)
 
 # Passiflora
 
