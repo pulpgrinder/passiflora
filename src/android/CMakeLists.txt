@@ -6,7 +6,7 @@ set(SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 # ── Generate zipdata.c from src/www if it doesn't already exist ────
 # When building from Android Studio, mkzipfile.sh hasn't been run.
 # We generate it here so the build is self-contained.
-set(ZIPDATA_C ${SRC_ROOT}/src/C/generated/zipdata.c)
+set(ZIPDATA_C ${SRC_ROOT}/src/C/generated/zipdata.h)
 set(CONTENT_DIR ${SRC_ROOT}/src/www)
 set(CONFIG_JS ${CONTENT_DIR}/generated/config.js)
 
@@ -29,11 +29,11 @@ if(NOT EXISTS ${ZIPDATA_C})
         )
         if(NOT MKZIP_RESULT EQUAL 0)
             message(FATAL_ERROR "mkzipfile.sh failed (exit ${MKZIP_RESULT}). "
-                "Generate zipdata.c manually: sh nixscripts/mkzipfile.sh src/www src/C/generated/zipdata.c")
+                "Generate zipdata.h manually: sh nixscripts/mkzipfile.sh src/www src/C/generated/zipdata.h")
         endif()
     else()
         message(FATAL_ERROR "zipdata.c not found and bash not available. "
-            "Generate it first: sh nixscripts/mkzipfile.sh src/www src/C/generated/zipdata.c")
+            "Generate it first: sh nixscripts/mkzipfile.sh src/www src/C/generated/zipdata.h")
     endif()
 endif()
 

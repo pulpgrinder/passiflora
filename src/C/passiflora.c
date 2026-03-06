@@ -1,7 +1,7 @@
 /*
  * passiflora.c — A minimal HTTP server that serves files from an
  * embedded ZIP archive.  The ZIP data is compiled in as a C array
- * via #include "generated/zipdata.c".  The server has no filesystem access
+ * via #include "generated/zipdata.h".  The server has no filesystem access
  * whatsoever — all content comes from the embedded archive.
  *
  * Supports ZIP compression methods 0 (stored) and 8 (deflate).
@@ -73,7 +73,7 @@
 /*  Embedded ZIP filesystem                                            */
 /* ------------------------------------------------------------------ */
 #include "generated/zipdata.c"
-#include "zipzip.c"
+#include "zipzip.h"
 
 /* Provided by UI.c */
 extern void ui_open(int port);

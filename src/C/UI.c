@@ -33,7 +33,7 @@
 #import <WebKit/WebKit.h>
 
 /* Generated menu data — MENU_PROGNAME */
-#include "generated/menu.c"
+#include "generated/menu.h"
 
 /* Port passed from main() to the app delegate via a global */
 static int g_ios_port = 0;
@@ -198,7 +198,7 @@ void ui_open(int port)
 #import <WebKit/WebKit.h>
 
 /* Generated menu data — menu_template[] and MENU_PROGNAME */
-#include "generated/menu.c"
+#include "generated/menu.h"
 
 /* Global WKWebView so the menu handler can call JavaScript */
 static WKWebView *g_webView = nil;
@@ -511,7 +511,7 @@ void ui_open(int port)
 #include <ole2.h>
 
 /* Generated menu data — MENU_PROGNAME, menu_template[] */
-#include "generated/win_menu.c"
+#include "generated/win_menu.h"
 
 /* ---- GUIDs for WebView2 COM interfaces ---- */
 /* (some referenced only in callback IID matching) */
@@ -1056,7 +1056,7 @@ void ui_open(int port)
 #include <limits.h>
 
 /* Generated menu data — MENU_PROGNAME, menu_template[] */
-#include "generated/menu.c"
+#include "generated/menu.h"
 
 /* Embedded app icon PNG (generated at build time) */
 #include "generated/linux_icon.h"

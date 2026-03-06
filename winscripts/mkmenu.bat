@@ -1,5 +1,5 @@
 @echo off
-REM mkmenu.bat — Generate menu.c from a menu template file.
+REM mkmenu.bat — Generate menu.h from a menu template file.
 REM
 REM Usage: mkmenu.bat <template> <progname> [output]
 REM
@@ -19,7 +19,7 @@ set TEMPLATE=%~1
 set PROGNAME=%~2
 set OUTPUT=%~3
 if "%PROGNAME%"=="" set PROGNAME=passiflora
-if "%OUTPUT%"=="" set OUTPUT=src\C\generated\menu.c
+if "%OUTPUT%"=="" set OUTPUT=src\C\generated\menu.h
 
 if "%TEMPLATE%"=="" (
     echo Usage: %~nx0 ^<template^> [progname] [output] >&2

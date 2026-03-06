@@ -1,5 +1,5 @@
 @echo off
-REM mkzipfile.bat — Generate zipdata.c from a directory of files.
+REM mkzipfile.bat — Generate zipdata.h from a directory of files.
 REM
 REM Usage:  mkzipfile.bat <directory> [output]
 REM
@@ -11,7 +11,7 @@ setlocal enabledelayedexpansion
 
 set SRCDIR=%~1
 set OUTPUT=%~2
-if "%OUTPUT%"=="" set OUTPUT=src\C\generated\zipdata.c
+if "%OUTPUT%"=="" set OUTPUT=src\C\generated\zipdata.h
 
 if "%SRCDIR%"=="" (
     echo Usage: %~nx0 ^<directory^> [output_file] >&2

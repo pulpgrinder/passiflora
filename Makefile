@@ -76,22 +76,22 @@ GENDIR = src/C/generated
 
 all: $(BINARY) bundle
 
-$(GENDIR)/zipdata.c: $(CONTENT)
+$(GENDIR)/zipdata.h: $(CONTENT)
 	@mkdir -p $(GENDIR)
-	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
+	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 
-$(GENDIR)/menu.c: $(MENU_TEMPLATE) nixscripts/mkmenu.sh
+$(GENDIR)/menu.h: $(MENU_TEMPLATE) nixscripts/mkmenu.sh
 	@mkdir -p $(GENDIR)
-	sh nixscripts/mkmenu.sh $(MENU_TEMPLATE) $(PROGNAME) $(GENDIR)/menu.c
+	sh nixscripts/mkmenu.sh $(MENU_TEMPLATE) $(PROGNAME) $(GENDIR)/menu.h
 
-$(GENDIR)/win_menu.c: src/Windows/menus/menu.txt nixscripts/mkmenu.sh
+$(GENDIR)/win_menu.h: src/Windows/menus/menu.txt nixscripts/mkmenu.sh
 	@mkdir -p $(GENDIR)
-	sh nixscripts/mkmenu.sh src/Windows/menus/menu.txt $(PROGNAME) $(GENDIR)/win_menu.c
+	sh nixscripts/mkmenu.sh src/Windows/menus/menu.txt $(PROGNAME) $(GENDIR)/win_menu.h
 
-$(BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.c $(SRCDIR)/UI.c $(GENDIR)/menu.c
+$(BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/menu.h
 	@mkdir -p $(dir $(CONFIG_JS))
 	sh nixscripts/mkmenu_json.sh $(MENU_TEMPLATE) $(PROGNAME) $(OS_NAME) $(CONFIG_JS)
-	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
+	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 ifeq ($(UNAME_S),Linux)
 	@# Generate linux_icon.h with embedded icon (or stub if no icon available)
 	@mkdir -p $(GENDIR)
@@ -131,11 +131,11 @@ endif
 # ── iOS (cross-compile from macOS) ──────────────────────────────────
 ios: $(IOS_BINARY) ios-bundle
 
-$(IOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.c $(SRCDIR)/UI.c $(GENDIR)/menu.c
+$(IOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/menu.h
 ifeq ($(UNAME_S),Darwin)
 	@mkdir -p $(dir $(CONFIG_JS))
 	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt $(PROGNAME) iOS $(CONFIG_JS)
-	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
+	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 	mkdir -p $(IOS_BINDIR)
 	$(IOS_CC) $(IOS_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(IOS_LDFLAGS)
 else
@@ -157,11 +157,11 @@ endif
 # ── iOS Simulator (build + install + launch) ───────────────────────
 iossim: $(SIMOS_BINARY) iossim-bundle iossim-run
 
-$(SIMOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.c $(SRCDIR)/UI.c $(GENDIR)/menu.c
+$(SIMOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/menu.h
 ifeq ($(UNAME_S),Darwin)
 	@mkdir -p $(dir $(CONFIG_JS))
 	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt $(PROGNAME) iOS $(CONFIG_JS)
-	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
+	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 	mkdir -p $(SIMOS_BINDIR)
 	$(SIMOS_CC) $(SIMOS_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(SIMOS_LDFLAGS)
 else
@@ -205,7 +205,7 @@ WV2_NUGET_VER  = 1.0.2903.40
 WV2_NUGET_URL  = https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/$(WV2_NUGET_VER)
 WV2_LOADER_H   = wv2loader.h
 
-windows: $(GENDIR)/win_menu.c $(WV2_LOADER_H) $(WIN_BINARY)
+windows: $(GENDIR)/win_menu.h $(WV2_LOADER_H) $(WIN_BINARY)
 
 # Download WebView2Loader.dll and convert to an embedded C header
 $(WV2_LOADER_H):
@@ -227,10 +227,10 @@ $(WV2_LOADER_H):
 	@rm -f $(WIN_BINDIR)/WebView2Loader.dll
 	@echo "$(WV2_LOADER_H) generated (embedded WebView2Loader.dll)"
 
-$(WIN_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.c $(SRCDIR)/UI.c $(GENDIR)/win_menu.c $(WV2_LOADER_H)
+$(WIN_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/win_menu.h $(WV2_LOADER_H)
 	@mkdir -p $(dir $(CONFIG_JS))
 	sh nixscripts/mkmenu_json.sh src/Windows/menus/menu.txt $(PROGNAME) Windows $(CONFIG_JS)
-	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
+	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 	mkdir -p $(WIN_BINDIR)
 	@if [ -f src/icons/builticons/windows/app.ico ] && \
 	    command -v $(WIN_WINDRES) >/dev/null 2>&1; then \
@@ -248,11 +248,11 @@ LINUX_ICON_PNG      = src/icons/builticons/linux/icon-256.png
 LINUX_ICON_FALLBACK = src/icons/builticons/macos/AppIcon.iconset/icon_256x256.png
 LINUX_ICON_H        = src/C/generated/linux_icon.h
 
-linux: $(GENDIR)/menu.c
+linux: $(GENDIR)/menu.h
 ifeq ($(UNAME_S),Linux)
 	@mkdir -p $(dir $(CONFIG_JS))
 	sh nixscripts/mkmenu_json.sh src/Linux/menus/menu.txt $(PROGNAME) Linux $(CONFIG_JS)
-	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
+	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 	@mkdir -p $(GENDIR)
 	@_ICON="$(LINUX_ICON_PNG)"; \
 	if [ ! -f "$$_ICON" ]; then _ICON="$(LINUX_ICON_FALLBACK)"; fi; \
@@ -275,10 +275,10 @@ else
 endif
 
 # ── Android (Gradle + NDK) ─────────────────────────────────
-android: $(GENDIR)/menu.c
+android: $(GENDIR)/menu.h
 	@mkdir -p $(dir $(CONFIG_JS))
 	sh nixscripts/mkmenu_json.sh src/android/menus/menu.txt $(PROGNAME) Android $(CONFIG_JS)
-	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
+	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 	sh nixscripts/mkandroid.sh $(PROGNAME) $(BUNDLE_ID) $(VERSION)
 
 # ── Android signing (local keystore) ───────────────────────

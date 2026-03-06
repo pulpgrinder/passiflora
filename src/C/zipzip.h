@@ -1,5 +1,5 @@
 /*
- * zipzip.c — Pure-C ZIP filesystem and DEFLATE decompressor.
+ * zipzip.h — Pure-C ZIP filesystem and DEFLATE decompressor.
  *
  * Provides zip_find() and zip_find_size() for looking up files in a
  * ZIP archive stored as a byte array.  Supports compression methods

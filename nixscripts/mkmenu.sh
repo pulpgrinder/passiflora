@@ -1,5 +1,5 @@
 #!/bin/sh
-# mkmenu.sh — Generate menu.c from a menu template file.
+# mkmenu.sh — Generate menu.h from a menu template file.
 #
 # Usage: ./mkmenu.sh <template> <progname> [output]
 #
@@ -15,7 +15,7 @@ set -e
 
 TEMPLATE="$1"
 PROGNAME="${2:-passiflora}"
-OUTPUT="${3:-src/C/generated/menu.c}"
+OUTPUT="${3:-src/C/generated/menu.h}"
 
 if [ -z "$TEMPLATE" ] || [ ! -f "$TEMPLATE" ]; then
     echo "Usage: $0 <template> [progname] [output]" >&2

@@ -1,4 +1,4 @@
-# mkmenu.ps1 - Generate menu.c from a menu template file.
+# mkmenu.ps1 - Generate menu.h from a menu template file.
 # Called by mkmenu.bat; not intended to be run directly.
 param(
     [string]$template,

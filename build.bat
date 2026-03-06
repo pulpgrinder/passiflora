@@ -91,8 +91,8 @@ mkdir src\C\generated 2>nul
 echo [android] Generating config.js from src\android\menus\menu.txt...
 call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\android\menus\menu.txt %PROGNAME% Android src\www\generated\config.js
 if errorlevel 1 exit /b 1
-echo [android] Generating zipdata.c...
-call "%SCRIPT_DIR%\winscripts\mkzipfile.bat" %CONTENT% src\C\generated\zipdata.c
+echo [android] Generating zipdata.h...
+call "%SCRIPT_DIR%\winscripts\mkzipfile.bat" %CONTENT% src\C\generated\zipdata.h
 if errorlevel 1 exit /b 1
 echo [android] Building APK...
 call "%SCRIPT_DIR%\winscripts\mkandroid.bat" %PROGNAME% %BUNDLE_ID% %VERSION%
@@ -205,17 +205,17 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM ── Step 2: Generate zipdata.c (now includes config.js) ──
-echo [windows] Generating zipdata.c from %CONTENT%...
-call "%SCRIPT_DIR%\winscripts\mkzipfile.bat" %CONTENT% src\C\generated\zipdata.c
+REM ── Step 2: Generate zipdata.h (now includes config.js) ──
+echo [windows] Generating zipdata.h from %CONTENT%...
+call "%SCRIPT_DIR%\winscripts\mkzipfile.bat" %CONTENT% src\C\generated\zipdata.h
 if errorlevel 1 (
     echo [ERROR] mkzipfile.bat failed >&2
     exit /b 1
 )
 
-REM ── Step 2c: Generate win_menu.c ──
-echo [windows] Generating win_menu.c from src\Windows\menus\menu.txt...
-call "%SCRIPT_DIR%\winscripts\mkmenu.bat" src\Windows\menus\menu.txt %PROGNAME% src\C\generated\win_menu.c
+REM ── Step 2c: Generate win_menu.h ──
+echo [windows] Generating win_menu.h from src\Windows\menus\menu.txt...
+call "%SCRIPT_DIR%\winscripts\mkmenu.bat" src\Windows\menus\menu.txt %PROGNAME% src\C\generated\win_menu.h
 if errorlevel 1 (
     echo [ERROR] mkmenu.bat failed >&2
     exit /b 1

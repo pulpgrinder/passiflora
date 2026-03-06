@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# mkzipfile.sh — Generate zipfile.c from a directory of files.
+# mkzipfile.sh — Generate zipdata.h from a directory of files.
 #
 # Usage:  ./mkzipfile.sh <directory> [output]
 #
