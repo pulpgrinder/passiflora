@@ -2,7 +2,7 @@
 
 # Passiflora
 
-Passiflora is a no-nonsense cross-platform packager that wraps HTML/JavaScript/CSS/etc. in an executable (similar to Electron and its ilk). Note that this should be considered **experimental** at this point. Please report any issues.
+Passiflora is a no-nonsense cross-platform packager that wraps HTML/JavaScript/CSS/etc. in an executable (similar to Electron and its ilk). Note that this should be considered **experimental** at this point. Things are still in a "move fast and break stuff" phase.  Please report any issues.
 
 Supported target platforms include:
 
@@ -15,13 +15,13 @@ Supported target platforms include:
 
 What it *doesn't* do:
 
-* Require that you install 50 million dubious npm packages (or a whole freakin' rust ecosystem, for the love of all that's holy)
+* Require that you install 50 million dubious npm packages (or a whole freakin' Rust ecosystem, for the love of all that's holy)
 * Generate 60 petabyte binaries for a "Hello, world!" program
 * Engage in baroque configuration gymnastics
 
-Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Similarly, Passiflora doesn't provide a lot of integration with the native OS -- things like file open/save (i.e., upload/download), access to the mic, camera and speaker, GPS data, etc. can now be done from HTML. Doing these things made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then. It's my belief that it's now preferable to work through whatever inconsistencies and shortcomings that remain than take the enormous hit of bundling an entire browser and native API in the executable. It's possible that some native integration will be added in the future, but the plan is to continue doing everything with web technology that *can* be done with web technology.
+Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Similarly, Passiflora doesn't provide a lot of integration with the native OS -- things like file open/save (i.e., upload/download), access to the mic, camera and speaker, GPS data, etc. can now be done from HTML. Doing these things made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then. It's my belief that it's now preferable to work through whatever inconsistencies and shortcomings that remain than take the enormous hit of bundling an entire browser and native API in the executable. It's possible that some native bridging/integration will be added in the future, but the plan is to continue doing everything with web technology that *can* be done with web technology.
 
-A basic Passiflora "Hello, world!" executable weighs only 3.6 MB for a Mac application bundle and 859 KB for Windows.
+A basic Passiflora "Hello, world!" executable for Windows weighs only 859 KB.
 
 ## Prerequisites
 
@@ -131,9 +131,9 @@ On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and
 1. Make sure you have the dependencies listed above installed.
 2. Check out a fresh copy of this repo.
 3. Edit the Makefile (Mac, Linux, Android, iOS) or `build.bat` (native Windows).
-   Use `PROGNAME = YourAppName` in the Makefile (or `set PROGNAME=YourAppName` in `build.bat` for windows).
-4. Put all your HTML/JavaScript/CSS/images/whatever in `src/www`.
-5. There is no 5. See below for additional tweaks you might want to make (custom icons, etc)
+   Use `PROGNAME = YourAppName` in the Makefile or `set PROGNAME=YourAppName` in `build.bat` for Windows.
+4. Put all your web stuff -- HTML/JavaScript/CSS/images/whatever in `src/www`.
+5. There is no necessary 5. See below for additional tweaks you might want to make (custom icons, etc)
 
 ## Building
 
@@ -161,7 +161,7 @@ On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and
 
 ### On Linux
 
-`make` or `make linux` — Build a native Linux binary.
+`make`  — Build a native Linux binary.
 
 `make windows` — Cross-compile a Windows binary
 
@@ -178,7 +178,7 @@ The first time you run the Linux binary, it automatically installs its icon and 
 
 If you move the binary to a new location, the next launch updates the `Exec=` path in the `.desktop` file automatically. No manual steps are needed.
 
-> **Note:** After the first run, the file manager (Nautilus/Files) may not display the custom icon for the binary until you navigate away from the directory and back. This is a Nautilus caching behaviour and not something the application can control.
+> **Note:** After the first run, the file manager (Nautilus/Files) may not display the custom icon for the binary until you navigate away from the directory and back. This is a Nautilus caching behaviour and not something the application can control (or at least not that I've found -- patches welcome).
 
 ### Android Release Builds
 
@@ -186,7 +186,8 @@ By default, `make android` and `build android` produce a **debug** APK. To build
 
 **macOS/Linux:**
 ```
-BUILD_TYPE=release make android
+BUILD_TYPE=release 
+make android
 ```
 
 **Windows:**
@@ -201,21 +202,21 @@ Obviously you're gonna want to put your own HTML, JavaScript, CSS, images, and s
 
 ### Icons
 
-Change `roundicon.png` and `squareicon.png` in `src/icons` to whatever images you like. These should be pretty big — around 1,000 pixels square or more. The `squareicon.png` file should be square (duh!), while the `roundicon.png` should be a square image consisting of a round image on a transparent background. Look at the supplied example if this seems confusing.
+Change `roundicon.png` and `squareicon.png` in `src/icons` to whatever images you like. These should be pretty big — around 1,000 pixels square. More is better! The `squareicon.png` file should be square (duh!), while the `roundicon.png` should be a square image consisting of a round image on a transparent background. Look at the supplied example if this seems confusing.
 
-All of the scads of other icons for the various different systems are generated from these.
+All of the zillions of other icons for the various different systems are generated from these.
 
-Once you've updated the icons, run:
+Once you've updated the base icons, run:
 
 `make icons` (macOS and Linux)
 
 or
 
-`winscripts\buildicons.bat` (Windows)
+`.\winscripts\buildicons.bat` (Windows)
 
 to generate a new icon set (on Windows `.\build icons` would also work).
 
-Note that these may need some manual tweaking for legibility, particularly at the smaller sizes, but it's still a substantial time savings over generating them all individually. Icons are *not* regenerated automatically during a normal build, so your hand-tuned versions won't be overwritten (unless, of course, you run `make icons` or `.\build icons`).
+Note that these may need some manual tweaking for legibility, particularly at the smaller sizes, but it's still a substantial time savings over generating them all individually. Icons are *not* regenerated automatically during a normal build, so any hand-tuned versions won't be overwritten (unless, of course, you run `make icons` or `.\build icons` again).
 
 ### Menus
 

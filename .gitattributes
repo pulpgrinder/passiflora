@@ -1,0 +1,6 @@
+# Force CRLF line endings for Windows scripts so cmd.exe can parse them.
+*.bat  text eol=crlf
+*.ps1  text eol=crlf
+
+# Shell scripts stay LF.
+*.sh   text eol=lf
