@@ -182,7 +182,7 @@ If you move the binary to a new location, the next launch updates the `Exec=` pa
 
 ### Android Release Builds
 
-By default, `make android` and `build android` produce a **debug** APK. To build a signed **release** APK, set the `BUILD_TYPE` environment variable:
+By default, `make android` and `.\build android` produce a **debug** APK. To build a signed **release** APK, set the `BUILD_TYPE` environment variable:
 
 **macOS/Linux:**
 ```
@@ -193,7 +193,7 @@ make android
 **Windows:**
 ```
 set BUILD_TYPE=release
-build android
+.\build android
 ```
 
 ## Making the App Your Own
@@ -330,16 +330,33 @@ Each signing target automatically builds the corresponding app bundle first, so 
 
 ### Code Signing for Android
 
-`make sign-android` (or `.\build sign-android` on Windows) builds the Android APK and then signs it with a local keystore. The target will:
+There are two ways to produce a signed Android APK. They use different mechanisms and are suited to different workflows:
 
-1. Build the APK (runs the `android` target first).
+**Method 1 — Interactive post-build signing (`make sign-android`)**
+
+`make sign-android` (or `.\build sign-android` on Windows) builds the APK and then signs it using `apksigner` from the Android SDK build-tools. It will:
+
+1. Build the APK (runs the `android` target first — **debug** by default).
 2. Prompt you for the keystore file path.
 3. Prompt you for the keystore password.
 4. Zipalign the APK (if `zipalign` is available).
-5. Sign the APK using `apksigner` from the Android SDK build-tools.
+5. Sign the APK with `apksigner`.
 6. Verify the signature.
 
-**Prerequisites:**
+To sign a release APK instead of a debug APK, set `BUILD_TYPE` first:
+
+```
+BUILD_TYPE=release make sign-android          # macOS / Linux
+set BUILD_TYPE=release && .\build sign-android  # Windows
+```
+
+**Method 2 — Gradle build-time signing (environment variables)**
+
+Set the environment variables described below and build with `BUILD_TYPE=release`. Gradle signs the APK automatically during the build — no interactive prompts, no `apksigner` needed. This is the better choice for CI/CD pipelines and automated builds.
+
+Do **not** combine the two methods. If you use Method 2, the APK is already signed; running `make sign-android` on it would attempt to double-sign.
+
+**Prerequisites (Method 1 only):**
 
 * Android SDK with build-tools installed (`apksigner` and optionally `zipalign`). These are located automatically via `ANDROID_HOME`; alternatively, add the build-tools directory to your `PATH`.
 
@@ -355,6 +372,8 @@ A test keystore (`src/android/release.jks`, password `testtest`) is included in 
 keytool -genkey -v -keystore my-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias mykey
 ```
 
+   If you choose an alias other than `mykey`, set `RELEASE_KEY_ALIAS` to match (see below).
+
 2. Set these environment variables before building:
 
 ```
@@ -369,19 +388,11 @@ export RELEASE_KEY_PASSWORD=your-key-password
 3. Build:
 
 ```
-BUILD_TYPE=release make android
+BUILD_TYPE=release make android          # macOS / Linux
+set BUILD_TYPE=release && .\build android  # Windows
 ```
 
-The environment variables override the test keystore defaults in `src/android/app/build.gradle`.
-
-**Usage:**
-
-```
-make sign-android          # macOS / Linux
-build sign-android          # Windows
-```
-
-You will be prompted interactively for the keystore file and password. The signed APK is written to `bin/Android/<progname>.apk`.
+The environment variables override the test keystore defaults in `src/android/app/build.gradle`. The resulting APK is already signed — no further signing step is needed.
 
 **IMPORTANT: This bears repeating. Never, ever, ever put your signing certificates, keystores, passwords, etc. into a folder managed by git or another version control system. Ever.**
 
