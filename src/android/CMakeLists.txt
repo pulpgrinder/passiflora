@@ -8,11 +8,11 @@ set(SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 # We generate it here so the build is self-contained.
 set(ZIPDATA_C ${SRC_ROOT}/src/C/generated/zipdata.c)
 set(CONTENT_DIR ${SRC_ROOT}/src/www)
-set(SYSTEMID_JS ${CONTENT_DIR}/generated/systemid.js)
+set(CONFIG_JS ${CONTENT_DIR}/generated/config.js)
 
-# ── Generate systemid.js for Android ──────────────────────────────
-if(NOT EXISTS ${SYSTEMID_JS} OR NOT "${_SYSTEMID_OS}" STREQUAL "Android")
-    file(WRITE ${SYSTEMID_JS} "// Auto-generated file — DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = \"Android\";\n")
+# ── Generate config.js for Android (fallback if not already built) ──
+if(NOT EXISTS ${CONFIG_JS})
+    file(WRITE ${CONFIG_JS} "// Auto-generated file — DO NOT EDIT. This file is overwritten on every build.\nvar PassifloraConfig = {\n  os_name: \"Android\",\n  menus: [],\n  handleMenu: function(title) { alert(\"Menu item clicked: \" + title); }\n};\n")
 endif()
 
 if(NOT EXISTS ${ZIPDATA_C})

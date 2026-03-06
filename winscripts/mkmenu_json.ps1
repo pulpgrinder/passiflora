@@ -1,8 +1,9 @@
-# mkmenu_json.ps1 — Generate a JSON menu file from a menu template.
+# mkmenu_json.ps1 — Generate config.js with PassifloraConfig from a menu template.
 # Called by mkmenu_json.bat; not intended to be run directly.
 param(
     [string]$template,
     [string]$progname,
+    [string]$osName,
     [string]$output
 )
 
@@ -55,8 +56,12 @@ if ($outDir -and -not (Test-Path $outDir)) {
 }
 
 $json = $menus | ConvertTo-Json -Depth 10
-$header = "// Auto-generated file \u2014 DO NOT EDIT. This file is overwritten on every build.`n"
-$content = $header + "PASSIFLORA_MENUS = " + $json + "`n"
+$header = "// Auto-generated file `u{2014} DO NOT EDIT. This file is overwritten on every build.`n"
+$content = $header + "var PassifloraConfig = {`n"
+$content += "  os_name: `"$osName`",`n"
+$content += "  menus: " + $json + ",`n"
+$content += "  handleMenu: function(title) { alert(`"Menu item clicked: `" + title); }`n"
+$content += "};`n"
 [System.IO.File]::WriteAllText(
     $output,
     $content,

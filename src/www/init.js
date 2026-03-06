@@ -1,2 +1,2 @@
-alert("System ID: " + PASSIFLORA_OS_NAME);
-alert("Menu items: " + JSON.stringify(PASSIFLORA_MENUS));
+alert("System ID: " + PassifloraConfig.os_name);
+alert("Menu items: " + JSON.stringify(PassifloraConfig.menus));

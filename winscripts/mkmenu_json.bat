@@ -1,7 +1,7 @@
 @echo off
-REM mkmenu_json.bat — Generate a JSON menu file from a menu template.
+REM mkmenu_json.bat — Generate config.js with PassifloraConfig from a menu template.
 REM
-REM Usage: mkmenu_json.bat <template> <progname> [output]
+REM Usage: mkmenu_json.bat <template> <progname> <os_name> [output]
 REM
 REM Template format (same as mkmenu.bat):
 REM   - Indentation (tabs or groups of 4 spaces) sets nesting level
@@ -17,12 +17,14 @@ setlocal enabledelayedexpansion
 
 set TEMPLATE=%~1
 set PROGNAME=%~2
-set OUTPUT=%~3
+set OS_NAME=%~3
+set OUTPUT=%~4
 if "%PROGNAME%"=="" set PROGNAME=passiflora
-if "%OUTPUT%"=="" set OUTPUT=src\www\generated\PassifloraMenus.js
+if "%OS_NAME%"=="" set OS_NAME=unknown
+if "%OUTPUT%"=="" set OUTPUT=src\www\generated\config.js
 
 if "%TEMPLATE%"=="" (
-    echo Usage: %~nx0 ^<template^> [progname] [output] >&2
+    echo Usage: %~nx0 ^<template^> [progname] [os_name] [output] >&2
     exit /b 1
 )
 if not exist "%TEMPLATE%" (
@@ -30,7 +32,7 @@ if not exist "%TEMPLATE%" (
     exit /b 1
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0mkmenu_json.ps1" "%TEMPLATE%" "%PROGNAME%" "%OUTPUT%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0mkmenu_json.ps1" "%TEMPLATE%" "%PROGNAME%" "%OS_NAME%" "%OUTPUT%"
 
 if errorlevel 1 (
     echo [ERROR] PowerShell failed generating %OUTPUT% >&2
@@ -38,6 +40,6 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo mkmenu_json: %OUTPUT% generated from %TEMPLATE% (progname=%PROGNAME%)
+echo mkmenu_json: %OUTPUT% generated from %TEMPLATE% (progname=%PROGNAME%, os=%OS_NAME%)
 endlocal
 exit /b 0

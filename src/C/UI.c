@@ -204,7 +204,7 @@ void ui_open(int port)
 static WKWebView *g_webView = nil;
 
 /* ------------------------------------------------------------------ */
-/*  Menu handler — calls handlemenu() in the embedded WKWebView        */
+/*  Menu handler — calls PassifloraConfig.handleMenu() in the embedded WKWebView */
 /* ------------------------------------------------------------------ */
 @interface ZSMenuHandler : NSObject
 - (void)menuAction:(id)sender;
@@ -222,7 +222,7 @@ static WKWebView *g_webView = nil;
     title = [title stringByReplacingOccurrencesOfString:@"'"
                                              withString:@"\\'"];
     NSString *js = [NSString stringWithFormat:
-        @"if(typeof handlemenu==='function')handlemenu('%@')", title];
+        @"if(typeof PassifloraConfig!=='undefined'&&typeof PassifloraConfig.handleMenu==='function')PassifloraConfig.handleMenu('%@')", title];
     [g_webView evaluateJavaScript:js completionHandler:nil];
 }
 @end
@@ -841,12 +841,12 @@ static HMENU build_win32_menus(WV2State *st)
     return menubar;
 }
 
-/* ---- Call handlemenu() in the WebView ---- */
+/* ---- Call PassifloraConfig.handleMenu() in the WebView ---- */
 static void win_call_handlemenu(WV2State *st, const char *title)
 {
     if (!st->webview) return;
 
-    /* Build JS: if(typeof handlemenu==='function')handlemenu('...') */
+    /* Build JS: if(typeof PassifloraConfig!=='undefined'...)PassifloraConfig.handleMenu('...') */
     /* Escape backslashes and single quotes */
     char escaped[512];
     int j = 0;
@@ -860,7 +860,7 @@ static void win_call_handlemenu(WV2State *st, const char *title)
 
     char js8[1024];
     snprintf(js8, sizeof js8,
-        "if(typeof handlemenu==='function')handlemenu('%s')", escaped);
+        "if(typeof PassifloraConfig!=='undefined'&&typeof PassifloraConfig.handleMenu==='function')PassifloraConfig.handleMenu('%s')", escaped);
 
     /* Convert UTF-8 script to wide string for ExecuteScript */
     int wlen = MultiByteToWideChar(CP_UTF8, 0, js8, -1, NULL, 0);
@@ -1063,7 +1063,7 @@ void ui_open(int port)
 
 static WebKitWebView *g_linux_webview = NULL;
 
-/* ---- Call handlemenu() in the WebView ---- */
+/* ---- Call PassifloraConfig.handleMenu() in the WebView ---- */
 static void linux_call_handlemenu(const char *title)
 {
     if (!g_linux_webview) return;
@@ -1080,7 +1080,7 @@ static void linux_call_handlemenu(const char *title)
 
     char js[1024];
     snprintf(js, sizeof js,
-        "if(typeof handlemenu==='function')handlemenu('%s')", escaped);
+        "if(typeof PassifloraConfig!=='undefined'&&typeof PassifloraConfig.handleMenu==='function')PassifloraConfig.handleMenu('%s')", escaped);
 
     webkit_web_view_evaluate_javascript(g_linux_webview, js, -1,
                                         NULL, NULL, NULL, NULL, NULL);

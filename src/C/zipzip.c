@@ -266,6 +266,21 @@ static size_t deflate_inflate(const unsigned char *src, size_t src_len,
 }
 
 /* ------------------------------------------------------------------ */
+/*  Slash-insensitive path compare: treats '\' and '/' as equal.       */
+/*  Handles zips created by PowerShell Compress-Archive (backslashes). */
+/* ------------------------------------------------------------------ */
+static int zip_path_eq(const unsigned char *a, const char *b, size_t len)
+{
+    for (size_t i = 0; i < len; i++) {
+        char ca = (char)a[i], cb = b[i];
+        if (ca == '\\') ca = '/';
+        if (cb == '\\') cb = '/';
+        if (ca != cb) return 0;
+    }
+    return 1;
+}
+
+/* ------------------------------------------------------------------ */
 /*  ZIP filesystem lookup                                              */
 /*                                                                     */
 /*  Walks the local file headers in a ZIP byte array looking for a     */
@@ -297,7 +312,7 @@ static unsigned char *zip_find(const unsigned char *zip, size_t zip_len,
 
         /* Check if this entry matches the requested filename */
         int match = (name_len == fname_len &&
-                     memcmp(zip + pos, filename, fname_len) == 0);
+                     zip_path_eq(zip + pos, filename, fname_len));
 
         pos += name_len + extra_len;
 
@@ -369,7 +384,7 @@ static size_t zip_find_size(const unsigned char *zip, size_t zip_len,
             return (size_t)-1;
 
         int match = (name_len == fname_len &&
-                     memcmp(zip + pos, filename, fname_len) == 0);
+                     zip_path_eq(zip + pos, filename, fname_len));
 
         pos += name_len + extra_len;
 

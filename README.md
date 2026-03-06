@@ -19,15 +19,15 @@ What it *doesn't* do:
 * Generate 60 petabyte binaries for a "Hello, world!" program
 * Engage in baroque configuration gymnastics
 
-Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Similarly, Passiflora doesn't provide a lot of integration with the native OS -- things like file open/save (i.e., upload/download), access to the mic, camera and speaker, gps data, etc. can now be done from HTML. Doing these things made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then. It's my belief that it's now preferable to work through whatever inconsistencies and shortcomings that remain than take the enormous hit of bundling an entire browser and native API in the executable. It's possible that some native integration will be added in the future, but the plan is to continue doing everything with web technology that *can* be done with web technology.
+Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Similarly, Passiflora doesn't provide a lot of integration with the native OS -- things like file open/save (i.e., upload/download), access to the mic, camera and speaker, GPS data, etc. can now be done from HTML. Doing these things made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then. It's my belief that it's now preferable to work through whatever inconsistencies and shortcomings that remain than take the enormous hit of bundling an entire browser and native API in the executable. It's possible that some native integration will be added in the future, but the plan is to continue doing everything with web technology that *can* be done with web technology.
 
-A representative Passiflora "Hello, world!" executable (in this case, a macOS app bundle) weighs only 3.6 MB.
+A basic Passiflora "Hello, world!" executable weighs only 3.6 MB for a Mac application bundle and 859 KB for Windows.
 
 ## Prerequisites
 
 The table below shows what to install for each combination of target platform and build host. Start with the **all** row for your host OS, then add anything listed in the row for your target.
 
-On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and curl are pre-installed on Windows 10/11.
+On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and curl are pre-installed on Windows 10/11. If you are using PowerShell (the default terminal on modern Windows), you must prefix the command with `.\` — e.g. `.\build windows`. In cmd.exe you can just type `build windows`.
 
 <table>
 <tr>
@@ -131,7 +131,7 @@ On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and
 1. Make sure you have the dependencies listed above installed.
 2. Check out a fresh copy of this repo.
 3. Edit the Makefile (Mac, Linux, Android, iOS) or `build.bat` (native Windows).
-   Use `PROGNAME = YourAppName` in the Makefile (`set PROGNAME=YourAppName` in `build.bat` for windows).
+   Use `PROGNAME = YourAppName` in the Makefile (or `set PROGNAME=YourAppName` in `build.bat` for windows).
 4. Put all your HTML/JavaScript/CSS/images/whatever in `src/www`.
 5. There is no 5. See below for additional tweaks you might want to make (custom icons, etc)
 
@@ -153,11 +153,11 @@ On Windows, native builds use `build.bat` instead of `make`. PowerShell 5.1+ and
 
 ### On Windows
 
-`build` or `build.bat` — Build a Windows EXE.
+`.\build` or `.\build.bat` — Build a Windows EXE.
 
-`build android` — Cross-compile an Android APK.
+`.\build android` — Cross-compile an Android APK.
 
-`build clean` — Remove all build artifacts.
+`.\build clean` — Remove all build artifacts.
 
 ### On Linux
 
@@ -213,17 +213,17 @@ or
 
 `winscripts\buildicons.bat` (Windows)
 
-to generate a new icon set (on Windows `build.bat icons` would also work).
+to generate a new icon set (on Windows `.\build icons` would also work).
 
-Note that these may need some manual tweaking for legibility, particularly at the smaller sizes, but it's still a substantial time savings over generating them all individually. Icons are *not* regenerated automatically during a normal build, so your hand-tuned versions won't be overwritten (unless, of course, you run `make icons` or `build icons`).
+Note that these may need some manual tweaking for legibility, particularly at the smaller sizes, but it's still a substantial time savings over generating them all individually. Icons are *not* regenerated automatically during a normal build, so your hand-tuned versions won't be overwritten (unless, of course, you run `make icons` or `.\build icons`).
 
 ### Menus
 
-Underneath `src`, each platform has a folder which contains a `menu.txt` file. These are used to generate menus. They will appear in the menu bar (for platforms that have a menu bar, e.g., Mac and Windows). They will also be converted to JavaScript and placed in `src/www/generated/PassifloraMenus.js`, which assigns the menu data to the `PASSIFLORA_MENUS` variable. These can be used to build your own custom menus on mobile platforms.
+Underneath `src`, each platform has a folder which contains a `menu.txt` file. These are used to generate menus. They will appear in the menu bar (for platforms that have a menu bar, e.g., Mac and Windows). The menu data is also available in JavaScript via `PassifloraConfig.menus` (see below), which can be used to build your own custom menus on mobile platforms.
 
 The format should be clear — the different levels of a menu are expressed with indentation.
 
-For platforms with a menu bar, choosing a menu item will call the `handlemenu()` JavaScript function in your code. For example, if you have:
+For platforms with a menu bar, choosing a menu item will call `PassifloraConfig.handleMenu(title)` in your JavaScript. For example, if you have:
 
 ```
 {{progname}}
@@ -235,17 +235,33 @@ Misc
     More stuff
 ```
 
-Choosing "More stuff" will call `handlemenu("More stuff")` in your JavaScript.
+Choosing "More stuff" will call `PassifloraConfig.handleMenu("More stuff")` in your JavaScript.
 
-The default `handlemenu` just pops an alert.
+The default `handleMenu` just pops an alert. To provide your own handler, set it in your `app.js`:
 
-## Miscellaneous
+```javascript
+PassifloraConfig.handleMenu = function(title) {
+    // your code here
+};
+```
 
-After building for a platform, a generated `src/www/generated/systemid.js` will contain something like:
+## PassifloraConfig
 
-`PASSIFLORA_OS_NAME = "iOS";`
+Each build generates `src/www/generated/config.js`, which defines a `PassifloraConfig` object containing:
 
-This can be used in case you need your JavaScript code to do different things on different platforms. This file is auto-generated on every build and should not be edited by hand.
+```javascript
+var PassifloraConfig = {
+  os_name: "iOS",     // or "macOS", "Windows", "Linux", "Android"
+  menus: [ ... ],     // menu structure from menu.txt
+  handleMenu: function(title) { alert("Menu item clicked: " + title); }
+};
+```
+
+- **`PassifloraConfig.os_name`** — the target platform, useful when your JavaScript needs to do different things on different platforms.
+- **`PassifloraConfig.menus`** — the menu structure as a JSON array, useful for building custom menus on mobile.
+- **`PassifloraConfig.handleMenu`** — called by the native menu bar when a menu item is selected. Override this in your `app.js` to handle menu actions.
+
+This file is auto-generated on every build and should not be edited by hand.
 
 ## Make/Build Targets Summary
 
@@ -263,11 +279,11 @@ This can be used in case you need your JavaScript code to do different things on
 | `make sign-ios` | Interactively sign the iOS app bundle |
 | `make sign-iossim` | Interactively sign the iOS Simulator app bundle |
 | `make sign-android` | Sign the Android APK with a local keystore |
-| `build` or `build windows` | Build Windows exe (Windows) |
-| `build android` | Build Android APK (Windows) |
-| `build icons` | Generate icon sets (Windows) |
-| `build clean` | Remove all build artifacts (Windows) |
-| `build sign-android` | Sign the Android APK with a local keystore (Windows) |
+| `.\build` or `.\build windows` | Build Windows exe (Windows) |
+| `.\build android` | Build Android APK (Windows) |
+| `.\build icons` | Generate icon sets (Windows) |
+| `.\build clean` | Remove all build artifacts (Windows) |
+| `.\build sign-android` | Sign the Android APK with a local keystore (Windows) |
 
 ## Code Signing
 
@@ -313,7 +329,7 @@ Each signing target automatically builds the corresponding app bundle first, so 
 
 ### Code Signing for Android
 
-`make sign-android` (or `build sign-android` on Windows) builds the Android APK and then signs it with a local keystore. The target will:
+`make sign-android` (or `.\build sign-android` on Windows) builds the Android APK and then signs it with a local keystore. The target will:
 
 1. Build the APK (runs the `android` target first).
 2. Prompt you for the keystore file path.

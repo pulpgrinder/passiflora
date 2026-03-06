@@ -55,7 +55,6 @@ REM ================================================================
 echo [clean] Removing build artifacts...
 if exist "%SCRIPT_DIR%\src\C\generated" rmdir /S /Q "%SCRIPT_DIR%\src\C\generated" 2>nul
 del /Q "%SCRIPT_DIR%\wv2loader.h" 2>nul
-del /Q "%SCRIPT_DIR%\src\www\generated\systemid.js" 2>nul
 if exist "%SCRIPT_DIR%\src\www\generated" rmdir /S /Q "%SCRIPT_DIR%\src\www\generated" 2>nul
 if exist "%WIN_BINDIR%" (
     del /Q "%WIN_BINDIR%\%PROGNAME%.exe" 2>nul
@@ -87,16 +86,13 @@ REM ================================================================
 REM  android
 REM ================================================================
 :do_android
-echo [android] Generating systemid.js for Android...
 mkdir src\www\generated 2>nul
-echo // Auto-generated file — DO NOT EDIT. This file is overwritten on every build.> src\www\generated\systemid.js
-echo PASSIFLORA_OS_NAME = "Android";>> src\www\generated\systemid.js
-echo [android] Generating zipdata.c...
 mkdir src\C\generated 2>nul
-call "%SCRIPT_DIR%\winscripts\mkzipfile.bat" %CONTENT% src\C\generated\zipdata.c
+echo [android] Generating config.js from src\android\menus\menu.txt...
+call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\android\menus\menu.txt %PROGNAME% Android src\www\generated\config.js
 if errorlevel 1 exit /b 1
-echo [android] Generating PassifloraMenus.js from src\android\menus\menu.txt...
-call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\android\menus\menu.txt %PROGNAME% src\www\generated\PassifloraMenus.js
+echo [android] Generating zipdata.c...
+call "%SCRIPT_DIR%\winscripts\mkzipfile.bat" %CONTENT% src\C\generated\zipdata.c
 if errorlevel 1 exit /b 1
 echo [android] Building APK...
 call "%SCRIPT_DIR%\winscripts\mkandroid.bat" %PROGNAME% %BUNDLE_ID% %VERSION%
@@ -198,26 +194,22 @@ REM  windows
 REM ================================================================
 :do_windows
 
-REM ── Step 1: Generate systemid.js ──
-echo [windows] Generating systemid.js for Windows...
 mkdir src\www\generated 2>nul
-echo // Auto-generated file — DO NOT EDIT. This file is overwritten on every build.> src\www\generated\systemid.js
-echo PASSIFLORA_OS_NAME = "Windows";>> src\www\generated\systemid.js
-
-REM ── Step 2: Generate zipdata.c ──
-echo [windows] Generating zipdata.c from %CONTENT%...
 mkdir src\C\generated 2>nul
-call "%SCRIPT_DIR%\winscripts\mkzipfile.bat" %CONTENT% src\C\generated\zipdata.c
+
+REM ── Step 1: Generate config.js for Windows (before zip!) ──
+echo [windows] Generating config.js from src\Windows\menus\menu.txt...
+call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\Windows\menus\menu.txt %PROGNAME% Windows src\www\generated\config.js
 if errorlevel 1 (
-    echo [ERROR] mkzipfile.bat failed >&2
+    echo [ERROR] mkmenu_json.bat failed >&2
     exit /b 1
 )
 
-REM ── Step 2b: Generate PassifloraMenus.js for Windows ──
-echo [windows] Generating PassifloraMenus.js from src\Windows\menus\menu.txt...
-call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\Windows\menus\menu.txt %PROGNAME% src\www\generated\PassifloraMenus.js
+REM ── Step 2: Generate zipdata.c (now includes config.js) ──
+echo [windows] Generating zipdata.c from %CONTENT%...
+call "%SCRIPT_DIR%\winscripts\mkzipfile.bat" %CONTENT% src\C\generated\zipdata.c
 if errorlevel 1 (
-    echo [ERROR] mkmenu_json.bat failed >&2
+    echo [ERROR] mkzipfile.bat failed >&2
     exit /b 1
 )
 

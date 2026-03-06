@@ -67,7 +67,8 @@ WIN_BINARY     = $(WIN_BINDIR)/$(PROGNAME).exe
 BINDIR  = bin/$(OS_NAME)
 BINARY  = $(BINDIR)/$(PROGNAME)
 
-SYSTEMID_JS = src/www/generated/systemid.js
+# Generated JS config file (consumed by the web app)
+CONFIG_JS = src/www/generated/config.js
 
 # C source layout
 SRCDIR = src/C
@@ -87,13 +88,9 @@ $(GENDIR)/win_menu.c: src/Windows/menus/menu.txt nixscripts/mkmenu.sh
 	@mkdir -p $(GENDIR)
 	sh nixscripts/mkmenu.sh src/Windows/menus/menu.txt $(PROGNAME) $(GENDIR)/win_menu.c
 
-# Generated JS menu file (consumed by the web app)
-MENU_JS = src/www/generated/PassifloraMenus.js
-
 $(BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.c $(SRCDIR)/UI.c $(GENDIR)/menu.c
-	@mkdir -p $(dir $(SYSTEMID_JS))
-	@printf '// Auto-generated file \xe2\x80\x94 DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "%s";\n' "$(OS_NAME)" > $(SYSTEMID_JS)
-	sh nixscripts/mkmenu_json.sh $(MENU_TEMPLATE) $(PROGNAME) $(MENU_JS)
+	@mkdir -p $(dir $(CONFIG_JS))
+	sh nixscripts/mkmenu_json.sh $(MENU_TEMPLATE) $(PROGNAME) $(OS_NAME) $(CONFIG_JS)
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
 ifeq ($(UNAME_S),Linux)
 	@# Generate linux_icon.h with embedded icon (or stub if no icon available)
@@ -136,9 +133,8 @@ ios: $(IOS_BINARY) ios-bundle
 
 $(IOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.c $(SRCDIR)/UI.c $(GENDIR)/menu.c
 ifeq ($(UNAME_S),Darwin)
-	@mkdir -p $(dir $(SYSTEMID_JS))
-	@printf '// Auto-generated file \xe2\x80\x94 DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "iOS";\n' > $(SYSTEMID_JS)
-	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt $(PROGNAME) $(MENU_JS)
+	@mkdir -p $(dir $(CONFIG_JS))
+	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt $(PROGNAME) iOS $(CONFIG_JS)
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
 	mkdir -p $(IOS_BINDIR)
 	$(IOS_CC) $(IOS_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(IOS_LDFLAGS)
@@ -163,9 +159,8 @@ iossim: $(SIMOS_BINARY) iossim-bundle iossim-run
 
 $(SIMOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.c $(SRCDIR)/UI.c $(GENDIR)/menu.c
 ifeq ($(UNAME_S),Darwin)
-	@mkdir -p $(dir $(SYSTEMID_JS))
-	@printf '// Auto-generated file \xe2\x80\x94 DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "iOS";\n' > $(SYSTEMID_JS)
-	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt $(PROGNAME) $(MENU_JS)
+	@mkdir -p $(dir $(CONFIG_JS))
+	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt $(PROGNAME) iOS $(CONFIG_JS)
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
 	mkdir -p $(SIMOS_BINDIR)
 	$(SIMOS_CC) $(SIMOS_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(SIMOS_LDFLAGS)
@@ -233,9 +228,8 @@ $(WV2_LOADER_H):
 	@echo "$(WV2_LOADER_H) generated (embedded WebView2Loader.dll)"
 
 $(WIN_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.c $(SRCDIR)/UI.c $(GENDIR)/win_menu.c $(WV2_LOADER_H)
-	@mkdir -p $(dir $(SYSTEMID_JS))
-	@printf '// Auto-generated file \xe2\x80\x94 DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "Windows";\n' > $(SYSTEMID_JS)
-	sh nixscripts/mkmenu_json.sh src/Windows/menus/menu.txt $(PROGNAME) $(MENU_JS)
+	@mkdir -p $(dir $(CONFIG_JS))
+	sh nixscripts/mkmenu_json.sh src/Windows/menus/menu.txt $(PROGNAME) Windows $(CONFIG_JS)
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
 	mkdir -p $(WIN_BINDIR)
 	@if [ -f src/icons/builticons/windows/app.ico ] && \
@@ -256,9 +250,8 @@ LINUX_ICON_H        = src/C/generated/linux_icon.h
 
 linux: $(GENDIR)/menu.c
 ifeq ($(UNAME_S),Linux)
-	@mkdir -p $(dir $(SYSTEMID_JS))
-	@printf '// Auto-generated file \xe2\x80\x94 DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "Linux";\n' > $(SYSTEMID_JS)
-	sh nixscripts/mkmenu_json.sh src/Linux/menus/menu.txt $(PROGNAME) $(MENU_JS)
+	@mkdir -p $(dir $(CONFIG_JS))
+	sh nixscripts/mkmenu_json.sh src/Linux/menus/menu.txt $(PROGNAME) Linux $(CONFIG_JS)
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
 	@mkdir -p $(GENDIR)
 	@_ICON="$(LINUX_ICON_PNG)"; \
@@ -283,9 +276,8 @@ endif
 
 # ── Android (Gradle + NDK) ─────────────────────────────────
 android: $(GENDIR)/menu.c
-	@mkdir -p $(dir $(SYSTEMID_JS))
-	@printf '// Auto-generated file \xe2\x80\x94 DO NOT EDIT. This file is overwritten on every build.\nPASSIFLORA_OS_NAME = "Android";\n' > $(SYSTEMID_JS)
-	sh nixscripts/mkmenu_json.sh src/android/menus/menu.txt $(PROGNAME) $(MENU_JS)
+	@mkdir -p $(dir $(CONFIG_JS))
+	sh nixscripts/mkmenu_json.sh src/android/menus/menu.txt $(PROGNAME) Android $(CONFIG_JS)
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.c
 	sh nixscripts/mkandroid.sh $(PROGNAME) $(BUNDLE_ID) $(VERSION)
 
@@ -348,7 +340,6 @@ clean:
 	rm -f $(WIN_BINARY)
 	rm -f $(WIN_BINDIR)/app.rc $(WIN_BINDIR)/app_res.o
 	rm -f wv2loader.h
-	rm -f $(SYSTEMID_JS)
 	rm -rf src/www/generated
 	rm -rf bin/Android/gradle-build bin/Android/gradle-cache src/android/.gradle src/android/app/.cxx
 	rm -f bin/Android/*.apk

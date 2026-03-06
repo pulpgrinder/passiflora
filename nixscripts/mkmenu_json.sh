@@ -1,7 +1,7 @@
 #!/bin/sh
-# mkmenu_json.sh — Generate a JSON menu file from a menu template.
+# mkmenu_json.sh — Generate config.js with PassifloraConfig from a menu template.
 #
-# Usage: ./mkmenu_json.sh <template> <progname> [output]
+# Usage: ./mkmenu_json.sh <template> <progname> <os_name> [output]
 #
 # Template format (same as mkmenu.sh):
 #   - Indentation (tabs or groups of 4 spaces) sets the nesting level
@@ -11,26 +11,17 @@
 #   - Blank lines are skipped
 #   - {{progname}} is replaced with the progname argument
 #
-# Output: a JSON file like:
-#   [
-#     {
-#       "title": "File",
-#       "items": [
-#         { "title": "Open" },
-#         { "separator": true },
-#         { "title": "Quit" }
-#       ]
-#     }
-#   ]
+# Output: a JS file defining PassifloraConfig with os_name, menus, and handleMenu.
 #
 set -e
 
 TEMPLATE="$1"
 PROGNAME="${2:-passiflora}"
-OUTPUT="${3:-src/www/generated/PassifloraMenus.js}"
+OS_NAME="${3:-unknown}"
+OUTPUT="${4:-src/www/generated/config.js}"
 
 if [ -z "$TEMPLATE" ] || [ ! -f "$TEMPLATE" ]; then
-    echo "Usage: $0 <template> [progname] [output]" >&2
+    echo "Usage: $0 <template> <progname> <os_name> [output]" >&2
     echo "Error: template file '${TEMPLATE}' not found" >&2
     exit 1
 fi
@@ -38,7 +29,7 @@ fi
 # Ensure output directory exists
 mkdir -p "$(dirname "$OUTPUT")"
 
-awk -v progname="$PROGNAME" '
+awk -v progname="$PROGNAME" -v os_name="$OS_NAME" '
 BEGIN {
     menu_count = 0
     item_count = 0
@@ -83,7 +74,9 @@ BEGIN {
 }
 END {
     printf "// Auto-generated file \xe2\x80\x94 DO NOT EDIT. This file is overwritten on every build.\n"
-    printf "PASSIFLORA_MENUS = [\n"
+    printf "var PassifloraConfig = {\n"
+    printf "  os_name: \"%s\",\n", os_name
+    printf "  menus: [\n"
     first_menu = 1
     in_menu = 0
 
@@ -98,16 +91,16 @@ END {
                 printf "\n      ]\n    }"
             }
             if (!first_menu) printf ","
-            printf "\n  {\n    \"title\": \"%s\",\n    \"items\": [", text
+            printf "\n    {\n      \"title\": \"%s\",\n      \"items\": [", text
             first_menu = 0
             in_menu = 1
             first_item = 1
         } else {
             if (!first_item) printf ","
             if (text == "-") {
-                printf "\n      { \"separator\": true }"
+                printf "\n        { \"separator\": true }"
             } else {
-                printf "\n      { \"title\": \"%s\" }", text
+                printf "\n        { \"title\": \"%s\" }", text
             }
             first_item = 0
         }
@@ -118,8 +111,10 @@ END {
         printf "\n      ]\n    }"
     }
 
-    printf "\n]\n"
+    printf "\n  ],\n"
+    printf "  handleMenu: function(title) { alert(\"Menu item clicked: \" + title); }\n"
+    printf "};\n"
 }
 ' "$TEMPLATE" > "$OUTPUT"
 
-echo "mkmenu_json: $OUTPUT generated from $TEMPLATE (progname=$PROGNAME)"
+echo "mkmenu_json: $OUTPUT generated from $TEMPLATE (progname=$PROGNAME, os=$OS_NAME)"
