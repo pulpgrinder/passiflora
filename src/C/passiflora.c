@@ -72,7 +72,7 @@
 /* ------------------------------------------------------------------ */
 /*  Embedded ZIP filesystem                                            */
 /* ------------------------------------------------------------------ */
-#include "generated/zipdata.c"
+#include "generated/zipdata.h"
 #include "zipzip.h"
 
 /* Provided by UI.c */
