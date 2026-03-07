@@ -981,6 +981,12 @@ void ui_open(int port)
     wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     wc.lpszClassName = "PassifloraWnd";
+    wc.hIcon         = LoadIconA(hInst, MAKEINTRESOURCEA(1));
+    wc.hIconSm       = (HICON)LoadImageA(hInst, MAKEINTRESOURCEA(1),
+                            IMAGE_ICON,
+                            GetSystemMetrics(SM_CXSMICON),
+                            GetSystemMetrics(SM_CYSMICON),
+                            LR_DEFAULTCOLOR);
     RegisterClassExA(&wc);
 
     g_wv2.hwnd = CreateWindowExA(

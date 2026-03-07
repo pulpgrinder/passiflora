@@ -113,10 +113,10 @@ ul.passiflora_menu li {
 }
 
 
-
+/*
 ul.passiflora_menu li:active {
     background: #f0f0f0;
-}
+} */
 
 ul.passiflora_menu li .passiflora_menu_arrow {
     color: #999;

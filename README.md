@@ -109,11 +109,11 @@ Note that these may need some manual tweaking for legibility, particularly at th
 Underneath `src`, each platform has a folder which contains a `menu.txt` file. These are used to generate menus on two levels:
 
 1. **Native menu bar** — on platforms that have one (macOS, Windows, Linux), the entries produce a real OS menu bar.
-2. **JavaScript sliding menu** — on all platforms, non-native entries are available in `PassifloraConfig.menus` and in the built-in sliding menu UI (see [Sliding Menu](#sliding-menu) below).
+2. **JavaScript sliding menu** — on all platforms, non-native entries are available in `PassifloraConfig.menus` and in the (optional) built-in sliding menu UI (see [Sliding Menu](#sliding-menu) below).
 
 #### menu.txt format
 
-Menu hierarchy is expressed with indentation. Submenus can be nested to any depth. Blank lines and separators (`-`) are supported.
+Menu hierarchy is expressed with simple indentation. Submenus can be nested to any depth. Blank lines and separators (`-`) are supported.
 
 ```
 {{progname}}
