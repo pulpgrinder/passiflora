@@ -2,7 +2,9 @@
 
 # Passiflora
 
-Passiflora is a no-nonsense cross-platform packager that wraps HTML/JavaScript/CSS/etc. in an executable (similar to Electron and its ilk). Note that this should be considered **experimental** at this point. Things are still in a "move fast and break stuff" phase.  Please report any issues.
+Passiflora is a no-nonsense cross-platform packager that wraps HTML/JavaScript/CSS/etc. in an executable (similar to Electron and its ilk). 
+
+Note that this should be considered **experimental** at this point. Things are still in a "move fast and break stuff" phase.  Please report any issues. In addition, much of this project was vibe-coded as an experiment. While everything seems to be working fine, I'm not an expert in all these systems and I'm sure there are numerous uglinesses and infelicities present. Again, please raise an issue if you notice anything amiss.
 
 Supported target platforms include:
 
@@ -15,13 +17,21 @@ Supported target platforms include:
 
 What it *doesn't* do:
 
-* Require that you install 50 million dubious npm packages (or the whole freakin' Rust ecosystem, for the love of all that's holy)
+* Require that you install 50 million dubious npm packages (or a whole freakin' Rust ecosystem, for the love of all that's holy)
 * Generate 60 petabyte binaries for a "Hello, world!" program
-* Engage in baroque configuration gymnastics
+* Engage in baroque configuration gymnastics -- no need to fool with nasty-ass package.json scripts
 
-Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Similarly, Passiflora doesn't provide a lot of integration with the native OS -- things like file open/save (i.e., upload/download), access to the mic, camera and speaker, GPS data, etc. can now be done from HTML. Doing these things made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then. It's my belief that it's now preferable to work through whatever inconsistencies and shortcomings that remain than take the enormous hit of bundling an entire browser and native API in the executable. It's possible that some native bridging/integration will be added in the future, but the plan is to continue doing everything with web technology that *can* be done with web technology.
+![Ur Doin' It Worng](logo.png)
 
-A basic Passiflora "Hello, world!" executable for Windows weighs only 859 KB.
+Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Similarly, Passiflora doesn't provide a lot of integration with the native OS -- things like file open/save (i.e., upload/download), access to the mic, camera and speaker, GPS data, etc. can now be done from HTML. Bundling a web browser and/or a heavyweight native API bridge made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then. It's my belief that it's now preferable to work through or around whatever inconsistencies and shortcomings that remain than take the enormous hit of bundling an entire browser and native API in the executable. It's possible that some native bridging will be added in the future to handle corner cases, but the plan is to continue doing everything with web technology that *can* be done with web technology.
+
+A basic Passiflora "Hello, world!" executable for macOS weighs only about 3.6 MB. 
+
+By comparison, a similar Electron executable for macOS (generated with Electron Forge) weighs over 210 MB.
+
+ Electron and Electron Forge also install 342 (!) npm packages, and generate scads of deprecation/security warnings (yes, I'm following the installation instructions on the Electron website that are current as of today, March 7, 2026).
+
+Yikes!
 
 ## Prerequisites and Building
 
