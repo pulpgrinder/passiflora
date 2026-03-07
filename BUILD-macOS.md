@@ -34,6 +34,31 @@ This produces `bin/macOS/<progname>.app` — a standard macOS application bundle
 | `make icons` | Generate icon sets for all platforms |
 | `make clean` | Remove all build artifacts |
 
+### Bundle Identifier
+
+Every macOS and iOS app needs a **bundle identifier** — a reverse-DNS string that uniquely identifies your app (e.g., `com.yourcompany.YourApp`). The Makefile defaults to:
+
+```
+BUNDLE_ID ?= com.example.$(PROGNAME)
+```
+
+You should change this before distributing your app. Override it in the Makefile or on the command line:
+
+```
+make BUNDLE_ID=com.yourcompany.YourApp
+```
+
+**Rules for bundle identifiers:**
+
+* Use reverse-DNS notation: `com.yourcompany.appname` or `org.yourproject.appname`.
+* Only alphanumeric characters, hyphens, and periods are allowed.
+* Each component must start with a letter.
+* The `com.example.*` prefix is reserved for examples and will be rejected by the App Store.
+* The identifier must match what you register in your Apple Developer account (for signed/distributed apps) and in your provisioning profile (for iOS).
+* For Android, the same `BUNDLE_ID` is passed to build.gradle as the `applicationId`. Google Play uses it to identify your app, and it cannot be changed after publishing.
+
+Pick your bundle identifier early — changing it later means the OS treats it as a different app (losing user data, preferences, keychain items, etc.).
+
 ---
 
 ## Cross-Compiling for iOS

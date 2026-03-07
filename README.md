@@ -92,7 +92,7 @@ or
 
 to generate a new icon set (on Windows `.\build icons` would also work).
 
-Note that these may need some manual tweaking for legibility, particularly at the smaller sizes, but it's still a substantial time savings over generating them all individually. Icons are *not* regenerated automatically during a normal build, so any hand-tuned versions won't be overwritten (unless, of course, you run `make icons` or `.\build icons` again).
+Note that these may need some manual tweaking for legibility, particularly at the smaller sizes, but it's still a substantial time savings over generating them all individually. Icons are *not* regenerated automatically during a normal build (not even after make clean). This is so any hand-tuned versions you haave won't be overwritten. If you do want to wipe out all the icons and start over, run `make icons` or `.\build icons` again.
 
 ### Menus
 
