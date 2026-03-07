@@ -15,7 +15,7 @@ Supported target platforms include:
 
 What it *doesn't* do:
 
-* Require that you install 50 million dubious npm packages (or a whole freakin' Rust ecosystem, for the love of all that's holy)
+* Require that you install 50 million dubious npm packages (or the whole freakin' Rust ecosystem, for the love of all that's holy)
 * Generate 60 petabyte binaries for a "Hello, world!" program
 * Engage in baroque configuration gymnastics
 
@@ -92,7 +92,7 @@ or
 
 to generate a new icon set (on Windows `.\build icons` would also work).
 
-Note that these may need some manual tweaking for legibility, particularly at the smaller sizes, but it's still a substantial time savings over generating them all individually. Icons are *not* regenerated automatically during a normal build (not even after make clean). This is so any hand-tuned versions you haave won't be overwritten. If you do want to wipe out all the icons and start over, run `make icons` or `.\build icons` again.
+Note that these may need some manual tweaking for legibility, particularly at the smaller sizes, but it's still a substantial time savings over generating them all individually. Icons are *not* regenerated automatically during a normal build (not even after make clean). This is so any hand-tuned versions you have won't be overwritten. If you *do* want to wipe out all the generated icons and start over, run `make icons` or `.\build icons` again.
 
 ### Menus
 
@@ -139,5 +139,10 @@ var PassifloraConfig = {
 - **`PassifloraConfig.handleMenu`** — called by the native menu bar when a menu item is selected. Override this in your `app.js` to handle menu actions.
 
 This file is auto-generated on every build and should not be edited by hand.
+
+## About this project
+
+This code was developed through an iterative process involving human-guided prompting of a large language model (LLM), followed by review, editing, refinement, and original contributions by the author.To the extent the work contains copyrightable human-authored elements (including structure, modifications, arrangements, and additions),
+Copyright (c) 2026 Anthony [Last Name]The project is distributed under the terms of the MIT License (see LICENSE file for full text). Portions generated directly by AI may not be independently copyrightable under current U.S. law.
 
 
