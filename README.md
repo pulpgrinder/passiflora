@@ -19,9 +19,9 @@ What it *doesn't* do:
 
 * Require that you install 50 million dubious npm packages (or a whole freakin' Rust ecosystem, for the love of all that's holy)
 * Generate 60 petabyte binaries for a "Hello, world!" program
-* Engage in baroque configuration gymnastics -- no need to fool with nasty-ass package.json scripts
+* Engage in baroque configuration gymnastics -- no need to fool with those nasty-ass package.json scripts
 
-![Ur Doin' It Worng](logo.png)
+![Ur Doin' It Worng](doingitwrong.jpg)
 
 Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Similarly, Passiflora doesn't provide a lot of integration with the native OS -- things like file open/save (i.e., upload/download), access to the mic, camera and speaker, GPS data, etc. can now be done from HTML. Bundling a web browser and/or a heavyweight native API bridge made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then. It's my belief that it's now preferable to work through or around whatever inconsistencies and shortcomings that remain than take the enormous hit of bundling an entire browser and native API in the executable. It's possible that some native bridging will be added in the future to handle corner cases, but the plan is to continue doing everything with web technology that *can* be done with web technology.
 
@@ -29,7 +29,7 @@ A basic Passiflora "Hello, world!" executable for macOS weighs only about 3.6 MB
 
 By comparison, a similar Electron executable for macOS (generated with Electron Forge) weighs over 210 MB.
 
- Electron and Electron Forge also install 342 (!) npm packages, and generate scads of deprecation/security warnings (yes, I'm following the installation instructions on the Electron website that are current as of today, March 7, 2026).
+ Electron and Electron Forge also install 342 (!) npm packages, and generate scads of deprecation/security warnings (and, yes, I'm following the installation/compilation instructions on the Electron website that are current as of today, March 7, 2026).
 
 Yikes!
 
