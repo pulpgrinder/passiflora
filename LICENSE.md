@@ -3,7 +3,7 @@
 
  To the extent the resulting work contains copyrightable expression attributable
  to human authorship (including selection, coordination, arrangement, edits,
- refinements, and original contributions), Passiflora is  Copyright (c) 2026 by Anthony W. Hursh
+ refinements, and original contributions), Passiflora is Copyright (c) 2026 by Anthony W. Hursh
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal

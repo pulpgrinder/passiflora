@@ -96,31 +96,103 @@ Note that these may need some manual tweaking for legibility, particularly at th
 
 ### Menus
 
-Underneath `src`, each platform has a folder which contains a `menu.txt` file. These are used to generate menus. They will appear in the menu bar (for platforms that have a menu bar, e.g., Mac and Windows). The menu data is also available in JavaScript via `PassifloraConfig.menus` (see below), which can be used to build your own custom menus on mobile platforms.
+Underneath `src`, each platform has a folder which contains a `menu.txt` file. These are used to generate menus on two levels:
 
-The format should be clear — the different levels of a menu are expressed with indentation.
+1. **Native menu bar** — on platforms that have one (macOS, Windows, Linux), the entries produce a real OS menu bar.
+2. **JavaScript sliding menu** — on all platforms, non-native entries are available in `PassifloraConfig.menus` and in the built-in sliding menu UI (see [Sliding Menu](#sliding-menu) below).
 
-For platforms with a menu bar, choosing a menu item will call `PassifloraConfig.handleMenu(title)` in your JavaScript. For example, if you have:
+#### menu.txt format
+
+Menu hierarchy is expressed with indentation. Submenus can be nested to any depth. Blank lines and separators (`-`) are supported.
 
 ```
 {{progname}}
-    About
-    Quit
+    *About
+    -
+    *Quit
 File
     Open
 Misc
     More stuff
+    Still more stuff
+        Stuff at an even lower level
 ```
 
-Choosing "More stuff" will call `PassifloraConfig.handleMenu("More stuff")` in your JavaScript.
+`{{progname}}` is replaced with the program name at build time.
 
-The default `handleMenu` just pops an alert. To provide your own handler, set it in your `app.js`:
+#### Native vs. JavaScript routing (`*` prefix)
+
+Each leaf menu item is either **native** or **JavaScript**, controlled by an optional `*` prefix:
+
+| Prefix | Behavior |
+|--------|----------|
+| `*Quit` | Handled by the **native** platform. The `*` is stripped from the display title. If the platform recognises the item (e.g. "Quit" on macOS maps to `⌘Q`), the native action runs. If not, a dialog says "No native handler for this item on this platform." The item is **never** passed to JavaScript and does **not** appear in `PassifloraConfig.menus` or the sliding menu. |
+| `Quit` | Always passed to **JavaScript** via `PassifloraConfig.handleMenu("Quit")`. The native platform does not intercept it, and it **does** appear in `PassifloraConfig.menus` and the sliding menu. |
+
+Matching is **exact** — `*Quit` matches the native "Quit" handler, but `*Quite` does not (it will show the "no native handler" dialog).
+
+Top-level menu names (e.g. `File`, `{{progname}}`) and separators (`-`) are not affected by the `*` prefix.
+
+#### Recognised native items by platform
+
+**macOS** — the following items have built-in native handlers when prefixed with `*`:
+
+| Item | Action | Shortcut |
+|------|--------|----------|
+| About | Standard About panel | — |
+| Hide | Hide application | ⌘H |
+| Hide Others | Hide other applications | ⌥⌘H |
+| Show All | Unhide all applications | — |
+| Quit | Terminate | ⌘Q |
+| Undo | Undo | ⌘Z |
+| Redo | Redo | ⇧⌘Z |
+| Cut | Cut | ⌘X |
+| Copy | Copy | ⌘C |
+| Paste | Paste | ⌘V |
+| Select All | Select all | ⌘A |
+| Close | Close window | ⌘W |
+| Minimize | Minimize window | ⌘M |
+| Zoom | Zoom window | — |
+| Bring All to Front | Arrange in front | — |
+
+**Windows** — `*Quit` and `*Exit` close the window. All other `*`-prefixed items show a "no native handler" dialog.
+
+**Linux** — `*Quit` and `*Exit` quit the application (`gtk_main_quit`). All other `*`-prefixed items show a "no native handler" dialog.
+
+**iOS / Android** — these platforms have no native menu bar. The `*` prefix still causes items to be excluded from `PassifloraConfig.menus` and the sliding menu.
+
+#### JavaScript menu handler
+
+For items without the `*` prefix, choosing them from the native menu bar calls `PassifloraConfig.handleMenu(title)` in your JavaScript. The default handler just pops an alert. Override it in your `app.js`:
 
 ```javascript
 PassifloraConfig.handleMenu = function(title) {
     // your code here
 };
 ```
+
+### Sliding Menu
+
+Passiflora includes a built-in sliding menu for platforms that don't have a native menu bar (iOS, Android), or for web-style navigation on any platform.
+
+The menu is built automatically from `PassifloraConfig.menus` at page load. It slides in from the right edge of the screen, supports arbitrarily nested submenus, and calls `PassifloraConfig.handleMenu(title)` when a leaf item is tapped.
+
+**Triggering the menu:** The hamburger button (≡) is hidden by default to keep the UI clean. To reveal it, **long-press** (hold for 500 ms) on any non-interactive area of the page. The button appears in the top-right corner and stays visible for 3 seconds before fading out again.
+
+**Closing the menu:**
+
+* Tap/click outside the menu panels
+* Press **Escape**
+* Navigate back through all levels
+
+**Styling:** The menu's appearance is controlled by `src/www/passiflora/menu.css`. You can customise colours, sizes, transitions, etc. by editing this file.
+
+**Files:**
+
+* `src/www/passiflora/buildmenu.js` — menu logic (the `PassifloraMenu` IIFE)
+* `src/www/passiflora/menu.css` — menu styling
+
+Items prefixed with `*` in `menu.txt` are excluded from the sliding menu entirely — they only exist in the native menu bar.
 
 ## PassifloraConfig
 
@@ -129,14 +201,14 @@ Each build generates `src/www/generated/config.js`, which defines a `PassifloraC
 ```javascript
 var PassifloraConfig = {
   os_name: "iOS",     // or "macOS", "Windows", "Linux", "Android"
-  menus: [ ... ],     // menu structure from menu.txt
+  menus: [ ... ],     // menu structure from menu.txt (excludes *-prefixed items)
   handleMenu: function(title) { alert("Menu item clicked: " + title); }
 };
 ```
 
 - **`PassifloraConfig.os_name`** — the target platform, useful when your JavaScript needs to do different things on different platforms.
-- **`PassifloraConfig.menus`** — the menu structure as a JSON array, useful for building custom menus on mobile.
-- **`PassifloraConfig.handleMenu`** — called by the native menu bar when a menu item is selected. Override this in your `app.js` to handle menu actions.
+- **`PassifloraConfig.menus`** — the menu structure as a nested JSON array, useful for building custom menus. Items prefixed with `*` in `menu.txt` are excluded — they are native-only and never reach JavaScript.
+- **`PassifloraConfig.handleMenu`** — called by both the native menu bar and the built-in sliding menu when a (non-native) menu item is selected. Override this in your `app.js` to handle menu actions.
 
 This file is auto-generated on every build and should not be edited by hand.
 

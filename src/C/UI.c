@@ -307,33 +307,47 @@ static void build_menus(void)
         }
 
         /* ---- regular item ---- */
-        NSString *title = [NSString stringWithUTF8String:text];
+        /* Items prefixed with '*' use the native handler (if one
+         * exists).  Items without '*' always go to JavaScript.  */
+        int wantNative = (text[0] == '*');
+        const char *displayText = wantNative ? text + 1 : text;
+        NSString *title = [NSString stringWithUTF8String:displayText];
 
-        /* Check for a known system item */
         SEL action = NULL;
         NSString *keyEq = @"";
         NSUInteger modMask = NSEventModifierFlagCommand;
         int isSystem = 0;
 
-        for (int k = 0; known_items[k].prefix; k++) {
-            const char *p = known_items[k].prefix;
-            int exact = known_items[k].exact;
-            BOOL match = exact
-                ? [title isEqualToString:
-                    [NSString stringWithUTF8String:p]]
-                : [title hasPrefix:
+        if (wantNative) {
+            /* Look up a known native handler — always exact match
+             * so that e.g. *Quite does not match "Quit". */
+            for (int k = 0; known_items[k].prefix; k++) {
+                const char *p = known_items[k].prefix;
+                BOOL match = [title isEqualToString:
                     [NSString stringWithUTF8String:p]];
-            if (match) {
-                action  = sel_for(known_items[k].sel);
-                keyEq   = [NSString stringWithUTF8String:known_items[k].key];
-                if (known_items[k].addopt)
-                    modMask |= NSEventModifierFlagOption;
-                isSystem = 1;
-                break;
+                if (match) {
+                    action  = sel_for(known_items[k].sel);
+                    keyEq   = [NSString stringWithUTF8String:known_items[k].key];
+                    if (known_items[k].addopt)
+                        modMask |= NSEventModifierFlagOption;
+                    isSystem = 1;
+                    break;
+                }
             }
-        }
-
-        if (!isSystem) {
+            if (!isSystem) {
+                /* No native handler — show a dialog and make the item
+                 * a no-op by leaving action = NULL. */
+                NSAlert *noHandler = [[NSAlert alloc] init];
+                [noHandler setMessageText:
+                    [NSString stringWithFormat:
+                        @"No native handler for \"%@\" on this platform.", title]];
+                [noHandler addButtonWithTitle:@"OK"];
+                [noHandler runModal];
+                action = NULL;
+                keyEq  = @"";
+            }
+        } else {
+            /* No '*' prefix — always route to JavaScript */
             action = @selector(menuAction:);
             keyEq  = @"";
         }
@@ -345,7 +359,7 @@ static void build_menus(void)
 
         if (isSystem) {
             [item setKeyEquivalentModifierMask:modMask];
-        } else {
+        } else if (!wantNative) {
             [item setTarget:g_menuHandler];
         }
 
@@ -801,17 +815,22 @@ static HMENU build_win32_menus(WV2State *st)
         const char *text  = menu_template[i].text;
         if (!text) break;
 
+        /* Items prefixed with '*' are native-only; strip the prefix
+         * for display.  Items without '*' go to JavaScript.        */
+        int wantNative = (text[0] == '*');
+        const char *displayText = wantNative ? text + 1 : text;
+
         /* Top-level menu bar item (level 0) */
         if (level == 0) {
             HMENU popup = CreatePopupMenu();
-            AppendMenuA(menubar, MF_POPUP, (UINT_PTR)popup, text);
+            AppendMenuA(menubar, MF_POPUP, (UINT_PTR)popup, displayText);
             if (level + 1 < MAX_WIN_MENU_DEPTH)
                 stack[level + 1] = popup;
             continue;
         }
 
         /* Separator */
-        if (strcmp(text, "-") == 0) {
+        if (strcmp(displayText, "-") == 0) {
             if (level < MAX_WIN_MENU_DEPTH && stack[level])
                 AppendMenuA(stack[level], MF_SEPARATOR, 0, NULL);
             continue;
@@ -821,7 +840,7 @@ static HMENU build_win32_menus(WV2State *st)
         if (menu_template[i + 1].level > level) {
             HMENU sub = CreatePopupMenu();
             if (level < MAX_WIN_MENU_DEPTH && stack[level])
-                AppendMenuA(stack[level], MF_POPUP, (UINT_PTR)sub, text);
+                AppendMenuA(stack[level], MF_POPUP, (UINT_PTR)sub, displayText);
             if (level + 1 < MAX_WIN_MENU_DEPTH)
                 stack[level + 1] = sub;
             continue;
@@ -830,11 +849,13 @@ static HMENU build_win32_menus(WV2State *st)
         /* Regular leaf item — assign a command ID */
         int idx = st->menuCount;
         if (idx < WIN_MENU_MAX_ITEMS) {
+            /* Store the original text (with '*' if present) so the
+             * WM_COMMAND handler knows whether this is native. */
             st->menuTitles[idx] = text;
             st->menuCount++;
             if (level < MAX_WIN_MENU_DEPTH && stack[level])
                 AppendMenuA(stack[level], MF_STRING,
-                            WIN_MENU_ID_BASE + idx, text);
+                            WIN_MENU_ID_BASE + idx, displayText);
         }
     }
     #undef MAX_WIN_MENU_DEPTH
@@ -891,8 +912,23 @@ static LRESULT CALLBACK ZSWndProc(HWND hwnd, UINT msg,
     case WM_COMMAND: {
         int id = LOWORD(wp);
         int idx = id - WIN_MENU_ID_BASE;
-        if (idx >= 0 && idx < g_wv2.menuCount && g_wv2.menuTitles[idx])
-            win_call_handlemenu(&g_wv2, g_wv2.menuTitles[idx]);
+        if (idx >= 0 && idx < g_wv2.menuCount && g_wv2.menuTitles[idx]) {
+            const char *raw = g_wv2.menuTitles[idx];
+            if (raw[0] == '*') {
+                /* Native-only item: handle known actions */
+                const char *name = raw + 1;
+                if (_stricmp(name, "Quit") == 0 ||
+                    _stricmp(name, "Exit") == 0) {
+                    PostMessage(hwnd, WM_CLOSE, 0, 0);
+                } else {
+                    MessageBoxA(hwnd,
+                        "No native handler for this item on this platform.",
+                        name, MB_OK | MB_ICONINFORMATION);
+                }
+            } else {
+                win_call_handlemenu(&g_wv2, raw);
+            }
+        }
         /* Hide menu after selection */
         if (g_wv2.menuVisible) {
             g_wv2.menuVisible = 0;
@@ -1099,6 +1135,18 @@ static void on_quit_activate(GtkMenuItem *item, gpointer data)
     gtk_main_quit();
 }
 
+/* ---- Native-only callback: show "no handler" dialog ---- */
+static void on_no_native_handler(GtkMenuItem *item, gpointer data)
+{
+    (void)item;
+    const char *name = (const char *)data;
+    GtkWidget *dialog = gtk_message_dialog_new(
+        NULL, GTK_DIALOG_MODAL, GTK_MESSAGE_INFO, GTK_BUTTONS_OK,
+        "No native handler for \"%s\" on this platform.", name);
+    gtk_dialog_run(GTK_DIALOG(dialog));
+    gtk_widget_destroy(dialog);
+}
+
 /* ---- Build GTK menu bar from menu_template[] ---- */
 static GtkWidget *build_gtk_menus(void)
 {
@@ -1113,9 +1161,14 @@ static GtkWidget *build_gtk_menus(void)
         const char *text  = menu_template[i].text;
         if (!text) break;
 
+        /* Items prefixed with '*' use native handlers only;
+         * items without '*' are routed to JavaScript.       */
+        int wantNative = (text[0] == '*');
+        const char *displayText = wantNative ? text + 1 : text;
+
         /* Top-level menu bar item (level 0) */
         if (level == 0) {
-            GtkWidget *item = gtk_menu_item_new_with_label(text);
+            GtkWidget *item = gtk_menu_item_new_with_label(displayText);
             gtk_menu_shell_append(GTK_MENU_SHELL(menubar), item);
             GtkWidget *submenu = gtk_menu_new();
             gtk_menu_item_set_submenu(GTK_MENU_ITEM(item), submenu);
@@ -1125,22 +1178,30 @@ static GtkWidget *build_gtk_menus(void)
         }
 
         /* Separator */
-        if (strcmp(text, "-") == 0) {
+        if (strcmp(displayText, "-") == 0) {
             if (level < MAX_GTK_MENU_DEPTH && stack[level])
                 gtk_menu_shell_append(GTK_MENU_SHELL(stack[level]),
                     gtk_separator_menu_item_new());
             continue;
         }
 
-        GtkWidget *item = gtk_menu_item_new_with_label(text);
+        GtkWidget *item = gtk_menu_item_new_with_label(displayText);
 
-        /* Known items: Quit/Exit close the application */
-        if (strcmp(text, "Quit") == 0 || strcmp(text, "Exit") == 0) {
-            g_signal_connect(item, "activate",
-                G_CALLBACK(on_quit_activate), NULL);
+        if (wantNative) {
+            /* Native-only: handle known items, else show dialog */
+            if (strcmp(displayText, "Quit") == 0 ||
+                strcmp(displayText, "Exit") == 0) {
+                g_signal_connect(item, "activate",
+                    G_CALLBACK(on_quit_activate), NULL);
+            } else {
+                g_signal_connect(item, "activate",
+                    G_CALLBACK(on_no_native_handler),
+                    (gpointer)displayText);
+            }
         } else {
+            /* No '*' — route to JavaScript */
             g_signal_connect(item, "activate",
-                G_CALLBACK(on_menu_item_activate), (gpointer)text);
+                G_CALLBACK(on_menu_item_activate), (gpointer)displayText);
         }
 
         if (level < MAX_GTK_MENU_DEPTH && stack[level])

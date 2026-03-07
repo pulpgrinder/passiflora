@@ -1,0 +1,134 @@
+/* PassifloraMenu styles */
+
+.hamburgermenu {
+    position: fixed;
+    top: 8px;
+    right: 8px;
+    z-index: 99997;
+    font-size: 200%;
+    cursor: pointer;
+    user-select: none;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s;
+}
+
+.hamburgermenu.visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.passiflora_menu_overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .45);
+    z-index: 99998;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s;
+}
+
+.passiflora_menu_overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.passiflora_menu_wrapper {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    z-index: 99999;
+    overflow: hidden;
+    background: #fff;
+    transform: translateX(100%);
+    transition: transform .25s ease;
+    font-family: -apple-system, system-ui, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+}
+
+.passiflora_menu_wrapper.active {
+    transform: translateX(0);
+}
+
+.passiflora_menu_track {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+.passiflora_menu_screen {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    min-height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    transition: transform .25s ease;
+}
+
+.passiflora_menu_back {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #007aff;
+    background-color: #eee;
+    cursor: pointer;
+    border: 1px solid #777;
+    user-select: none;
+}
+
+.passiflora_menu_back::before {
+    content: '\276E';
+    margin-right: 8px;
+    font-size: 17px;
+}
+
+ul.passiflora_menu {
+    list-style: none;
+    margin: 4em;
+    padding: 0;
+    background-color: #eee;
+    border-radius: 20px;
+    border: 1px solid black;
+}
+ul.passiflora_menu :last-child{
+    border-bottom:none;
+}
+ul.passiflora_menu li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid #555;
+    font-size: 16px;
+    color: #222;
+    cursor: pointer;
+    user-select: none;
+}
+
+
+
+ul.passiflora_menu li:active {
+    background: #f0f0f0;
+}
+
+ul.passiflora_menu li .passiflora_menu_arrow {
+    color: #999;
+    font-size: 17px;
+    margin-left: 8px;
+    flex-shrink: 0;
+}
+
+ul.passiflora_menu li.passiflora_menu_separator {
+    padding: 0;
+    height: 1px;
+    background: #ddd;
+    border: none;
+    cursor: default;
+}

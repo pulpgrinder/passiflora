@@ -9,6 +9,7 @@
 #   - Level 1+ entries become items within that menu
 #   - "-" alone means a separator
 #   - Blank lines are skipped
+#   - Items starting with * are native-only and are excluded from the JS menu
 #   - {{progname}} is replaced with the progname argument
 #
 # Output: a JS file defining PassifloraConfig with os_name, menus, and handleMenu.
@@ -30,10 +31,7 @@ fi
 mkdir -p "$(dirname "$OUTPUT")"
 
 awk -v progname="$PROGNAME" -v os_name="$OS_NAME" '
-BEGIN {
-    menu_count = 0
-    item_count = 0
-}
+function pad(n,    s, k) { s = ""; for (k = 0; k < n; k++) s = s "  "; return s }
 {
     line = $0
     level = 0
@@ -64,6 +62,9 @@ BEGIN {
         line = substr(line, 1, idx - 1) progname substr(line, idx + 12)
     }
 
+    # Items starting with * are native-only; skip them from JS output
+    if (substr(line, 1, 1) == "*") next
+
     # Escape backslashes and double quotes for JSON
     gsub(/\\/, "\\\\", line)
     gsub(/"/, "\\\"", line)
@@ -76,39 +77,57 @@ END {
     printf "// Auto-generated file \xe2\x80\x94 DO NOT EDIT. This file is overwritten on every build.\n"
     printf "var PassifloraConfig = {\n"
     printf "  os_name: \"%s\",\n", os_name
-    printf "  menus: [\n"
-    first_menu = 1
-    in_menu = 0
+    printf "  menus: ["
+
+    # open_depth tracks how many "items": [ arrays are open.
+    # The top-level menus: [ counts as depth 0.
+    open_depth = 0
+    # first_at[d] = 1 means we have not yet printed an item at depth d
+    first_at[0] = 1
 
     for (i = 1; i <= count; i++) {
         if (!(i in levels)) continue
         level = levels[i]
         text  = texts[i]
 
-        if (level == 0) {
-            # Close previous menu if open
-            if (in_menu) {
-                printf "\n      ]\n    }"
-            }
-            if (!first_menu) printf ","
-            printf "\n    {\n      \"title\": \"%s\",\n      \"items\": [", text
-            first_menu = 0
-            in_menu = 1
-            first_item = 1
-        } else {
-            if (!first_item) printf ","
-            if (text == "-") {
-                printf "\n        { \"separator\": true }"
-            } else {
-                printf "\n        { \"title\": \"%s\" }", text
-            }
-            first_item = 0
+        # Peek ahead to see if this item has children
+        has_children = 0
+        for (j = i + 1; j <= count; j++) {
+            if (!(j in levels)) continue
+            if (levels[j] > level) has_children = 1
+            break
         }
+
+        # Close deeper levels until open_depth == level
+        while (open_depth > level) {
+            open_depth--
+            printf "\n%s]", pad(open_depth + 2)
+            printf "\n%s}", pad(open_depth + 1)
+        }
+
+        # Comma before sibling
+        if (!first_at[level]) printf ","
+
+        if (text == "-") {
+            printf "\n%s{ \"separator\": true }", pad(level + 1)
+        } else if (has_children) {
+            printf "\n%s{", pad(level + 1)
+            printf "\n%s\"title\": \"%s\",", pad(level + 2), text
+            printf "\n%s\"items\": [", pad(level + 2)
+            open_depth = level + 1
+            first_at[level + 1] = 1
+        } else {
+            printf "\n%s{ \"title\": \"%s\" }", pad(level + 1), text
+        }
+
+        first_at[level] = 0
     }
 
-    # Close last menu
-    if (in_menu) {
-        printf "\n      ]\n    }"
+    # Close any remaining open levels
+    while (open_depth > 0) {
+        open_depth--
+        printf "\n%s]", pad(open_depth + 2)
+        printf "\n%s}", pad(open_depth + 1)
     }
 
     printf "\n  ],\n"
