@@ -171,9 +171,9 @@ PassifloraConfig.handleMenu = function(title) {
 };
 ```
 
-### Sliding Menu
+### Sliding Menu (optional)
 
-Passiflora includes a built-in sliding menu for platforms that don't have a native menu bar (iOS, Android), or for web-style navigation on any platform.
+Passiflora includes a built-in sliding menu for platforms that don't have a native menu bar (iOS, Android), or for web-style navigation on any platform. **This is entirely optional** — you can use it as-is, customise it, or remove it and replace it with your own menu solution.
 
 The menu is built automatically from `PassifloraConfig.menus` at page load. It slides in from the right edge of the screen, supports arbitrarily nested submenus, and calls `PassifloraConfig.handleMenu(title)` when a leaf item is tapped.
 
@@ -193,6 +193,27 @@ The menu is built automatically from `PassifloraConfig.menus` at page load. It s
 * `src/www/passiflora/menu.css` — menu styling
 
 Items prefixed with `*` in `menu.txt` are excluded from the sliding menu entirely — they only exist in the native menu bar.
+
+#### Removing the sliding menu
+
+If you'd rather use your own menu UI (or no menu UI at all), remove these three things from `src/www/index.html`:
+
+1. The CSS link in `<head>`:
+   ```html
+   <link rel="stylesheet" href="passiflora/menu.css">
+   ```
+2. The hamburger element in `<body>`:
+   ```html
+   <div class="hamburgermenu">≡</div>
+   ```
+3. The script tag:
+   ```html
+   <script src="passiflora/buildmenu.js"></script>
+   ```
+
+You can also delete `src/www/passiflora/buildmenu.js` and `src/www/passiflora/menu.css` if you like, but leaving them in place is harmless — they won't do anything without the above references.
+
+The `PassifloraConfig.menus` array and `PassifloraConfig.handleMenu` callback are still available regardless. You can use them to build your own menu however you wish, or ignore them entirely.
 
 ## PassifloraConfig
 
