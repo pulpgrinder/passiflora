@@ -154,6 +154,91 @@ else
 	@echo "sign-ios target requires macOS." >&2; exit 1
 endif
 
+# ── iOS IPA (signed, release-ready) ────────────────────────────────
+IOS_IPA = $(IOS_BINDIR)/$(PROGNAME).ipa
+
+iosipa: ios-bundle
+ifeq ($(UNAME_S),Darwin)
+	@PROV="$(IOS_PROVISIONING_PROFILE)"; \
+	if [ -z "$$PROV" ]; then \
+		printf 'Provisioning profile (.mobileprovision): '; read PROV; \
+	fi; \
+	if [ -z "$$PROV" ] || [ ! -f "$$PROV" ]; then \
+		echo "iosipa: provisioning profile not found: $$PROV" >&2; \
+		echo "  Set IOS_PROVISIONING_PROFILE or provide the path when prompted." >&2; \
+		exit 1; \
+	fi; \
+	echo "iosipa: embedding provisioning profile..."; \
+	cp "$$PROV" $(IOS_APP_BUNDLE)/embedded.mobileprovision; \
+	\
+	echo "iosipa: extracting entitlements from profile..."; \
+	ENT_FILE=$$(mktemp /tmp/iosipa-ent.XXXXXX.plist); \
+	security cms -D -i "$$PROV" > "$$ENT_FILE.full" 2>/dev/null; \
+	/usr/libexec/PlistBuddy -x -c "Print :Entitlements" "$$ENT_FILE.full" > "$$ENT_FILE" 2>/dev/null; \
+	rm -f "$$ENT_FILE.full"; \
+	\
+	echo ""; \
+	echo "=== Code Signing: $(IOS_APP_BUNDLE) ==="; \
+	echo ""; \
+	echo "Platform: iOS (device — IPA packaging)"; \
+	echo ""; \
+	echo "Signing options:"; \
+	echo "  • Apple Distribution / iPhone Distribution — For App Store or enterprise distribution."; \
+	echo "  • Apple Development / iPhone Developer — For ad-hoc/device testing."; \
+	echo ""; \
+	IDENTITIES=$$(security find-identity -v -p codesigning 2>/dev/null \
+		| grep -E '^\s+[0-9]+\)' | sed 's/^[[:space:]]*//'); \
+	N=0; \
+	if [ -n "$$IDENTITIES" ]; then \
+		echo "Available signing identities:"; \
+		echo ""; \
+		echo "$$IDENTITIES" | while IFS= read -r line; do \
+			DESC=$$(echo "$$line" | sed 's/.*"\(.*\)".*/\1/'); \
+			NUM=$$(echo "$$line" | sed 's/^\([0-9]*\)).*/\1/'); \
+			echo "  $$NUM) $$DESC"; \
+		done; \
+		N=$$(echo "$$IDENTITIES" | wc -l | tr -d ' '); \
+	fi; \
+	echo ""; \
+	printf "Choose identity [1-$$N]: "; read CHOICE; \
+	if [ -z "$$CHOICE" ]; then \
+		echo "iosipa: no selection made, aborting." >&2; \
+		rm -f "$$ENT_FILE"; \
+		exit 1; \
+	fi; \
+	LINE=$$(echo "$$IDENTITIES" | sed -n "$${CHOICE}p"); \
+	if [ -z "$$LINE" ]; then \
+		echo "iosipa: invalid selection." >&2; \
+		rm -f "$$ENT_FILE"; \
+		exit 1; \
+	fi; \
+	SIGN_ID=$$(echo "$$LINE" | sed 's/^[0-9]*) *\([A-F0-9]*\).*/\1/'); \
+	SIGN_DESC=$$(echo "$$LINE" | sed 's/.*"\(.*\)".*/\1/'); \
+	echo ""; \
+	echo "Signing with: $$SIGN_DESC"; \
+	\
+	codesign --force \
+		--sign "$$SIGN_ID" \
+		--entitlements "$$ENT_FILE" \
+		$(IOS_APP_BUNDLE); \
+	rm -f "$$ENT_FILE"; \
+	\
+	echo ""; \
+	echo "iosipa: $(IOS_APP_BUNDLE) signed."; \
+	codesign -dvv $(IOS_APP_BUNDLE) 2>&1 | grep -E '^(Authority|TeamIdentifier|Signature)'; \
+	\
+	echo ""; \
+	echo "iosipa: packaging $(IOS_IPA)..."; \
+	rm -rf $(IOS_BINDIR)/_ipa_staging; \
+	mkdir -p $(IOS_BINDIR)/_ipa_staging/Payload; \
+	cp -R $(IOS_APP_BUNDLE) $(IOS_BINDIR)/_ipa_staging/Payload/; \
+	cd $(IOS_BINDIR)/_ipa_staging && zip -qr "$(CURDIR)/$(IOS_IPA)" Payload; \
+	rm -rf $(IOS_BINDIR)/_ipa_staging; \
+	echo "iosipa: $(IOS_IPA) created."
+else
+	@echo "iosipa target requires macOS." >&2; exit 1
+endif
+
 # ── iOS Simulator (build + install + launch) ───────────────────────
 iossim: $(SIMOS_BINARY) iossim-bundle iossim-run
 
@@ -335,6 +420,8 @@ clean:
 	rm -rf $(APP_BUNDLE)
 	rm -f $(IOS_BINARY)
 	rm -rf $(IOS_APP_BUNDLE)
+	rm -f bin/iOS/$(PROGNAME).ipa
+	rm -rf bin/iOS/_ipa_staging
 	rm -f $(SIMOS_BINARY)
 	rm -rf $(SIMOS_APP_BUNDLE)
 	rm -f $(WIN_BINARY)
@@ -349,4 +436,4 @@ ifeq ($(UNAME_S),Linux)
 	-gtk-update-icon-cache -f -t $(HOME)/.local/share/icons/hicolor 2>/dev/null || true
 endif
 
-.PHONY: all clean icons bundle sign-macos ios ios-bundle sign-ios iossim iossim-bundle sign-iossim iossim-run windows linux android sign-android
+.PHONY: all clean icons bundle sign-macos ios ios-bundle sign-ios iosipa iossim iossim-bundle sign-iossim iossim-run windows linux android sign-android
