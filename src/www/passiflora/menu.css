@@ -5,7 +5,7 @@
     top: 8px;
     right: 8px;
     z-index: 99997;
-    font-size: 200%;
+    font-size: 300%;
     cursor: pointer;
     user-select: none;
     opacity: 0;
@@ -91,7 +91,7 @@
 
 ul.passiflora_menu {
     list-style: none;
-    margin: 4em;
+    margin: 3em;
     padding: 0;
     background-color: #eee;
     border-radius: 20px;
@@ -126,9 +126,20 @@ ul.passiflora_menu li .passiflora_menu_arrow {
 }
 
 ul.passiflora_menu li.passiflora_menu_separator {
+    display: block;
     padding: 0;
-    height: 1px;
-    background: #ddd;
+    height: 2px;
+    min-height: 2px;
+    background: #000;
     border: none;
     cursor: default;
+    margin: 0;
+}
+ul.passiflora_menu li.passiflora_menu_separator:last-child {
+    height: 0;
+    min-height: 0;
+    background: none;
+}
+ul.passiflora_menu li:has(+ li.passiflora_menu_separator) {
+    border-bottom: none;
 }
