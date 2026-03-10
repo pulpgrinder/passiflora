@@ -22,7 +22,10 @@ sudo apt install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
 ```
 sudo apt install imagemagick
 ```
-
+3. If location services aren't working, you may need to install GeoClue2
+```
+sudo apt install geoclue-2.0
+```
 ### Build
 
 ```
@@ -247,3 +250,32 @@ keytool -genkey -v -keystore ~/my-release.jks -keyalg RSA -keysize 2048 -validit
 If you choose an alias other than `mykey`, set `RELEASE_KEY_ALIAS` to match.
 
 Then use Method 2 above with the appropriate environment variables.
+
+#### Installing the APK on a physical device
+
+Connect your Android device via USB with [USB debugging enabled](https://developer.android.com/studio/debug/dev-options#enable), then use `adb`:
+
+```
+adb install bin/Android/HeckinChonker.apk
+```
+
+If `adb` is not on your PATH:
+
+```
+$ANDROID_HOME/platform-tools/adb install bin/Android/HeckinChonker.apk
+```
+
+To install on a specific device when multiple are connected:
+
+```
+adb devices                          # list connected devices
+adb -s DEVICE_SERIAL install bin/Android/HeckinChonker.apk
+```
+
+To replace an existing installation (keeping app data):
+
+```
+adb install -r bin/Android/HeckinChonker.apk
+```
+
+Alternatively, copy the signed `.apk` to the device (via USB, email, cloud storage, web server, etc.) and open it — Android will prompt to install. You may need to enable **Install from unknown sources** in the device settings.

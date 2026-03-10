@@ -232,3 +232,32 @@ keytool -genkey -v -keystore "%USERPROFILE%\my-release.jks" -keyalg RSA -keysize
 If you choose an alias other than `mykey`, set `RELEASE_KEY_ALIAS` to match.
 
 Then use Method 2 above with the appropriate environment variables.
+
+#### Installing the APK on a physical device
+
+Connect your Android device via USB with [USB debugging enabled](https://developer.android.com/studio/debug/dev-options#enable), then use `adb`:
+
+```
+adb install bin\Android\HeckinChonker.apk
+```
+
+If `adb` is not on your PATH:
+
+```
+%ANDROID_HOME%\platform-tools\adb install bin\Android\HeckinChonker.apk
+```
+
+To install on a specific device when multiple are connected:
+
+```
+adb devices
+adb -s DEVICE_SERIAL install bin\Android\HeckinChonker.apk
+```
+
+To replace an existing installation (keeping app data):
+
+```
+adb install -r bin\Android\HeckinChonker.apk
+```
+
+Alternatively, copy the signed `.apk` to the device (via USB, email, cloud storage, web server, etc.) and open it — Android will prompt to install. You may need to enable **Install from unknown sources** in the device settings.

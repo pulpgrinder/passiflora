@@ -32,11 +32,10 @@ iOS .ipa 2.3 MB.
 Windows .exe 1.1 MB. 
 Android .apk 2.6 MB.
 
-By comparison, an Electron wrapper for the example code, built using Electron Forge,  weighs over 211 MB.
+By comparison, an Electron wrapper for the example code, built using Electron Forge,  weighs over 211 MB. Yikes!
 
  Electron and Electron Forge also install 342 (!) npm packages, and generate scads of deprecation/security warnings (and, yes, I'm following the installation/compilation instructions on the Electron website that are current as of today, March 7, 2026).
 
-Yikes!
 
 ## Prerequisites and Building
 

@@ -36,6 +36,7 @@
   #include <winsock2.h>
   #include <ws2tcpip.h>
   #include <windows.h>
+  #include <shellapi.h>
   #define sock_read(fd,buf,len)   recv((fd),(char*)(buf),(int)(len),0)
   #define sock_write(fd,buf,len)  send((fd),(const char*)(buf),(int)(len),0)
   #define sock_close(fd)          closesocket(fd)
@@ -56,6 +57,14 @@
   #define sock_errno()            errno
   #define SOCK_EINTR              EINTR
   #define sock_perror(msg)        perror(msg)
+#endif
+
+/* ---- macOS: NSWorkspace for opening external URLs ---- */
+#if defined(__APPLE__) && defined(__MACH__)
+  #include <TargetConditionals.h>
+  #if !TARGET_OS_IPHONE
+    #import <Cocoa/Cocoa.h>
+  #endif
 #endif
 
 /* ---- Android logging: route fprintf(stderr,...) to logcat ---- */
@@ -174,7 +183,7 @@ static void send_response(int fd, int code, const char *status,
         "Content-Length: %zu\r\n"
         "X-Content-Type-Options: nosniff\r\n"
         "X-Frame-Options: DENY\r\n"
-        "Content-Security-Policy: default-src 'self'; script-src 'self'\r\n"
+        "Content-Security-Policy: default-src 'self' 'unsafe-inline'\r\n"
         "Referrer-Policy: no-referrer\r\n"
         "Connection: close\r\n"
         "\r\n",
@@ -244,6 +253,33 @@ static int resolve_path(const char *url_path, char *out, size_t out_sz)
 }
 
 /* ------------------------------------------------------------------ */
+/*  Open a URL in the system's default browser                         */
+/* ------------------------------------------------------------------ */
+static void open_url_in_browser(const char *url)
+{
+#if defined(__APPLE__) && defined(__MACH__) && !TARGET_OS_IPHONE
+    @autoreleasepool {
+        NSURL *nsurl = [NSURL URLWithString:
+            [NSString stringWithUTF8String:url]];
+        if (nsurl)
+            [[NSWorkspace sharedWorkspace] openURL:nsurl];
+    }
+#elif defined(_WIN32)
+    ShellExecuteA(NULL, "open", url, NULL, NULL, SW_SHOWNORMAL);
+#elif defined(__ANDROID__)
+    /* Android: handled on the Java side; no-op here */
+    (void)url;
+#else
+    /* Linux / other: use xdg-open */
+    pid_t pid = fork();
+    if (pid == 0) {
+        execl("/usr/bin/xdg-open", "xdg-open", url, (char *)NULL);
+        _exit(127);
+    }
+#endif
+}
+
+/* ------------------------------------------------------------------ */
 /*  Request handler                                                    */
 /* ------------------------------------------------------------------ */
 static void handle_request(int fd)
@@ -302,6 +338,29 @@ static void handle_request(int fd)
     /* Only GET and HEAD are supported */
     if (strcasecmp(method, "GET") != 0 && strcasecmp(method, "HEAD") != 0) {
         send_text(fd, 405, "Method Not Allowed", "Only GET is supported\n");
+        free(hdr);
+        return;
+    }
+
+    /* ---- Internal API: open URL in external browser ---- */
+    if (strncmp(path, "/__passiflora/openexternal?", 27) == 0) {
+        const char *qs = path + 27;
+        /* Extract url= parameter */
+        if (strncmp(qs, "url=", 4) == 0) {
+            char target[2048];
+            snprintf(target, sizeof target, "%s", qs + 4);
+            /* Only allow http:// and https:// URLs */
+            if (strncmp(target, "http://", 7) == 0 ||
+                strncmp(target, "https://", 8) == 0) {
+                open_url_in_browser(target);
+                send_text(fd, 200, "OK", "ok\n");
+            } else {
+                send_text(fd, 400, "Bad Request",
+                          "Only http/https URLs are allowed\n");
+            }
+        } else {
+            send_text(fd, 400, "Bad Request", "Missing url= parameter\n");
+        }
         free(hdr);
         return;
     }

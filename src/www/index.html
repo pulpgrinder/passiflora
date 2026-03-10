@@ -16,12 +16,28 @@
         <img src="test.png" alt="Test Image">
     </p>
     <p>
-        <a href="https://www.example.com">Visit Example.com</a>
+        <a href="test.html">Visit Test Page</a>
+        <a href="https://amazon.com">Visit Amazon</a>
+        <button onclick="PassifloraIO.openExternal('https://google.com')">Open Google in new browser window</button>
+        <button onclick="checkLocation()">Check Location</button>
     </p>
-</body>
+
+<script>
+    async function checkLocation(){
+       try {
+           const position = await PassifloraIO.getCurrentPosition();
+           console.log(position);
+           alert(`Latitude: ${position.coords.latitude}, Longitude: ${position.coords.longitude}`);
+       } catch(e) {
+           alert('Geolocation error: ' + e.message + ' (code: ' + (e.code || 'N/A') + ')');
+       }
+}
+</script>
 <script src="generated/config.js"></script>
 <script src="passiflora/buildmenu.js"></script>
+<script src="passiflora/PassifloraIO.js"></script>
 <script src="app.js"></script>
 <script src="init.js"></script>
 
+</body>
 </html>

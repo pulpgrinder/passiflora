@@ -37,12 +37,17 @@
 
 /* Port passed from main() to the app delegate via a global */
 static int g_ios_port = 0;
+static WKWebView *g_ios_webView = nil;
 
 /* ------------------------------------------------------------------ */
 /*  Scene delegate (iOS 13+) — creates the window and web view         */
 /* ------------------------------------------------------------------ */
-@interface ZSSceneDelegate : UIResponder <UIWindowSceneDelegate, WKUIDelegate>
+@interface ZSSceneDelegate : UIResponder
+    <UIWindowSceneDelegate, WKUIDelegate, WKScriptMessageHandler,
+     CLLocationManagerDelegate>
 @property (nonatomic, strong) UIWindow *window;
+@property (nonatomic, strong) CLLocationManager *locationManager;
+@property (nonatomic, copy) void (^locationCallback)(CLLocation *location, NSError *error);
 @end
 
 @implementation ZSSceneDelegate
@@ -55,15 +60,25 @@ static int g_ios_port = 0;
 
     self.window = [[UIWindow alloc] initWithWindowScene:windowScene];
 
+    /* Initialise location manager for native geolocation */
+    self.locationManager = [[CLLocationManager alloc] init];
+    self.locationManager.delegate = self;
+    if (self.locationManager.authorizationStatus == kCLAuthorizationStatusNotDetermined) {
+        [self.locationManager requestWhenInUseAuthorization];
+    }
+
     /* Full-screen WKWebView */
     WKWebViewConfiguration *config =
         [[WKWebViewConfiguration alloc] init];
     /* Allow inline media playback (no forced fullscreen) */
     config.allowsInlineMediaPlayback = YES;
+    [config.userContentController addScriptMessageHandler:self
+                                                     name:@"passifloraGeolocation"];
 
     WKWebView *webView =
         [[WKWebView alloc] initWithFrame:CGRectZero configuration:config];
     webView.UIDelegate = self;
+    g_ios_webView = webView;
 
     UIViewController *vc = [[UIViewController alloc] init];
     vc.view = webView;
@@ -73,7 +88,7 @@ static int g_ios_port = 0;
 
     /* Navigate to the local server */
     NSString *urlStr =
-        [NSString stringWithFormat:@"http://localhost:%d/", g_ios_port];
+        [NSString stringWithFormat:@"http://127.0.0.1:%d/", g_ios_port];
     NSURL *url = [NSURL URLWithString:urlStr];
     [webView loadRequest:[NSURLRequest requestWithURL:url]];
 }
@@ -159,6 +174,83 @@ static int g_ios_port = 0;
                                                  animated:YES
                                                completion:nil];
 }
+
+/* WKUIDelegate: geolocation permission */
+- (void)webView:(WKWebView *)wv
+    requestGeolocationPermissionForOrigin:(WKSecurityOrigin *)origin
+    initiatedByFrame:(WKFrameInfo *)frame
+    decisionHandler:(void (^)(WKPermissionDecision))decisionHandler
+    API_AVAILABLE(ios(15.0))
+{
+    (void)wv; (void)origin; (void)frame;
+    decisionHandler(WKPermissionDecisionGrant);
+}
+
+/* CLLocationManagerDelegate: got location */
+- (void)locationManager:(CLLocationManager *)manager
+     didUpdateLocations:(NSArray<CLLocation *> *)locations
+{
+    [manager stopUpdatingLocation];
+    CLLocation *loc = [locations lastObject];
+    if (self.locationCallback) {
+        self.locationCallback(loc, nil);
+        self.locationCallback = nil;
+    }
+}
+
+/* CLLocationManagerDelegate: error */
+- (void)locationManager:(CLLocationManager *)manager
+       didFailWithError:(NSError *)error
+{
+    [manager stopUpdatingLocation];
+    if (self.locationCallback) {
+        self.locationCallback(nil, error);
+        self.locationCallback = nil;
+    }
+}
+
+/* WKScriptMessageHandler: handle messages from JavaScript */
+- (void)userContentController:(WKUserContentController *)controller
+      didReceiveScriptMessage:(WKScriptMessage *)message
+{
+    (void)controller;
+    if ([message.name isEqualToString:@"passifloraGeolocation"]) {
+        NSString *callbackId = [NSString stringWithFormat:@"%@", message.body];
+
+        CLAuthorizationStatus status = self.locationManager.authorizationStatus;
+        if (status == kCLAuthorizationStatusDenied ||
+            status == kCLAuthorizationStatusRestricted) {
+            NSString *js = [NSString stringWithFormat:
+                @"PassifloraIO._geoReject('%@', 1, 'Location permission denied');",
+                callbackId];
+            [g_ios_webView evaluateJavaScript:js completionHandler:nil];
+            return;
+        }
+
+        __weak typeof(self) weakSelf = self;
+        self.locationCallback = ^(CLLocation *loc, NSError *err) {
+            NSString *js;
+            if (loc) {
+                js = [NSString stringWithFormat:
+                    @"PassifloraIO._geoResolve('%@', %f, %f, %f);",
+                    callbackId,
+                    loc.coordinate.latitude,
+                    loc.coordinate.longitude,
+                    loc.horizontalAccuracy];
+            } else {
+                js = [NSString stringWithFormat:
+                    @"PassifloraIO._geoReject('%@', 2, '%@');",
+                    callbackId,
+                    err ? [err localizedDescription] : @"Unknown error"];
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                (void)weakSelf;
+                [g_ios_webView evaluateJavaScript:js completionHandler:nil];
+            });
+        };
+        [self.locationManager requestLocation];
+    }
+}
 @end
 
 /* ------------------------------------------------------------------ */
@@ -196,6 +288,7 @@ void ui_open(int port)
 /* ------------------------------------------------------------------ */
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
+#import <CoreLocation/CoreLocation.h>
 
 /* Generated menu data — menu_template[] and MENU_PROGNAME */
 #include "generated/menu.h"
@@ -383,7 +476,10 @@ static void build_menus(void)
 /*  Delegate: quit on window close, WKUIDelegate for JS alert/confirm  */
 /* ------------------------------------------------------------------ */
 @interface ZSAppDelegate : NSObject
-    <NSApplicationDelegate, NSWindowDelegate, WKUIDelegate>
+    <NSApplicationDelegate, NSWindowDelegate, WKUIDelegate,
+     WKScriptMessageHandler, CLLocationManagerDelegate>
+@property (nonatomic, strong) CLLocationManager *locationManager;
+@property (nonatomic, copy) void (^locationCallback)(CLLocation *location, NSError *error);
 @end
 
 @implementation ZSAppDelegate
@@ -397,6 +493,101 @@ static void build_menus(void)
 {
     (void)note;
     [NSApp activateIgnoringOtherApps:YES];
+
+    /* Initialise location manager for native geolocation */
+    self.locationManager = [[CLLocationManager alloc] init];
+    self.locationManager.delegate = self;
+    if (self.locationManager.authorizationStatus == kCLAuthorizationStatusNotDetermined) {
+        [self.locationManager requestWhenInUseAuthorization];
+    }
+}
+
+/* CLLocationManagerDelegate: authorisation changed */
+- (void)locationManagerDidChangeAuthorization:(CLLocationManager *)manager
+{
+    (void)manager;
+    fprintf(stderr, "passiflora: location auth status = %d\n",
+            (int)manager.authorizationStatus);
+}
+
+/* CLLocationManagerDelegate: got location */
+- (void)locationManager:(CLLocationManager *)manager
+     didUpdateLocations:(NSArray<CLLocation *> *)locations
+{
+    [manager stopUpdatingLocation];
+    CLLocation *loc = [locations lastObject];
+    if (self.locationCallback) {
+        self.locationCallback(loc, nil);
+        self.locationCallback = nil;
+    }
+}
+
+/* CLLocationManagerDelegate: error */
+- (void)locationManager:(CLLocationManager *)manager
+       didFailWithError:(NSError *)error
+{
+    [manager stopUpdatingLocation];
+    if (self.locationCallback) {
+        self.locationCallback(nil, error);
+        self.locationCallback = nil;
+    }
+}
+
+/* WKScriptMessageHandler: handle messages from JavaScript */
+- (void)userContentController:(WKUserContentController *)controller
+      didReceiveScriptMessage:(WKScriptMessage *)message
+{
+    (void)controller;
+    if ([message.name isEqualToString:@"passifloraGeolocation"]) {
+        NSString *callbackId = [NSString stringWithFormat:@"%@", message.body];
+
+        CLAuthorizationStatus status = self.locationManager.authorizationStatus;
+        if (status == kCLAuthorizationStatusDenied ||
+            status == kCLAuthorizationStatusRestricted) {
+            NSAlert *alert = [[NSAlert alloc] init];
+            [alert setMessageText:@"Location Services Disabled"];
+            [alert setInformativeText:
+                @"This app needs access to your location. "
+                 "You can enable it in System Settings > "
+                 "Privacy & Security > Location Services."];
+            [alert addButtonWithTitle:@"Open Settings"];
+            [alert addButtonWithTitle:@"Cancel"];
+            NSModalResponse resp = [alert runModal];
+            if (resp == NSAlertFirstButtonReturn) {
+                [[NSWorkspace sharedWorkspace] openURL:
+                    [NSURL URLWithString:
+                        @"x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices"]];
+            }
+            NSString *js = [NSString stringWithFormat:
+                @"PassifloraIO._geoReject('%@', 1, 'Location permission denied');",
+                callbackId];
+            [g_webView evaluateJavaScript:js completionHandler:nil];
+            return;
+        }
+
+        __weak typeof(self) weakSelf = self;
+        self.locationCallback = ^(CLLocation *loc, NSError *err) {
+            NSString *js;
+            if (loc) {
+                js = [NSString stringWithFormat:
+                    @"PassifloraIO._geoResolve('%@', %f, %f, %f);",
+                    callbackId,
+                    loc.coordinate.latitude,
+                    loc.coordinate.longitude,
+                    loc.horizontalAccuracy];
+            } else {
+                js = [NSString stringWithFormat:
+                    @"PassifloraIO._geoReject('%@', 2, '%@');",
+                    callbackId,
+                    err ? [err localizedDescription] : @"Unknown error"];
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                (void)weakSelf;
+                [g_webView evaluateJavaScript:js completionHandler:nil];
+            });
+        };
+        [self.locationManager requestLocation];
+    }
 }
 
 /* WKUIDelegate: JavaScript alert() */
@@ -449,6 +640,17 @@ static void build_menus(void)
         ? [input stringValue] : nil);
 }
 
+/* WKUIDelegate: geolocation permission */
+- (void)webView:(WKWebView *)wv
+    requestGeolocationPermissionForOrigin:(WKSecurityOrigin *)origin
+    initiatedByFrame:(WKFrameInfo *)frame
+    decisionHandler:(void (^)(WKPermissionDecision))decisionHandler
+    API_AVAILABLE(macos(12.0))
+{
+    (void)wv; (void)origin; (void)frame;
+    decisionHandler(WKPermissionDecisionGrant);
+}
+
 @end
 
 void ui_open(int port)
@@ -487,6 +689,8 @@ void ui_open(int port)
         /* WKWebView filling the entire content area */
         WKWebViewConfiguration *config =
             [[WKWebViewConfiguration alloc] init];
+        [config.userContentController addScriptMessageHandler:delegate
+                                                         name:@"passifloraGeolocation"];
         g_webView =
             [[WKWebView alloc] initWithFrame:[[window contentView] bounds]
                                configuration:config];
@@ -496,7 +700,7 @@ void ui_open(int port)
 
         /* Navigate to the local server */
         NSString *urlStr =
-            [NSString stringWithFormat:@"http://localhost:%d/", port];
+            [NSString stringWithFormat:@"http://127.0.0.1:%d/", port];
         NSURL *url = [NSURL URLWithString:urlStr];
         [g_webView loadRequest:[NSURLRequest requestWithURL:url]];
 
@@ -579,7 +783,8 @@ typedef struct {
     void *_pad20;  /* remove_FrameNavigationCompleted */
     void *_pad21;  /* add_ScriptDialogOpening */
     void *_pad22;  /* remove_ScriptDialogOpening */
-    void *_pad23;  /* add_PermissionRequested */
+    HRESULT (STDMETHODCALLTYPE *add_PermissionRequested)(
+        ICoreWebView2*,void*,void*);      /* 23 */
     void *_pad24;  /* remove_PermissionRequested */
     void *_pad25;  /* add_ProcessFailed */
     void *_pad26;  /* remove_ProcessFailed */
@@ -660,6 +865,33 @@ typedef struct {
 } ICoreWebView2EnvironmentVtbl;
 struct ICoreWebView2Environment { ICoreWebView2EnvironmentVtbl *lpVtbl; };
 
+/* -- ICoreWebView2PermissionRequestedEventArgs -------------------- */
+typedef struct ICoreWebView2PermissionRequestedEventArgs
+    ICoreWebView2PermissionRequestedEventArgs;
+typedef struct {
+    /* IUnknown */
+    HRESULT (STDMETHODCALLTYPE *QueryInterface)(
+        ICoreWebView2PermissionRequestedEventArgs*,REFIID,void**);
+    ULONG   (STDMETHODCALLTYPE *AddRef)(
+        ICoreWebView2PermissionRequestedEventArgs*);
+    ULONG   (STDMETHODCALLTYPE *Release)(
+        ICoreWebView2PermissionRequestedEventArgs*);
+    /* ICoreWebView2PermissionRequestedEventArgs */
+    HRESULT (STDMETHODCALLTYPE *get_Uri)(
+        ICoreWebView2PermissionRequestedEventArgs*,LPWSTR*);  /* 3 */
+    HRESULT (STDMETHODCALLTYPE *get_PermissionKind)(
+        ICoreWebView2PermissionRequestedEventArgs*,int*);     /* 4 */
+    HRESULT (STDMETHODCALLTYPE *get_IsUserInitiated)(
+        ICoreWebView2PermissionRequestedEventArgs*,BOOL*);    /* 5 */
+    HRESULT (STDMETHODCALLTYPE *get_State)(
+        ICoreWebView2PermissionRequestedEventArgs*,int*);     /* 6 */
+    HRESULT (STDMETHODCALLTYPE *put_State)(
+        ICoreWebView2PermissionRequestedEventArgs*,int);      /* 7 */
+} ICoreWebView2PermissionRequestedEventArgsVtbl;
+struct ICoreWebView2PermissionRequestedEventArgs {
+    ICoreWebView2PermissionRequestedEventArgsVtbl *lpVtbl;
+};
+
 /* ---- Callback handler structs ---- */
 /*  COM callbacks: IUnknown { QI, AddRef, Release } + Invoke.
  *  We use a single generic layout for both handlers.                  */
@@ -739,6 +971,9 @@ static const IID IID_EnvCompletedHandler = {
 static const IID IID_CtrlCompletedHandler = {
     0x6c4819f3,0xc9b7,0x4260,
     {0x81,0x27,0xc9,0xf5,0xe7,0xa7,0x53,0x12}};
+static const IID IID_PermissionRequestedHandler = {
+    0x15e1c6a3,0xc72a,0x4df3,
+    {0x91,0xd7,0xd0,0x97,0xfb,0xec,0x6b,0xfd}};
 
 /* ---- Invoke: environment created ---- */
 static HRESULT STDMETHODCALLTYPE
@@ -767,6 +1002,23 @@ OnEnvironmentCreated(WV2Handler *self, HRESULT hr, void *env)
     return S_OK;
 }
 
+/* ---- Invoke: permission requested ---- */
+static HRESULT STDMETHODCALLTYPE
+OnPermissionRequested(WV2Handler *self, HRESULT sender_unused, void *argsRaw)
+{
+    (void)self; (void)sender_unused;
+    ICoreWebView2PermissionRequestedEventArgs *args =
+        (ICoreWebView2PermissionRequestedEventArgs *)argsRaw;
+    int kind = 0;
+    args->lpVtbl->get_PermissionKind(args, &kind);
+    /* COREWEBVIEW2_PERMISSION_KIND_GEOLOCATION = 3 */
+    if (kind == 3) {
+        /* COREWEBVIEW2_PERMISSION_STATE_ALLOW = 1 */
+        args->lpVtbl->put_State(args, 1);
+    }
+    return S_OK;
+}
+
 /* ---- Invoke: controller created ---- */
 static HRESULT STDMETHODCALLTYPE
 OnControllerCreated(WV2Handler *self, HRESULT hr, void *ctrl)
@@ -792,6 +1044,23 @@ OnControllerCreated(WV2Handler *self, HRESULT hr, void *ctrl)
         settings->lpVtbl->put_AreDefaultScriptDialogsEnabled(
             settings, TRUE);
         settings->lpVtbl->Release(settings);
+    }
+
+    /* Auto-grant geolocation permission requests */
+    {
+        WV2Handler *ph = calloc(1, sizeof *ph);
+        static WV2HandlerVtbl permVtbl = {
+            Handler_QueryInterface, Handler_AddRef,
+            Handler_Release,
+            (WV2InvokeFn)OnPermissionRequested
+        };
+        ph->lpVtbl   = &permVtbl;
+        ph->refCount = 1;
+        ph->iid      = IID_PermissionRequestedHandler;
+        ph->context  = st;
+        st->webview->lpVtbl->add_PermissionRequested(
+            st->webview, (void *)ph, NULL);
+        ph->lpVtbl->Release(ph);
     }
 
     /* Navigate */
@@ -1036,7 +1305,7 @@ void ui_open(int port)
     if (!pfnCreateEnv) {
         /* Fallback: open in default browser */
         char url[256];
-        snprintf(url, sizeof url, "http://localhost:%d/", port);
+        snprintf(url, sizeof url, "http://127.0.0.1:%d/", port);
         ShellExecuteA(NULL, "open", url, NULL, NULL, SW_SHOWNORMAL);
         /* Keep window alive with a simple message */
         HDC hdc = GetDC(g_wv2.hwnd);
@@ -1349,6 +1618,241 @@ static void linux_ensure_desktop_integration(void)
     g_free(desktop_path);
 }
 
+/* ---- Auto-grant geolocation permission ---- */
+static gboolean on_permission_request(WebKitWebView *wv,
+                                      WebKitPermissionRequest *request,
+                                      gpointer data)
+{
+    (void)wv; (void)data;
+    if (WEBKIT_IS_GEOLOCATION_PERMISSION_REQUEST(request)) {
+        webkit_permission_request_allow(request);
+        return TRUE;   /* handled */
+    }
+    return FALSE;      /* let WebKit deny other types */
+}
+
+/* ---- Native geolocation via GeoClue2 D-Bus ---- */
+
+/* Data passed through the async GeoClue2 chain */
+typedef struct {
+    char        *callback_id;   /* JS callback id, e.g. "geo_1" */
+    GDBusProxy  *client;        /* GeoClue2 Client proxy */
+    gulong       sig_id;        /* "g-signal" handler id */
+    guint        timeout_id;    /* GSource id for timeout */
+} GeoRequest;
+
+static void geo_request_finish(GeoRequest *gr)
+{
+    if (gr->timeout_id) { g_source_remove(gr->timeout_id); gr->timeout_id = 0; }
+    if (gr->sig_id && gr->client)
+        { g_signal_handler_disconnect(gr->client, gr->sig_id); gr->sig_id = 0; }
+    if (gr->client) {
+        g_dbus_proxy_call_sync(gr->client, "Stop", NULL,
+            G_DBUS_CALL_FLAGS_NONE, -1, NULL, NULL);
+        g_object_unref(gr->client);
+        gr->client = NULL;
+    }
+    g_free(gr->callback_id);
+    g_free(gr);
+}
+
+/* Called when GeoClue2 emits LocationUpdated(old_path, new_path) */
+static void on_location_updated(GDBusProxy *proxy,
+                                const gchar *sender_name,
+                                const gchar *signal_name,
+                                GVariant *parameters,
+                                gpointer data)
+{
+    (void)proxy; (void)sender_name;
+    GeoRequest *gr = data;
+
+    if (strcmp(signal_name, "LocationUpdated") != 0) return;
+
+    const char *old_path = NULL, *new_path = NULL;
+    g_variant_get(parameters, "(&o&o)", &old_path, &new_path);
+    (void)old_path;
+
+    if (!new_path || strcmp(new_path, "/") == 0) return;
+
+    /* Read properties from the Location object */
+    GError *err = NULL;
+    GDBusProxy *loc = g_dbus_proxy_new_for_bus_sync(
+        G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_NONE, NULL,
+        "org.freedesktop.GeoClue2", new_path,
+        "org.freedesktop.GeoClue2.Location",
+        NULL, &err);
+
+    if (!loc) {
+        char js2[512];
+        snprintf(js2, sizeof js2,
+            "PassifloraIO._geoReject('%s', 2, 'Position unavailable');",
+            gr->callback_id);
+        if (g_linux_webview)
+            webkit_web_view_evaluate_javascript(g_linux_webview, js2, -1,
+                                                NULL, NULL, NULL, NULL, NULL);
+        if (err) g_error_free(err);
+        geo_request_finish(gr);
+        return;
+    }
+
+    double lat = 0, lon = 0, accuracy = 0;
+    GVariant *v;
+    v = g_dbus_proxy_get_cached_property(loc, "Latitude");
+    if (v) { lat = g_variant_get_double(v); g_variant_unref(v); }
+    v = g_dbus_proxy_get_cached_property(loc, "Longitude");
+    if (v) { lon = g_variant_get_double(v); g_variant_unref(v); }
+    v = g_dbus_proxy_get_cached_property(loc, "Accuracy");
+    if (v) { accuracy = g_variant_get_double(v); g_variant_unref(v); }
+
+    char js[512];
+    snprintf(js, sizeof js,
+        "PassifloraIO._geoResolve('%s', %.8f, %.8f, %.2f);",
+        gr->callback_id, lat, lon, accuracy);
+    if (g_linux_webview)
+        webkit_web_view_evaluate_javascript(g_linux_webview, js, -1,
+                                            NULL, NULL, NULL, NULL, NULL);
+    g_object_unref(loc);
+    geo_request_finish(gr);
+}
+
+/* Timeout if GeoClue2 never delivers a location */
+static gboolean on_geo_timeout(gpointer data)
+{
+    GeoRequest *gr = data;
+    gr->timeout_id = 0;   /* source is auto-removed after firing */
+    char js[512];
+    snprintf(js, sizeof js,
+        "PassifloraIO._geoReject('%s', 2, 'Position unavailable');",
+        gr->callback_id);
+    if (g_linux_webview)
+        webkit_web_view_evaluate_javascript(g_linux_webview, js, -1,
+                                            NULL, NULL, NULL, NULL, NULL);
+    geo_request_finish(gr);
+    return G_SOURCE_REMOVE;
+}
+
+/* GetClient callback — set up client, listen for LocationUpdated, Start */
+static void on_geoclue_client_ready(GObject *source, GAsyncResult *res,
+                                    gpointer data)
+{
+    GeoRequest *gr = data;
+    GError *err = NULL;
+    GVariant *result = g_dbus_proxy_call_finish(G_DBUS_PROXY(source),
+                                                res, &err);
+    if (!result || err) {
+        char js[512];
+        snprintf(js, sizeof js,
+            "PassifloraIO._geoReject('%s', 2, 'Position unavailable');",
+            gr->callback_id);
+        if (g_linux_webview)
+            webkit_web_view_evaluate_javascript(g_linux_webview, js, -1,
+                                                NULL, NULL, NULL, NULL, NULL);
+        if (err) g_error_free(err);
+        geo_request_finish(gr);
+        return;
+    }
+
+    const char *client_path = NULL;
+    g_variant_get(result, "(&o)", &client_path);
+
+    gr->client = g_dbus_proxy_new_for_bus_sync(
+        G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_NONE, NULL,
+        "org.freedesktop.GeoClue2", client_path,
+        "org.freedesktop.GeoClue2.Client",
+        NULL, &err);
+    g_variant_unref(result);
+
+    if (!gr->client) {
+        char js[512];
+        snprintf(js, sizeof js,
+            "PassifloraIO._geoReject('%s', 2, 'Position unavailable');",
+            gr->callback_id);
+        if (g_linux_webview)
+            webkit_web_view_evaluate_javascript(g_linux_webview, js, -1,
+                                                NULL, NULL, NULL, NULL, NULL);
+        if (err) g_error_free(err);
+        geo_request_finish(gr);
+        return;
+    }
+
+    /* Set DesktopId */
+    g_dbus_proxy_call_sync(gr->client,
+        "org.freedesktop.DBus.Properties.Set",
+        g_variant_new("(ssv)",
+            "org.freedesktop.GeoClue2.Client", "DesktopId",
+            g_variant_new_string(MENU_PROGNAME)),
+        G_DBUS_CALL_FLAGS_NONE, -1, NULL, NULL);
+
+    /* Set accuracy level (EXACT = 8) */
+    g_dbus_proxy_call_sync(gr->client,
+        "org.freedesktop.DBus.Properties.Set",
+        g_variant_new("(ssv)",
+            "org.freedesktop.GeoClue2.Client", "RequestedAccuracyLevel",
+            g_variant_new_uint32(8)),
+        G_DBUS_CALL_FLAGS_NONE, -1, NULL, NULL);
+
+    /* Listen for LocationUpdated signal BEFORE calling Start */
+    gr->sig_id = g_signal_connect(gr->client, "g-signal",
+                                  G_CALLBACK(on_location_updated), gr);
+
+    /* 5-second timeout */
+    gr->timeout_id = g_timeout_add_seconds(5, on_geo_timeout, gr);
+
+    /* Start the client — GeoClue2 will emit LocationUpdated when ready */
+    g_dbus_proxy_call_sync(gr->client, "Start", NULL,
+        G_DBUS_CALL_FLAGS_NONE, -1, NULL, &err);
+    if (err) {
+        char js[512];
+        snprintf(js, sizeof js,
+            "PassifloraIO._geoReject('%s', 2, 'Position unavailable');",
+            gr->callback_id);
+        if (g_linux_webview)
+            webkit_web_view_evaluate_javascript(g_linux_webview, js, -1,
+                                                NULL, NULL, NULL, NULL, NULL);
+        g_error_free(err);
+        geo_request_finish(gr);
+        return;
+    }
+    /* Now we wait — on_location_updated or on_geo_timeout will fire */
+}
+
+/* JS sent passifloraGeolocation message — start GeoClue2 */
+static void on_geolocation_message(WebKitUserContentManager *manager,
+                                   WebKitJavascriptResult *js_result,
+                                   gpointer data)
+{
+    (void)manager; (void)data;
+    JSCValue *val = webkit_javascript_result_get_js_value(js_result);
+    char *callback_id = jsc_value_to_string(val);
+
+    GeoRequest *gr = g_new0(GeoRequest, 1);
+    gr->callback_id = callback_id;
+
+    GError *err = NULL;
+    GDBusProxy *mgr = g_dbus_proxy_new_for_bus_sync(
+        G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_NONE, NULL,
+        "org.freedesktop.GeoClue2",
+        "/org/freedesktop/GeoClue2/Manager",
+        "org.freedesktop.GeoClue2.Manager",
+        NULL, &err);
+    if (!mgr) {
+        char js[512];
+        snprintf(js, sizeof js,
+            "PassifloraIO._geoReject('%s', 2, 'Position unavailable');",
+            gr->callback_id);
+        if (g_linux_webview)
+            webkit_web_view_evaluate_javascript(g_linux_webview, js, -1,
+                                                NULL, NULL, NULL, NULL, NULL);
+        if (err) g_error_free(err);
+        geo_request_finish(gr);
+        return;
+    }
+
+    g_dbus_proxy_call(mgr, "GetClient", NULL,
+        G_DBUS_CALL_FLAGS_NONE, -1, NULL,
+        on_geoclue_client_ready, gr);
+}
+
 /* ---- Notify user about desktop setup once the page has loaded ---- */
 static void on_page_loaded(WebKitWebView *wv, WebKitLoadEvent event,
                            gpointer data)
@@ -1421,10 +1925,19 @@ void ui_open(int port)
     GtkWidget *menubar = build_gtk_menus();
     gtk_box_pack_start(GTK_BOX(vbox), menubar, FALSE, FALSE, 0);
 
-    /* WebKit web view */
-    g_linux_webview = WEBKIT_WEB_VIEW(webkit_web_view_new());
+    /* WebKit web view with script message handler for geolocation */
+    WebKitUserContentManager *ucm = webkit_user_content_manager_new();
+    webkit_user_content_manager_register_script_message_handler(
+        ucm, "passifloraGeolocation");
+    g_signal_connect(ucm, "script-message-received::passifloraGeolocation",
+                     G_CALLBACK(on_geolocation_message), NULL);
+
+    g_linux_webview = WEBKIT_WEB_VIEW(
+        webkit_web_view_new_with_user_content_manager(ucm));
     g_signal_connect(g_linux_webview, "load-changed",
                      G_CALLBACK(on_page_loaded), NULL);
+    g_signal_connect(g_linux_webview, "permission-request",
+                     G_CALLBACK(on_permission_request), NULL);
     gtk_box_pack_start(GTK_BOX(vbox), GTK_WIDGET(g_linux_webview),
                        TRUE, TRUE, 0);
 

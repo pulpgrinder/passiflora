@@ -93,6 +93,9 @@ cat > "$APP/Contents/Info.plist" << PLIST
 
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>This app needs your location for location-based features.</string>
 </dict>
 </plist>
 PLIST

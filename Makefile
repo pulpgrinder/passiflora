@@ -11,7 +11,7 @@ UNAME_M := $(shell uname -m)
 ifeq ($(UNAME_S),Darwin)
   OS_NAME        = macOS
   UI_CFLAGS      = -x objective-c -fobjc-arc
-  UI_LDFLAGS     = -framework Cocoa -framework WebKit
+  UI_LDFLAGS     = -framework Cocoa -framework WebKit -framework CoreLocation
   MENU_TEMPLATE  = src/macOS/menus/menu.txt
   BUNDLE_ID     ?= com.example.$(PROGNAME)
   VERSION       ?= 1.0.0
@@ -28,7 +28,7 @@ ifeq ($(UNAME_S),Darwin)
                    -Wall -Wextra -O2
   IOS_LDFLAGS    = -arch $(IOS_ARCH) -isysroot $(IOS_SDK) \
                    -miphoneos-version-min=$(IOS_MIN) \
-                   -framework UIKit -framework WebKit -framework CoreGraphics -lpthread
+                   -framework UIKit -framework WebKit -framework CoreGraphics -framework CoreLocation -lpthread
   IOS_BINDIR     = bin/iOS
   IOS_BINARY     = $(IOS_BINDIR)/$(PROGNAME)
   IOS_APP_BUNDLE = $(IOS_BINDIR)/$(PROGNAME).app
@@ -42,7 +42,7 @@ ifeq ($(UNAME_S),Darwin)
                    -Wall -Wextra -O2
   SIMOS_LDFLAGS  = -arch $(SIMOS_ARCH) -isysroot $(SIMOS_SDK) \
                    -mios-simulator-version-min=$(IOS_MIN) \
-                   -framework UIKit -framework WebKit -framework CoreGraphics -lpthread
+                   -framework UIKit -framework WebKit -framework CoreGraphics -framework CoreLocation -lpthread
   SIMOS_BINDIR   = bin/iOS-sim
   SIMOS_BINARY   = $(SIMOS_BINDIR)/$(PROGNAME)
   SIMOS_APP_BUNDLE = $(SIMOS_BINDIR)/$(PROGNAME).app

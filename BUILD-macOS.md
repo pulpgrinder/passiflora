@@ -303,6 +303,41 @@ This will:
 6. Sign the bundle with the profile-derived entitlements.
 7. Package everything into `bin/iOS/<progname>.ipa`.
 
+#### Installing the IPA on a physical device
+
+Once you have the signed `.ipa`, there are several ways to get it onto an iPhone or iPad:
+
+**Apple Configurator (recommended for ad-hoc/development):**
+
+1. Install [Apple Configurator](https://apps.apple.com/app/apple-configurator/id1037126344) from the Mac App Store.
+2. Connect the device via USB.
+3. Open Apple Configurator, select the device, click **Add (+) → Apps**, and choose the `.ipa` file.
+
+**Xcode Devices window:**
+
+1. Open Xcode → **Window → Devices and Simulators**.
+2. Select the connected device.
+3. Under **Installed Apps**, click the **+** button and choose the `.ipa` file.
+
+**`ideviceinstaller` (command-line):**
+
+```
+brew install ideviceinstaller
+ideviceinstaller -i bin/iOS/HeckinChonker.ipa
+```
+
+**TestFlight / App Store Connect:**
+
+Upload the IPA using `altool` or Transporter, then distribute via TestFlight:
+
+```
+xcrun altool --upload-app -f bin/iOS/HeckinChonker.ipa -t ios -u your@apple.id -p @keychain:AC_PASSWORD
+```
+
+Testers will receive the build through the TestFlight app.
+
+> **Note:** The device's UDID must be registered in the provisioning profile for ad-hoc and development builds. App Store and enterprise profiles do not have this restriction.
+
 #### iOS Simulator signing
 
 ```
@@ -382,3 +417,32 @@ keytool -genkey -v -keystore ~/my-release.jks -keyalg RSA -keysize 2048 -validit
 If you choose an alias other than `mykey`, set `RELEASE_KEY_ALIAS` to match.
 
 Then use Method 2 above with the appropriate environment variables.
+
+#### Installing the APK on a physical device
+
+Connect your Android device via USB with [USB debugging enabled](https://developer.android.com/studio/debug/dev-options#enable), then use `adb`:
+
+```
+adb install bin/Android/HeckinChonker.apk
+```
+
+If `adb` is not on your PATH:
+
+```
+$ANDROID_HOME/platform-tools/adb install bin/Android/HeckinChonker.apk
+```
+
+To install on a specific device when multiple are connected:
+
+```
+adb devices                          # list connected devices
+adb -s DEVICE_SERIAL install bin/Android/HeckinChonker.apk
+```
+
+To replace an existing installation (keeping app data):
+
+```
+adb install -r bin/Android/HeckinChonker.apk
+```
+
+Alternatively, copy the signed `.apk` to the device (via USB, email, cloud storage, web server, etc.) and open it — Android will prompt to install. You may need to enable **Install from unknown sources** in the device settings.

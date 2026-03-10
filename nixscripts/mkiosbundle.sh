@@ -164,6 +164,9 @@ cat > "$APP/Info.plist" << PLIST
         <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
+
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>This app needs your location for location-based features.</string>
 </dict>
 </plist>
 PLIST
