@@ -31,6 +31,7 @@
 /* ------------------------------------------------------------------ */
 #import <UIKit/UIKit.h>
 #import <WebKit/WebKit.h>
+#import <CoreLocation/CoreLocation.h>
 
 /* Generated menu data — MENU_PROGNAME */
 #include "generated/menu.h"
@@ -209,6 +210,14 @@ static WKWebView *g_ios_webView = nil;
     }
 }
 
+/* Validate callback ID format (geo_N) to prevent JS injection */
+static BOOL isValidGeoId(NSString *geoId) {
+    NSRegularExpression *re = [NSRegularExpression
+        regularExpressionWithPattern:@"^geo_[0-9]+$" options:0 error:nil];
+    return [re numberOfMatchesInString:geoId options:0
+        range:NSMakeRange(0, geoId.length)] == 1;
+}
+
 /* WKScriptMessageHandler: handle messages from JavaScript */
 - (void)userContentController:(WKUserContentController *)controller
       didReceiveScriptMessage:(WKScriptMessage *)message
@@ -216,6 +225,7 @@ static WKWebView *g_ios_webView = nil;
     (void)controller;
     if ([message.name isEqualToString:@"passifloraGeolocation"]) {
         NSString *callbackId = [NSString stringWithFormat:@"%@", message.body];
+        if (!isValidGeoId(callbackId)) return;
 
         CLAuthorizationStatus status = self.locationManager.authorizationStatus;
         if (status == kCLAuthorizationStatusDenied ||
@@ -239,9 +249,8 @@ static WKWebView *g_ios_webView = nil;
                     loc.horizontalAccuracy];
             } else {
                 js = [NSString stringWithFormat:
-                    @"PassifloraIO._geoReject('%@', 2, '%@');",
-                    callbackId,
-                    err ? [err localizedDescription] : @"Unknown error"];
+                    @"PassifloraIO._geoReject('%@', 2, 'Position unavailable');",
+                    callbackId];
             }
             dispatch_async(dispatch_get_main_queue(), ^{
                 (void)weakSelf;
@@ -533,6 +542,14 @@ static void build_menus(void)
     }
 }
 
+/* Validate callback ID format (geo_N) to prevent JS injection */
+static BOOL isValidGeoId(NSString *geoId) {
+    NSRegularExpression *re = [NSRegularExpression
+        regularExpressionWithPattern:@"^geo_[0-9]+$" options:0 error:nil];
+    return [re numberOfMatchesInString:geoId options:0
+        range:NSMakeRange(0, geoId.length)] == 1;
+}
+
 /* WKScriptMessageHandler: handle messages from JavaScript */
 - (void)userContentController:(WKUserContentController *)controller
       didReceiveScriptMessage:(WKScriptMessage *)message
@@ -540,6 +557,7 @@ static void build_menus(void)
     (void)controller;
     if ([message.name isEqualToString:@"passifloraGeolocation"]) {
         NSString *callbackId = [NSString stringWithFormat:@"%@", message.body];
+        if (!isValidGeoId(callbackId)) return;
 
         CLAuthorizationStatus status = self.locationManager.authorizationStatus;
         if (status == kCLAuthorizationStatusDenied ||
@@ -577,9 +595,8 @@ static void build_menus(void)
                     loc.horizontalAccuracy];
             } else {
                 js = [NSString stringWithFormat:
-                    @"PassifloraIO._geoReject('%@', 2, '%@');",
-                    callbackId,
-                    err ? [err localizedDescription] : @"Unknown error"];
+                    @"PassifloraIO._geoReject('%@', 2, 'Position unavailable');",
+                    callbackId];
             }
             dispatch_async(dispatch_get_main_queue(), ^{
                 (void)weakSelf;
@@ -1816,6 +1833,16 @@ static void on_geoclue_client_ready(GObject *source, GAsyncResult *res,
     /* Now we wait — on_location_updated or on_geo_timeout will fire */
 }
 
+/* Validate callback ID format (geo_N) to prevent JS injection */
+static int is_valid_geo_id(const char *id)
+{
+    if (!id || strncmp(id, "geo_", 4) != 0) return 0;
+    const char *p = id + 4;
+    if (*p == '\0') return 0;
+    while (*p) { if (*p < '0' || *p > '9') return 0; p++; }
+    return 1;
+}
+
 /* JS sent passifloraGeolocation message — start GeoClue2 */
 static void on_geolocation_message(WebKitUserContentManager *manager,
                                    WebKitJavascriptResult *js_result,
@@ -1824,6 +1851,11 @@ static void on_geolocation_message(WebKitUserContentManager *manager,
     (void)manager; (void)data;
     JSCValue *val = webkit_javascript_result_get_js_value(js_result);
     char *callback_id = jsc_value_to_string(val);
+
+    if (!is_valid_geo_id(callback_id)) {
+        g_free(callback_id);
+        return;
+    }
 
     GeoRequest *gr = g_new0(GeoRequest, 1);
     gr->callback_id = callback_id;

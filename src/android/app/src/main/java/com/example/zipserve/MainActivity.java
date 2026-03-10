@@ -147,7 +147,13 @@ public class MainActivity extends Activity {
         }, 15_000);
     }
 
+    /** Validate callback IDs to prevent JS injection (must be geo_N) */
+    private static boolean isValidGeoId(String id) {
+        return id != null && id.matches("^geo_[0-9]+$");
+    }
+
     private void resolveGeo(String id, double lat, double lon, double acc) {
+        if (!isValidGeoId(id)) return;
         String js = String.format(
             "PassifloraIO._geoResolve('%s', %.8f, %.8f, %.2f);",
             id, lat, lon, acc);
@@ -155,9 +161,11 @@ public class MainActivity extends Activity {
     }
 
     private void rejectGeo(String id, int code, String msg) {
+        if (!isValidGeoId(id)) return;
+        String safeMsg = msg.replace("\\", "\\\\").replace("'", "\\'");
         String js = String.format(
             "PassifloraIO._geoReject('%s', %d, '%s');",
-            id, code, msg.replace("'", "\\'"));
+            id, code, safeMsg);
         runOnUiThread(() -> webView.evaluateJavascript(js, null));
     }
 
@@ -180,7 +188,21 @@ public class MainActivity extends Activity {
 
         webView.addJavascriptInterface(new Bridge(), "PassifloraBridge");
 
-        webView.setWebViewClient(new WebViewClient());
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view,
+                    android.webkit.WebResourceRequest request) {
+                String host = request.getUrl().getHost();
+                if ("127.0.0.1".equals(host) || "localhost".equals(host))
+                    return false; /* allow localhost navigation */
+                /* Block all other navigation — open in system browser */
+                String url = request.getUrl().toString();
+                if (url.startsWith("http://") || url.startsWith("https://"))
+                    startActivity(new Intent(Intent.ACTION_VIEW,
+                        request.getUrl()));
+                return true;
+            }
+        });
 
         /* Handle JavaScript alert / confirm / prompt */
         webView.setWebChromeClient(new WebChromeClient() {
