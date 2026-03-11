@@ -34,14 +34,23 @@ Passiflora uses the system's own web browser control rather than bundling an ent
 
 The Passiflora example code generates the following executable sizes:
 
-macOS: HeckinChonker.app: 3.6 MB. 
-iOS HeckinChonker.ipa 2.3 MB.
-Windows HeckinChonker.exe 1.1 MB. 
-Android HeckinChonker.apk 3 MB.
+### Passiflora
 
-By comparison, an Electron wrapper for the example code (built with Electron Forge)  weighs over 211 MB. Yikes!
+macOS: HeckinChonker.app: 3.6 MB
 
- Electron and Electron Forge also install 342 (!) npm packages, and generate scads of deprecation/security warnings (and, yes, I'm following the installation/compilation instructions on the Electron website that are current as of today, March 7, 2026).
+iOS HeckinChonker.ipa 2.3 MB
+
+Windows HeckinChonker.exe 1.1 MB
+
+Android HeckinChonker.apk 3 MB
+
+### Electron/Electron Forge
+
+macOS: HeckinChonker.app:  211 MB. Yikes!
+
+---
+
+Electron and Electron Forge also install 342 (!) npm packages, and generate scads of deprecation/security warnings (and, yes, I'm following the installation/compilation instructions on the Electron website that are current as of today, March 7, 2026).
 
 
 ## Prerequisites and Building
@@ -94,9 +103,10 @@ make
 | `.\build icons` | Generate icon sets (Windows) |
 | `.\build clean` | Remove all build artifacts (Windows) |
 
+
 ### Permissions
 
-The file `src/permissions` controls which platform capabilities are compiled into the app. Each line has the form `name 0` or `name 1`. Permissions default to off (0) if omitted. By default, all permissions are turned on. For you're planning to distribute, you should turn everything off except the ones you actually need (app stores frown on unnecessary permissions).
+The file `src/permissions` controls which platform capabilities are compiled into the app. Each line has the form `name 0` or `name 1`. Permissions default to off (0) if omitted. By default, all permissions are turned on. For apps you're planning to distribute, you should turn everything off except the ones you actually need (app stores frown on unnecessary permissions).
 
 | Permission | Affects | Description |
 |------------|---------|-------------|
@@ -111,7 +121,7 @@ Obviously you're gonna want to put your own HTML, JavaScript, CSS, images, and s
 
 ### Icons
 
-Change `roundicon.png` and `squareicon.png` in `src/icons` to whatever images you like. These should be pretty big — around 1,000 pixels square. More is better! The `squareicon.png` file should be square (duh!), while the `roundicon.png` should be a square image consisting of a round image on a transparent background. Look at the supplied example if this seems confusing.
+Change `roundicon.png` and `squareicon.png` in `src/icons` to whatever images you like. These should be pretty big — around 1,000 pixels square. More is better! The `squareicon.png` file should be square (duh!), while the `roundicon.png` should be a square image consisting of a round image on a transparent background (I realize that may sound a little confusing... look at the supplied `roundicon.png` if you need clarification).
 
 All of the zillions of other icons for the various different systems are generated from these.
 
@@ -214,6 +224,8 @@ The menu is built automatically from `PassifloraConfig.menus` at page load. It s
 
 **Closing the menu:**
 
+You can close the sliding menu without choosing an item in three ways:
+
 * Tap/click outside the menu panels
 * Press **Escape**
 * Navigate back through all levels
@@ -225,7 +237,7 @@ The menu is built automatically from `PassifloraConfig.menus` at page load. It s
 * `src/www/passiflora/buildmenu.js` — menu logic (the `PassifloraMenu` IIFE)
 * `src/www/passiflora/menu.css` — menu styling
 
-Items prefixed with `*` in `menu.txt` are excluded from the sliding menu entirely — they only exist in the native menu bar.
+Items prefixed with `*` in `menu.txt` are excluded from the sliding menu entirely — they only exist in the native menu bar (if there is one).
 
 #### Removing the sliding menu
 
@@ -268,7 +280,7 @@ This file is auto-generated on every build and should not be edited by hand.
 
 ## POSIX Functions
 
-Passiflora bridges a subset of C's stdio file I/O functions so that your JavaScript can read and write files on the host filesystem. All functions are **async** and return Promises. They are available both as global functions and as methods on `PassifloraIO`.
+Passiflora bridges a subset of C's stdio file I/O functions so that your JavaScript can read and write files on the host filesystem. All functions are **async** and return Promises. They are available both as global functions and as methods on `PassifloraIO`. An effort has been made to keep these as similar to the standard POSIX functions as possible.
 
 ### Quick Example
 
