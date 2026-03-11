@@ -85,8 +85,8 @@ make
 |--------|-------------|
 | `make` | Build for current platform (macOS or Linux) |
 | `make macos` | Build macOS binary and app bundle (macOS only) |
-| `make windows` | Cross-compile Windows exe (from macOS/Linux) |
-| `make linux` | Build Linux binary (on Linux only) |
+| `make windows` | Cross-compile Windows exe (from macOS or Linux) |
+| `make linux` | Build Linux binary (Linux only) |
 | `make ios` | Cross-compile iOS binary (macOS only) |
 | `make iossim` | Build, install, launch in iOS Simulator (macOS only) |
 | `make iosipa` | Build, sign, and package iOS .ipa (macOS only) |
@@ -113,7 +113,7 @@ The file `src/permissions` controls which platform capabilities are compiled int
 | `location` | All platforms | Enables GPS / geolocation. On iOS and macOS this links CoreLocation and adds the required `NSLocation*` plist keys. On Android it adds `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` to the manifest and enables the WebView geolocation prompt. |
 | `camera` | All platforms | Enables camera access (screenshots, image capture, video recording). On iOS / macOS this links AVFoundation and adds `NSCameraUsageDescription`. On Android it adds the `CAMERA` manifest permission. |
 | `microphone` | All platforms | Enables microphone access (audio recording, video with audio). On iOS / macOS this adds `NSMicrophoneUsageDescription`. On Android it adds `RECORD_AUDIO` to the manifest. |
-| `androidexternalstorage` | Android only | Grants the app access to the shared Documents folder via `MANAGE_EXTERNAL_STORAGE`. When off, the Android build omits the manifest permission and skips the all-files-access prompt. File I/O on all other platforms is always available and is not affected by this setting. |
+| `androidexternalstorage` | Android only | Grants the app access to the shared Documents folder via `MANAGE_EXTERNAL_STORAGE`. When off, the Android build omits the manifest permission and skips the all-files-access prompt. File I/O on all other platforms, and to the app's private storage on Android, is always available and is not affected by this setting. |
 
 ## Making the App Your Own
 
@@ -198,11 +198,11 @@ Top-level menu names (e.g. `File`, `{{progname}}`) and separators (`-`) are not 
 | Zoom | Zoom window | — |
 | Bring All to Front | Arrange in front | — |
 
-**Windows** — `*Quit` and `*Exit` close the window. All other `*`-prefixed items show a "no native handler" dialog.
+**Windows** — `*Quit` and `*Exit` close the window. All other `*`-prefixed items show a "no native handler" dialog (more may be added later)
 
-**Linux** — `*Quit` and `*Exit` quit the application (`gtk_main_quit`). All other `*`-prefixed items show a "no native handler" dialog.
+**Linux** — `*Quit` and `*Exit` quit the application (`gtk_main_quit`). All other `*`-prefixed items show a "no native handler" dialog (more may be added later).
 
-**iOS / Android** — these platforms have no native menu bar. The `*` prefix still causes items to be excluded from `PassifloraConfig.menus` and the sliding menu.
+**iOS / Android** — these platforms have no native menu bar. A `*` prefix still causes items to be excluded from `PassifloraConfig.menus` and the sliding menu.
 
 #### JavaScript menu handler
 
@@ -216,7 +216,7 @@ PassifloraConfig.handleMenu = function(title) {
 
 ### Sliding Menu (optional)
 
-Passiflora includes a built-in sliding menu for platforms that don't have a native menu bar (iOS, Android), or for web-style navigation on any platform. **This is entirely optional** — you can use it as-is, customise it, or remove it and replace it with your own menu solution.
+Passiflora includes a built-in basic sliding menu for platforms that don't have a native menu bar (iOS, Android), or for web-style navigation on any platform. **This is entirely optional** — you can use it as-is, customise it, or remove it and replace it with your own menu solution.
 
 The menu is built automatically from `PassifloraConfig.menus` at page load. It slides in from the right edge of the screen, supports arbitrarily nested submenus, and calls `PassifloraConfig.handleMenu(title)` when a leaf item is tapped.
 
@@ -230,7 +230,7 @@ You can close the sliding menu without choosing an item in three ways:
 * Press **Escape**
 * Navigate back through all levels
 
-**Styling:** The menu's appearance is controlled by `src/www/passiflora/menu.css`. You can customise colours, sizes, transitions, etc. by editing this file.
+**Styling:** The menu's appearance is controlled by `src/www/passiflora/menu.css`. You can customize colours, sizes, transitions, etc. by editing this file.
 
 **Files:**
 
@@ -258,7 +258,7 @@ If you'd rather use your own menu UI (or no menu UI at all), remove these three 
 
 You can also delete `src/www/passiflora/buildmenu.js` and `src/www/passiflora/menu.css` if you like, but leaving them in place is harmless — they won't do anything without the above references.
 
-The `PassifloraConfig.menus` array and `PassifloraConfig.handleMenu` callback are still available regardless. You can use them to build your own menu however you wish, or ignore them entirely.
+The `PassifloraConfig.menus` array and `PassifloraConfig.handleMenu` callback are still available regardless. You can use them to build your own menu and handle selections however you wish, or ignore them entirely.
 
 ## PassifloraConfig
 
@@ -286,16 +286,18 @@ Passiflora bridges a subset of C's stdio file I/O functions so that your JavaScr
 
 ```javascript
 // Write a file
-let f = await fopen("notes.txt", "w");
+let f = await fopen("(some file path)", "w");
 await fputs(f, "Hello from Passiflora!\n");
 await fclose(f);
 
 // Read it back
-f = await fopen("notes.txt", "r");
+f = await fopen("(some file path)", "r");
 let line = await fgets(f);
 await fclose(f);
 alert(line);  // "Hello from Passiflora!\n"
 ```
+
+Obviously `(some file path)` has to be somewhere your app is allowed to write files. Consult the permissions section above and the code in the sample index.html for some tips.
 
 ### File Open / Close
 
@@ -378,7 +380,7 @@ File paths are relative to the process's current working directory, which varies
 * **Android** — the app's private data directory.
 * **iOS** — the app's sandbox container.
 
-Use absolute paths if you need predictable locations.
+Use absolute paths if you need predictable locations. Again, see the code in the sample index.html to get a handle on where you're allowed to write files.
 
 ### Notes
 

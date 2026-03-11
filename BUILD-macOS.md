@@ -1,6 +1,6 @@
-# Building Passiflora on macOS
+# Building Passiflora Apps on macOS
 
-This guide covers building Passiflora natively on macOS, plus cross-compiling for iOS, iOS Simulator, Windows, and Android.
+This guide covers building Passiflora apps natively on macOS, plus cross-compiling for iOS, iOS Simulator, Windows, and Android.
 
 ## Native macOS Build
 

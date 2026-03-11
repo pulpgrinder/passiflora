@@ -1,6 +1,6 @@
-# Building Passiflora on Windows
+# Building Passiflora Apps on Windows
 
-This guide covers building Passiflora natively on Windows, plus cross-compiling for Android.
+This guide covers building Passiflora apps natively on Windows, plus cross-compiling for Android.
 
 > **Note:** On Windows, use `.\build` (or `.\build.bat`) instead of `make`. If you are using PowerShell (the default terminal on modern Windows), you **must** prefix the command with `.\` — e.g. `.\build windows`. In cmd.exe you can just type `build windows`.
 

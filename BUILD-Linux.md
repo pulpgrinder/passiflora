@@ -1,6 +1,6 @@
-# Building Passiflora on Linux
+# Building Passiflora Apps on Linux
 
-This guide covers building Passiflora natively on Linux (Debian/Ubuntu), plus cross-compiling for Windows and Android.
+This guide covers building Passiflora apps natively on Linux (Debian/Ubuntu), plus cross-compiling for Windows and Android.
 
 > **Note:** Instructions use `apt` (Debian/Ubuntu). Adjust for your distro's package manager as needed (e.g., `dnf` on Fedora, `pacman` on Arch).
 
