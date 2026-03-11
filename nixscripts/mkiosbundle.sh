@@ -167,6 +167,12 @@ cat > "$APP/Info.plist" << PLIST
 
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>This app needs your location for location-based features.</string>
+
+    <key>UIFileSharingEnabled</key>
+    <true/>
+
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
 </dict>
 </plist>
 PLIST

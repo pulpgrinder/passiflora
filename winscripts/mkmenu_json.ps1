@@ -70,6 +70,7 @@ if ($outDir -and -not (Test-Path $outDir)) {
 $json = $menus | ConvertTo-Json -Depth 10
 $header = "// Auto-generated file `u{2014} DO NOT EDIT. This file is overwritten on every build.`n"
 $content = $header + "var PassifloraConfig = {`n"
+$content += "  progname: `"$progName`",`n"
 $content += "  os_name: `"$osName`",`n"
 $content += "  menus: " + $json + ",`n"
 $content += "  handleMenu: function(title) { alert(`"Menu item clicked: `" + title); }`n"

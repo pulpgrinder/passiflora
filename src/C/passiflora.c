@@ -47,6 +47,8 @@
   }
 #else
   #include <unistd.h>
+  #include <pwd.h>
+  #include <sys/types.h>
   #include <sys/socket.h>
   #include <sys/time.h>
   #include <netinet/in.h>
@@ -62,7 +64,9 @@
 /* ---- macOS: NSWorkspace for opening external URLs ---- */
 #if defined(__APPLE__) && defined(__MACH__)
   #include <TargetConditionals.h>
-  #if !TARGET_OS_IPHONE
+  #if TARGET_OS_IPHONE
+    #import <UIKit/UIKit.h>
+  #else
     #import <Cocoa/Cocoa.h>
   #endif
 #endif
@@ -200,6 +204,514 @@ static void send_text(int fd, int code, const char *status, const char *msg)
                   (const unsigned char *)msg, strlen(msg));
 }
 
+/* ================================================================== */
+/*  POSIX bridge — file I/O accessible from JavaScript                */
+/* ================================================================== */
+
+/* Forward declaration — url_decode is defined further below */
+static int url_decode(char *s);
+
+#define MAX_POSIX_READ     (16 * 1024 * 1024)
+#define MAX_FGETS_LINE     65536
+#define MAX_FILE_HANDLES   64
+
+/* ---- File handle table ---- */
+static FILE            *file_handles[MAX_FILE_HANDLES];
+static pthread_mutex_t  fh_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static int fh_alloc(FILE *f)
+{
+    pthread_mutex_lock(&fh_lock);
+    for (int i = 1; i < MAX_FILE_HANDLES; i++) {
+        if (!file_handles[i]) {
+            file_handles[i] = f;
+            pthread_mutex_unlock(&fh_lock);
+            return i;
+        }
+    }
+    pthread_mutex_unlock(&fh_lock);
+    return -1;
+}
+
+static FILE *fh_get(int h)
+{
+    if (h < 1 || h >= MAX_FILE_HANDLES) return NULL;
+    pthread_mutex_lock(&fh_lock);
+    FILE *f = file_handles[h];
+    pthread_mutex_unlock(&fh_lock);
+    return f;
+}
+
+/* Atomically remove and return a handle (for fclose) */
+static FILE *fh_take(int h)
+{
+    if (h < 1 || h >= MAX_FILE_HANDLES) return NULL;
+    pthread_mutex_lock(&fh_lock);
+    FILE *f = file_handles[h];
+    file_handles[h] = NULL;
+    pthread_mutex_unlock(&fh_lock);
+    return f;
+}
+
+/* ---- Base64 encode/decode ---- */
+static const char b64_table[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static char *b64_encode(const unsigned char *data, size_t len, size_t *out_len)
+{
+    size_t olen = 4 * ((len + 2) / 3);
+    char *out = malloc(olen + 1);
+    if (!out) return NULL;
+    size_t j = 0;
+    for (size_t i = 0; i < len; ) {
+        uint32_t a = i < len ? data[i++] : 0;
+        uint32_t b = i < len ? data[i++] : 0;
+        uint32_t c = i < len ? data[i++] : 0;
+        uint32_t triple = (a << 16) | (b << 8) | c;
+        out[j++] = b64_table[(triple >> 18) & 0x3F];
+        out[j++] = b64_table[(triple >> 12) & 0x3F];
+        out[j++] = b64_table[(triple >> 6) & 0x3F];
+        out[j++] = b64_table[triple & 0x3F];
+    }
+    /* Pad */
+    size_t mod = len % 3;
+    if (mod == 1) { out[olen - 1] = '='; out[olen - 2] = '='; }
+    else if (mod == 2) { out[olen - 1] = '='; }
+    out[olen] = '\0';
+    if (out_len) *out_len = olen;
+    return out;
+}
+
+static int b64_val(unsigned char c)
+{
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return -1;
+}
+
+static unsigned char *b64_decode(const char *data, size_t len, size_t *out_len)
+{
+    if (len % 4 != 0) return NULL;
+    size_t olen = len / 4 * 3;
+    if (len > 0 && data[len - 1] == '=') olen--;
+    if (len > 1 && data[len - 2] == '=') olen--;
+    unsigned char *out = malloc(olen + 1);
+    if (!out) return NULL;
+    size_t j = 0;
+    for (size_t i = 0; i < len; i += 4) {
+        int a = b64_val(data[i]);
+        int b = b64_val(data[i + 1]);
+        int c = data[i + 2] == '=' ? 0 : b64_val(data[i + 2]);
+        int d = data[i + 3] == '=' ? 0 : b64_val(data[i + 3]);
+        if (a < 0 || b < 0 || c < 0 || d < 0) { free(out); return NULL; }
+        uint32_t triple = (a << 18) | (b << 12) | (c << 6) | d;
+        if (j < olen) out[j++] = (triple >> 16) & 0xFF;
+        if (j < olen) out[j++] = (triple >> 8) & 0xFF;
+        if (j < olen) out[j++] = triple & 0xFF;
+    }
+    out[olen] = '\0';
+    if (out_len) *out_len = olen;
+    return out;
+}
+
+/* ---- Form-body parsing (application/x-www-form-urlencoded) ---- */
+static int form_get_str(const char *body, const char *key,
+                        char *out, size_t out_sz)
+{
+    if (!body || !key) return -1;
+    size_t klen = strlen(key);
+    const char *p = body;
+    while (*p) {
+        if (strncmp(p, key, klen) == 0 && p[klen] == '=') {
+            p += klen + 1;
+            const char *end = strchr(p, '&');
+            size_t vlen = end ? (size_t)(end - p) : strlen(p);
+            if (vlen >= out_sz) vlen = out_sz - 1;
+            memcpy(out, p, vlen);
+            out[vlen] = '\0';
+            if (url_decode(out) < 0) return -1;
+            return 0;
+        }
+        const char *amp = strchr(p, '&');
+        if (!amp) break;
+        p = amp + 1;
+    }
+    return -1;
+}
+
+static int form_get_int(const char *body, const char *key, int *val)
+{
+    char buf[64];
+    if (form_get_str(body, key, buf, sizeof buf) < 0) return -1;
+    *val = atoi(buf);
+    return 0;
+}
+
+static int form_get_long(const char *body, const char *key, long *val)
+{
+    char buf[64];
+    if (form_get_str(body, key, buf, sizeof buf) < 0) return -1;
+    *val = atol(buf);
+    return 0;
+}
+
+/* Get the raw (still-encoded) value of a form parameter.
+ * Needed for base64 data where we do our own decoding. */
+static int form_get_raw(const char *body, const char *key,
+                        const char **start, size_t *len)
+{
+    if (!body || !key) return -1;
+    size_t klen = strlen(key);
+    const char *p = body;
+    while (*p) {
+        if (strncmp(p, key, klen) == 0 && p[klen] == '=') {
+            p += klen + 1;
+            const char *end = strchr(p, '&');
+            *start = p;
+            *len = end ? (size_t)(end - p) : strlen(p);
+            return 0;
+        }
+        const char *amp = strchr(p, '&');
+        if (!amp) break;
+        p = amp + 1;
+    }
+    return -1;
+}
+
+/* ---- JSON result builders (return malloc'd string, caller frees) ---- */
+
+static char *json_error(const char *msg)
+{
+    char esc[512];
+    size_t j = 0;
+    for (size_t i = 0; msg[i] && j < sizeof(esc) - 6; i++) {
+        unsigned char c = (unsigned char)msg[i];
+        if (c == '"')       { esc[j++] = '\\'; esc[j++] = '"'; }
+        else if (c == '\\') { esc[j++] = '\\'; esc[j++] = '\\'; }
+        else if (c == '\n') { esc[j++] = '\\'; esc[j++] = 'n'; }
+        else if (c == '\r') { esc[j++] = '\\'; esc[j++] = 'r'; }
+        else if (c < 0x20)  { j += snprintf(esc + j, sizeof(esc) - j,
+                                             "\\u%04x", c); }
+        else                { esc[j++] = c; }
+    }
+    esc[j] = '\0';
+    char *buf = malloc(1024);
+    if (!buf) return NULL;
+    snprintf(buf, 1024, "{\"ok\":false,\"error\":\"%s\"}", esc);
+    return buf;
+}
+
+static char *json_ok_void(void)
+{
+    return strdup("{\"ok\":true}");
+}
+
+static char *json_ok_int(long val)
+{
+    char *buf = malloc(128);
+    if (!buf) return NULL;
+    snprintf(buf, 128, "{\"ok\":true,\"result\":%ld}", val);
+    return buf;
+}
+
+static char *json_ok_bool(int val)
+{
+    return strdup(val ? "{\"ok\":true,\"result\":true}"
+                      : "{\"ok\":true,\"result\":false}");
+}
+
+static char *json_ok_null(void)
+{
+    return strdup("{\"ok\":true,\"result\":null}");
+}
+
+static char *json_ok_str(const char *val)
+{
+    if (!val) return json_ok_null();
+    size_t slen = strlen(val);
+    size_t bufsz = slen * 6 + 64;
+    char *buf = malloc(bufsz);
+    if (!buf) return json_error("Out of memory");
+    size_t pos = 0;
+    pos += snprintf(buf, bufsz, "{\"ok\":true,\"result\":\"");
+    for (size_t i = 0; i < slen && pos < bufsz - 10; i++) {
+        unsigned char c = (unsigned char)val[i];
+        if (c == '"')       { buf[pos++] = '\\'; buf[pos++] = '"'; }
+        else if (c == '\\') { buf[pos++] = '\\'; buf[pos++] = '\\'; }
+        else if (c == '\n') { buf[pos++] = '\\'; buf[pos++] = 'n'; }
+        else if (c == '\r') { buf[pos++] = '\\'; buf[pos++] = 'r'; }
+        else if (c == '\t') { buf[pos++] = '\\'; buf[pos++] = 't'; }
+        else if (c < 0x20)  { pos += snprintf(buf + pos, bufsz - pos,
+                                               "\\u%04x", c); }
+        else                { buf[pos++] = c; }
+    }
+    pos += snprintf(buf + pos, bufsz - pos, "\"}");
+    return buf;
+}
+
+static char *json_ok_b64(const unsigned char *data, size_t len)
+{
+    size_t b64_len;
+    char *b64 = b64_encode(data, len, &b64_len);
+    if (!b64) return json_error("Out of memory");
+    size_t bufsz = b64_len + 64;
+    char *buf = malloc(bufsz);
+    if (!buf) { free(b64); return json_error("Out of memory"); }
+    int pre = snprintf(buf, bufsz, "{\"ok\":true,\"result\":\"");
+    memcpy(buf + pre, b64, b64_len);
+    snprintf(buf + pre + b64_len, bufsz - pre - b64_len, "\"}");
+    free(b64);
+    return buf;
+}
+
+/* ---- POSIX dispatcher (called from native UI bridge) ---- */
+/*  params: URL-encoded string "func=fopen&path=...&mode=..."          */
+/*  Returns malloc'd JSON string. Caller must free().                  */
+char *passiflora_posix_call(const char *params)
+{
+    /* Make a mutable copy so form_get_str can url_decode in place */
+    size_t plen = params ? strlen(params) : 0;
+    char *body = malloc(plen + 1);
+    if (!body) return json_error("Out of memory");
+    memcpy(body, params ? params : "", plen + 1);
+
+    char func_buf[64];
+    if (form_get_str(body, "func", func_buf, sizeof func_buf) < 0) {
+        free(body);
+        return json_error("Missing 'func' parameter");
+    }
+    const char *func = func_buf;
+
+    char path_buf[2048], path_buf2[2048], mode_buf[16];
+    char str_buf[MAX_FGETS_LINE];
+    int handle;
+    long lval;
+    char *result;
+
+    /* ---- fopen ---- */
+    if (strcmp(func, "fopen") == 0) {
+        if (form_get_str(body, "path", path_buf, sizeof path_buf) < 0) {
+            free(body); return json_error("Missing 'path' parameter");
+        }
+        if (form_get_str(body, "mode", mode_buf, sizeof mode_buf) < 0)
+            snprintf(mode_buf, sizeof mode_buf, "r");
+        if (strstr(path_buf, "..")) {
+            free(body); return json_error("Path traversal not allowed");
+        }
+        FILE *f = fopen(path_buf, mode_buf);
+        if (!f) { result = json_error(strerror(errno)); free(body); return result; }
+        int h = fh_alloc(f);
+        if (h < 0) { fclose(f); free(body); return json_error("Too many open files"); }
+        free(body); return json_ok_int(h);
+    }
+
+    /* ---- fclose ---- */
+    if (strcmp(func, "fclose") == 0) {
+        if (form_get_int(body, "handle", &handle) < 0) {
+            free(body); return json_error("Missing 'handle' parameter");
+        }
+        FILE *f = fh_take(handle);
+        if (!f) { free(body); return json_error("Invalid handle"); }
+        fclose(f);
+        free(body); return json_ok_void();
+    }
+
+    /* ---- fread ---- */
+    if (strcmp(func, "fread") == 0) {
+        int size = 0;
+        if (form_get_int(body, "handle", &handle) < 0 ||
+            form_get_int(body, "size", &size) < 0) {
+            free(body); return json_error("Missing 'handle' or 'size' parameter");
+        }
+        if (size <= 0 || size > MAX_POSIX_READ) {
+            free(body); return json_error("Invalid size");
+        }
+        FILE *f = fh_get(handle);
+        if (!f) { free(body); return json_error("Invalid handle"); }
+        unsigned char *buf = malloc(size);
+        if (!buf) { free(body); return json_error("Out of memory"); }
+        size_t nread = fread(buf, 1, size, f);
+        if (nread == 0) { free(buf); free(body); return json_ok_null(); }
+        result = json_ok_b64(buf, nread);
+        free(buf); free(body); return result;
+    }
+
+    /* ---- fwrite ---- */
+    if (strcmp(func, "fwrite") == 0) {
+        if (form_get_int(body, "handle", &handle) < 0) {
+            free(body); return json_error("Missing 'handle' parameter");
+        }
+        const char *b64_start; size_t b64_len;
+        if (form_get_raw(body, "data", &b64_start, &b64_len) < 0) {
+            free(body); return json_error("Missing 'data' parameter");
+        }
+        size_t dec_len;
+        unsigned char *dec = b64_decode(b64_start, b64_len, &dec_len);
+        if (!dec) { free(body); return json_error("Invalid base64 data"); }
+        FILE *f = fh_get(handle);
+        if (!f) { free(dec); free(body); return json_error("Invalid handle"); }
+        size_t written = fwrite(dec, 1, dec_len, f);
+        free(dec); free(body); return json_ok_int((long)written);
+    }
+
+    /* ---- fgets ---- */
+    if (strcmp(func, "fgets") == 0) {
+        if (form_get_int(body, "handle", &handle) < 0) {
+            free(body); return json_error("Missing 'handle' parameter");
+        }
+        FILE *f = fh_get(handle);
+        if (!f) { free(body); return json_error("Invalid handle"); }
+        char *r = fgets(str_buf, sizeof str_buf, f);
+        free(body);
+        return r ? json_ok_str(str_buf) : json_ok_null();
+    }
+
+    /* ---- fputs ---- */
+    if (strcmp(func, "fputs") == 0) {
+        if (form_get_int(body, "handle", &handle) < 0) {
+            free(body); return json_error("Missing 'handle' parameter");
+        }
+        if (form_get_str(body, "str", str_buf, sizeof str_buf) < 0) {
+            free(body); return json_error("Missing 'str' parameter");
+        }
+        FILE *f = fh_get(handle);
+        if (!f) { free(body); return json_error("Invalid handle"); }
+        int rc = fputs(str_buf, f);
+        free(body);
+        return rc == EOF ? json_error("Write error") : json_ok_void();
+    }
+
+    /* ---- fseek ---- */
+    if (strcmp(func, "fseek") == 0) {
+        int whence = 0;
+        if (form_get_int(body, "handle", &handle) < 0 ||
+            form_get_long(body, "offset", &lval) < 0) {
+            free(body); return json_error("Missing 'handle' or 'offset' parameter");
+        }
+        form_get_int(body, "whence", &whence);
+        if (whence < 0 || whence > 2) {
+            free(body); return json_error("Invalid whence (must be 0, 1, or 2)");
+        }
+        FILE *f = fh_get(handle);
+        if (!f) { free(body); return json_error("Invalid handle"); }
+        if (fseek(f, lval, whence) != 0) {
+            result = json_error(strerror(errno)); free(body); return result;
+        }
+        free(body); return json_ok_void();
+    }
+
+    /* ---- ftell ---- */
+    if (strcmp(func, "ftell") == 0) {
+        if (form_get_int(body, "handle", &handle) < 0) {
+            free(body); return json_error("Missing 'handle' parameter");
+        }
+        FILE *f = fh_get(handle);
+        if (!f) { free(body); return json_error("Invalid handle"); }
+        long pos = ftell(f);
+        free(body);
+        return pos < 0 ? json_error(strerror(errno)) : json_ok_int(pos);
+    }
+
+    /* ---- feof ---- */
+    if (strcmp(func, "feof") == 0) {
+        if (form_get_int(body, "handle", &handle) < 0) {
+            free(body); return json_error("Missing 'handle' parameter");
+        }
+        FILE *f = fh_get(handle);
+        if (!f) { free(body); return json_error("Invalid handle"); }
+        result = json_ok_bool(feof(f));
+        free(body); return result;
+    }
+
+    /* ---- fflush ---- */
+    if (strcmp(func, "fflush") == 0) {
+        if (form_get_int(body, "handle", &handle) < 0) {
+            free(body); return json_error("Missing 'handle' parameter");
+        }
+        FILE *f = fh_get(handle);
+        if (!f) { free(body); return json_error("Invalid handle"); }
+        if (fflush(f) != 0) {
+            result = json_error(strerror(errno)); free(body); return result;
+        }
+        free(body); return json_ok_void();
+    }
+
+    /* ---- remove ---- */
+    if (strcmp(func, "remove") == 0) {
+        if (form_get_str(body, "path", path_buf, sizeof path_buf) < 0) {
+            free(body); return json_error("Missing 'path' parameter");
+        }
+        if (strstr(path_buf, "..")) {
+            free(body); return json_error("Path traversal not allowed");
+        }
+        if (remove(path_buf) != 0) {
+            result = json_error(strerror(errno)); free(body); return result;
+        }
+        free(body); return json_ok_void();
+    }
+
+    /* ---- rename ---- */
+    if (strcmp(func, "rename") == 0) {
+        if (form_get_str(body, "oldpath", path_buf, sizeof path_buf) < 0 ||
+            form_get_str(body, "newpath", path_buf2, sizeof path_buf2) < 0) {
+            free(body); return json_error("Missing 'oldpath' or 'newpath' parameter");
+        }
+        if (strstr(path_buf, "..") || strstr(path_buf2, "..")) {
+            free(body); return json_error("Path traversal not allowed");
+        }
+        if (rename(path_buf, path_buf2) != 0) {
+            result = json_error(strerror(errno)); free(body); return result;
+        }
+        free(body); return json_ok_void();
+    }
+
+    /* ---- getUsername ---- */
+    if (strcmp(func, "getUsername") == 0) {
+        const char *name = NULL;
+#ifdef _WIN32
+        name = getenv("USERNAME");
+#else
+        struct passwd *pw = getpwuid(getuid());
+        if (pw) name = pw->pw_name;
+#endif
+        if (!name) name = getenv("USER");
+        free(body);
+        return name ? json_ok_str(name) : json_ok_null();
+    }
+
+    /* ---- getHomeFolder ---- */
+    if (strcmp(func, "getHomeFolder") == 0) {
+        const char *home = NULL;
+#ifdef _WIN32
+        home = getenv("USERPROFILE");
+#elif defined(__APPLE__) && defined(__MACH__) && TARGET_OS_IPHONE
+        @autoreleasepool {
+            NSString *docs = [NSSearchPathForDirectoriesInDomains(
+                NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+            if (docs) {
+                char *cdir = strdup([docs UTF8String]);
+                free(body);
+                result = json_ok_str(cdir);
+                free(cdir);
+                return result;
+            }
+        }
+#else
+        struct passwd *pw = getpwuid(getuid());
+        if (pw) home = pw->pw_dir;
+#endif
+        if (!home) home = getenv("HOME");
+        free(body);
+        return home ? json_ok_str(home) : json_ok_null();
+    }
+
+    free(body);
+    return json_error("Unknown POSIX function");
+}
+
 /* ------------------------------------------------------------------ */
 /*  URL-decode in place.  Returns -1 if a null byte is encountered.   */
 /* ------------------------------------------------------------------ */
@@ -257,7 +769,15 @@ static int resolve_path(const char *url_path, char *out, size_t out_sz)
 /* ------------------------------------------------------------------ */
 static void open_url_in_browser(const char *url)
 {
-#if defined(__APPLE__) && defined(__MACH__) && !TARGET_OS_IPHONE
+#if defined(__APPLE__) && defined(__MACH__) && TARGET_OS_IPHONE
+    @autoreleasepool {
+        NSURL *nsurl = [NSURL URLWithString:
+            [NSString stringWithUTF8String:url]];
+        if (nsurl)
+            [[UIApplication sharedApplication] openURL:nsurl
+                options:@{} completionHandler:nil];
+    }
+#elif defined(__APPLE__) && defined(__MACH__)
     @autoreleasepool {
         NSURL *nsurl = [NSURL URLWithString:
             [NSString stringWithUTF8String:url]];
@@ -632,5 +1152,18 @@ Java_com_example_zipserve_MainActivity_startServer(JNIEnv *env, jclass cls)
     pthread_attr_destroy(&attr);
 
     return port;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_example_zipserve_MainActivity_nativePosixCall(
+    JNIEnv *env, jclass cls, jstring params)
+{
+    (void)cls;
+    const char *p = (*env)->GetStringUTFChars(env, params, NULL);
+    char *result = passiflora_posix_call(p);
+    (*env)->ReleaseStringUTFChars(env, params, p);
+    jstring jresult = (*env)->NewStringUTF(env, result ? result : "{}");
+    free(result);
+    return jresult;
 }
 #endif /* __ANDROID__ */

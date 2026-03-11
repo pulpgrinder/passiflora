@@ -172,10 +172,17 @@ ifeq ($(UNAME_S),Darwin)
 	cp "$$PROV" $(IOS_APP_BUNDLE)/embedded.mobileprovision; \
 	\
 	echo "iosipa: extracting entitlements from profile..."; \
-	ENT_FILE=$$(mktemp /tmp/iosipa-ent.XXXXXX.plist); \
-	security cms -D -i "$$PROV" > "$$ENT_FILE.full" 2>/dev/null; \
-	/usr/libexec/PlistBuddy -x -c "Print :Entitlements" "$$ENT_FILE.full" > "$$ENT_FILE" 2>/dev/null; \
+	ENT_FILE=$$(mktemp /tmp/iosipa-ent-XXXXXX); \
+	security cms -D -i "$$PROV" > "$$ENT_FILE.full"; \
+	if ! /usr/libexec/PlistBuddy -x -c "Print :Entitlements" "$$ENT_FILE.full" > "$$ENT_FILE"; then \
+		echo "iosipa: failed to extract entitlements from provisioning profile." >&2; \
+		cat "$$ENT_FILE.full" >&2; \
+		rm -f "$$ENT_FILE" "$$ENT_FILE.full"; \
+		exit 1; \
+	fi; \
 	rm -f "$$ENT_FILE.full"; \
+	echo "iosipa: entitlements:"; \
+	cat "$$ENT_FILE"; \
 	\
 	echo ""; \
 	echo "=== Code Signing: $(IOS_APP_BUNDLE) ==="; \
@@ -220,6 +227,7 @@ ifeq ($(UNAME_S),Darwin)
 	codesign --force \
 		--sign "$$SIGN_ID" \
 		--entitlements "$$ENT_FILE" \
+		--generate-entitlement-der \
 		$(IOS_APP_BUNDLE); \
 	rm -f "$$ENT_FILE"; \
 	\

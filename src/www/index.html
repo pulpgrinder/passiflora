@@ -20,16 +20,84 @@
         <a href="https://amazon.com">Visit Amazon</a>
         <button onclick="PassifloraIO.openExternal('https://google.com')">Open Google in new browser window</button>
         <button onclick="checkLocation()">Check Location</button>
+        <button onclick="testFileSystem()">Test File System</button>
     </p>
+    <p id="result">
 
+
+    </p>
 <script>
+    async function testFileSystem() {
+        try {
+            var username = await PassifloraIO.getUsername();
+            logResult("Current username: " + username);
+        } catch(e) {
+            logResult("Error getting username: " + e.message);
+        }
+        try {
+           let homeFolder = await PassifloraIO.getHomeFolder();
+            logResult("Home folder: " + homeFolder);
+            try {
+            logResult("Testing file write...");
+            let testFilePath = homeFolder + "/testfile.txt";
+            let fh = await fopen(testFilePath, "w");
+            await fputs(fh, "This is a test file.");
+            await fclose(fh);
+            logResult("Successfully wrote to file: " + testFilePath);
+        } catch(e) {
+            logResult("Error writing test file: " + e.message);
+        }
+  
+        try {
+            logResult("Testing file read...");
+            let testFilePath = homeFolder + "/testfile.txt";
+            let fh = await fopen(testFilePath, "r");
+            let contents = await fgets(fh);
+            await fclose(fh);
+            logResult("Contents of test file: " + contents);
+        } catch(e) {
+            logResult("Error reading test file: " + e.message);
+        }
+        try {
+            logResult ("Testing file delete...");
+            let testFilePath = homeFolder + "/testfile.txt";
+            await remove(testFilePath);
+            logResult("Successfully deleted test file: " + testFilePath);
+        } catch(e) {
+            logResult("Error deleting test file: " + e.message);
+        }
+        try {
+            logResult("Testing (to be left in file system)...");
+            let testFilePath = homeFolder + "/frompassiflora.txt";
+            let fh = await fopen(testFilePath, "w");
+            await fputs(fh, "This is a test file from passiflora.");
+            await fclose(fh);
+            logResult("Successfully wrote to file: " + testFilePath);
+            logResult("You should now have a file named 'frompassiflora.txt' in the home folder.");
+            logResult("On iPhone and iPad, the home folder will appear in the Files app at On My (iPhone or iPad)/" + PassifloraConfig.progname);
+            logResult("On Mac, the home folder will be your user home directory, typically /Users/&lt;username&gt;.");
+            logResult("On Windows, the home folder will be your user profile directory, typically C:\\Users\\&lt;username&gt;.");
+            logResult("On Linux, the home folder will be your user home directory, typically /home/&lt;username&gt;.");
+            logResult("On Android, the home folder will be in Documents/" + PassifloraConfig.progname + ", accessible via the Files app or any file manager.");
+        } catch(e) {
+            logResult("Error writing test file: " + e.message);
+        }
+
+    } catch(e) {
+            logResult("Error accessing file system: " + e.message);
+        }
+    }
+    function logResult(result) {
+        const resultElem = document.getElementById('result');
+        resultElem.innerHTML = resultElem.innerHTML + result + "<br />\n";
+    }
     async function checkLocation(){
        try {
            const position = await PassifloraIO.getCurrentPosition();
            console.log(position);
-           alert(`Latitude: ${position.coords.latitude}, Longitude: ${position.coords.longitude}`);
+           logResult(`Latitude: ${position.coords.latitude}, Longitude: ${position.coords.longitude}`);
        } catch(e) {
-           alert('Geolocation error: ' + e.message + ' (code: ' + (e.code || 'N/A') + ')');
+           logResult('Geolocation error: ' + e.message + ' (code: ' + (e.code || 'N/A') + ')');
        }
 }
 </script>

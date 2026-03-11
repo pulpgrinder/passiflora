@@ -44,8 +44,8 @@ static WKWebView *g_ios_webView = nil;
 /*  Scene delegate (iOS 13+) — creates the window and web view         */
 /* ------------------------------------------------------------------ */
 @interface ZSSceneDelegate : UIResponder
-    <UIWindowSceneDelegate, WKUIDelegate, WKScriptMessageHandler,
-     CLLocationManagerDelegate>
+    <UIWindowSceneDelegate, WKUIDelegate, WKNavigationDelegate,
+     WKScriptMessageHandler, CLLocationManagerDelegate>
 @property (nonatomic, strong) UIWindow *window;
 @property (nonatomic, strong) CLLocationManager *locationManager;
 @property (nonatomic, copy) void (^locationCallback)(CLLocation *location, NSError *error);
@@ -75,10 +75,13 @@ static WKWebView *g_ios_webView = nil;
     config.allowsInlineMediaPlayback = YES;
     [config.userContentController addScriptMessageHandler:self
                                                      name:@"passifloraGeolocation"];
+    [config.userContentController addScriptMessageHandler:self
+                                                     name:@"passifloraPosix"];
 
     WKWebView *webView =
         [[WKWebView alloc] initWithFrame:CGRectZero configuration:config];
     webView.UIDelegate = self;
+    webView.navigationDelegate = self;
     g_ios_webView = webView;
 
     UIViewController *vc = [[UIViewController alloc] init];
@@ -187,6 +190,31 @@ static WKWebView *g_ios_webView = nil;
     decisionHandler(WKPermissionDecisionGrant);
 }
 
+/* WKNavigationDelegate: intercept link clicks to external URLs */
+- (void)webView:(WKWebView *)wv
+    decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction
+    decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler
+{
+    (void)wv;
+    NSURL *url = navigationAction.request.URL;
+    if (url && ([url.scheme isEqualToString:@"http"] ||
+                [url.scheme isEqualToString:@"https"])) {
+        NSString *host = url.host;
+        /* Allow navigation to our local server */
+        if (host && ([host isEqualToString:@"127.0.0.1"] ||
+                     [host isEqualToString:@"localhost"])) {
+            decisionHandler(WKNavigationActionPolicyAllow);
+            return;
+        }
+        /* External URL — open in Safari */
+        [[UIApplication sharedApplication] openURL:url
+            options:@{} completionHandler:nil];
+        decisionHandler(WKNavigationActionPolicyCancel);
+        return;
+    }
+    decisionHandler(WKNavigationActionPolicyAllow);
+}
+
 /* CLLocationManagerDelegate: got location */
 - (void)locationManager:(CLLocationManager *)manager
      didUpdateLocations:(NSArray<CLLocation *> *)locations
@@ -239,6 +267,7 @@ static BOOL isValidGeoId(NSString *geoId) {
 
         __weak typeof(self) weakSelf = self;
         self.locationCallback = ^(CLLocation *loc, NSError *err) {
+            (void)err;
             NSString *js;
             if (loc) {
                 js = [NSString stringWithFormat:
@@ -258,6 +287,40 @@ static BOOL isValidGeoId(NSString *geoId) {
             });
         };
         [self.locationManager requestLocation];
+    }
+    if ([message.name isEqualToString:@"passifloraPosix"]) {
+        NSString *params = [NSString stringWithFormat:@"%@", message.body];
+        /* Extract callback ID and validate */
+        NSString *cbId = nil;
+        for (NSString *pair in [params componentsSeparatedByString:@"&"]) {
+            if ([pair hasPrefix:@"id="]) {
+                cbId = [pair substringFromIndex:3];
+                break;
+            }
+        }
+        if (!cbId) return;
+        NSRegularExpression *re = [NSRegularExpression
+            regularExpressionWithPattern:@"^posix_[0-9]+$" options:0 error:nil];
+        if ([re numberOfMatchesInString:cbId options:0
+                range:NSMakeRange(0, cbId.length)] != 1) return;
+
+        /* Run POSIX call off the main thread */
+        NSString *safeParams = [params copy];
+        NSString *safeCbId = [cbId copy];
+        dispatch_async(dispatch_get_global_queue(
+                           DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            extern char *passiflora_posix_call(const char *);
+            char *json = passiflora_posix_call(
+                [safeParams UTF8String]);
+            NSString *jsonStr = json
+                ? [NSString stringWithUTF8String:json] : @"{}";
+            free(json);
+            NSString *js = [NSString stringWithFormat:
+                @"PassifloraIO._posixResolve('%@',%@);", safeCbId, jsonStr];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [g_ios_webView evaluateJavaScript:js completionHandler:nil];
+            });
+        });
     }
 }
 @end
@@ -585,6 +648,7 @@ static BOOL isValidGeoId(NSString *geoId) {
 
         __weak typeof(self) weakSelf = self;
         self.locationCallback = ^(CLLocation *loc, NSError *err) {
+            (void)err;
             NSString *js;
             if (loc) {
                 js = [NSString stringWithFormat:
@@ -604,6 +668,38 @@ static BOOL isValidGeoId(NSString *geoId) {
             });
         };
         [self.locationManager requestLocation];
+    }
+    if ([message.name isEqualToString:@"passifloraPosix"]) {
+        NSString *params = [NSString stringWithFormat:@"%@", message.body];
+        NSString *cbId = nil;
+        for (NSString *pair in [params componentsSeparatedByString:@"&"]) {
+            if ([pair hasPrefix:@"id="]) {
+                cbId = [pair substringFromIndex:3];
+                break;
+            }
+        }
+        if (!cbId) return;
+        NSRegularExpression *re = [NSRegularExpression
+            regularExpressionWithPattern:@"^posix_[0-9]+$" options:0 error:nil];
+        if ([re numberOfMatchesInString:cbId options:0
+                range:NSMakeRange(0, cbId.length)] != 1) return;
+
+        NSString *safeParams = [params copy];
+        NSString *safeCbId = [cbId copy];
+        dispatch_async(dispatch_get_global_queue(
+                           DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            extern char *passiflora_posix_call(const char *);
+            char *json = passiflora_posix_call(
+                [safeParams UTF8String]);
+            NSString *jsonStr = json
+                ? [NSString stringWithUTF8String:json] : @"{}";
+            free(json);
+            NSString *js = [NSString stringWithFormat:
+                @"PassifloraIO._posixResolve('%@',%@);", safeCbId, jsonStr];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [g_webView evaluateJavaScript:js completionHandler:nil];
+            });
+        });
     }
 }
 
@@ -708,6 +804,8 @@ void ui_open(int port)
             [[WKWebViewConfiguration alloc] init];
         [config.userContentController addScriptMessageHandler:delegate
                                                          name:@"passifloraGeolocation"];
+        [config.userContentController addScriptMessageHandler:delegate
+                                                         name:@"passifloraPosix"];
         g_webView =
             [[WKWebView alloc] initWithFrame:[[window contentView] bounds]
                                configuration:config];
@@ -809,6 +907,12 @@ typedef struct {
     void *_pad28;  /* RemoveScriptToExecuteOnDocumentCreated */
     HRESULT (STDMETHODCALLTYPE *ExecuteScript)(
         ICoreWebView2*,LPCWSTR,void*);    /* 29 */
+    void *_pad30;  /* CapturePreview */
+    void *_pad31;  /* Reload */
+    void *_pad32;  /* PostWebMessageAsJson */
+    void *_pad33;  /* PostWebMessageAsString */
+    HRESULT (STDMETHODCALLTYPE *add_WebMessageReceived)(
+        ICoreWebView2*,void*,void*);      /* 34 */
 } ICoreWebView2Vtbl;
 struct ICoreWebView2 { ICoreWebView2Vtbl *lpVtbl; };
 
@@ -909,6 +1013,29 @@ struct ICoreWebView2PermissionRequestedEventArgs {
     ICoreWebView2PermissionRequestedEventArgsVtbl *lpVtbl;
 };
 
+/* -- ICoreWebView2WebMessageReceivedEventArgs --------------------- */
+typedef struct ICoreWebView2WebMessageReceivedEventArgs
+    ICoreWebView2WebMessageReceivedEventArgs;
+typedef struct {
+    /* IUnknown */
+    HRESULT (STDMETHODCALLTYPE *QueryInterface)(
+        ICoreWebView2WebMessageReceivedEventArgs*,REFIID,void**);
+    ULONG   (STDMETHODCALLTYPE *AddRef)(
+        ICoreWebView2WebMessageReceivedEventArgs*);
+    ULONG   (STDMETHODCALLTYPE *Release)(
+        ICoreWebView2WebMessageReceivedEventArgs*);
+    /* ICoreWebView2WebMessageReceivedEventArgs */
+    HRESULT (STDMETHODCALLTYPE *get_Source)(
+        ICoreWebView2WebMessageReceivedEventArgs*,LPWSTR*);   /* 3 */
+    HRESULT (STDMETHODCALLTYPE *get_WebMessageAsJson)(
+        ICoreWebView2WebMessageReceivedEventArgs*,LPWSTR*);   /* 4 */
+    HRESULT (STDMETHODCALLTYPE *TryGetWebMessageAsString)(
+        ICoreWebView2WebMessageReceivedEventArgs*,LPWSTR*);   /* 5 */
+} ICoreWebView2WebMessageReceivedEventArgsVtbl;
+struct ICoreWebView2WebMessageReceivedEventArgs {
+    ICoreWebView2WebMessageReceivedEventArgsVtbl *lpVtbl;
+};
+
 /* ---- Callback handler structs ---- */
 /*  COM callbacks: IUnknown { QI, AddRef, Release } + Invoke.
  *  We use a single generic layout for both handlers.                  */
@@ -991,6 +1118,9 @@ static const IID IID_CtrlCompletedHandler = {
 static const IID IID_PermissionRequestedHandler = {
     0x15e1c6a3,0xc72a,0x4df3,
     {0x91,0xd7,0xd0,0x97,0xfb,0xec,0x6b,0xfd}};
+static const IID IID_WebMessageReceivedHandler = {
+    0x57213f19,0x00a6,0x49f7,
+    {0xa9,0x14,0x0d,0x4e,0x74,0xe7,0xa3,0xb0}};
 
 /* ---- Invoke: environment created ---- */
 static HRESULT STDMETHODCALLTYPE
@@ -1036,6 +1166,116 @@ OnPermissionRequested(WV2Handler *self, HRESULT sender_unused, void *argsRaw)
     return S_OK;
 }
 
+/* Validate posix callback ID (posix_N) */
+static int is_valid_posix_id_w(const char *id)
+{
+    if (!id || strncmp(id, "posix_", 6) != 0) return 0;
+    const char *p = id + 6;
+    if (*p == '\0') return 0;
+    while (*p) { if (*p < '0' || *p > '9') return 0; p++; }
+    return 1;
+}
+
+/* POSIX call thread data for Windows */
+typedef struct {
+    char *params;
+    char *cb_id;
+    WV2State *st;
+} WinPosixTask;
+
+/* Custom window message: LPARAM = heap-allocated wchar_t* JS to execute */
+#define WM_POSIX_RESULT (WM_APP + 1)
+
+static DWORD WINAPI win_posix_thread(LPVOID data)
+{
+    WinPosixTask *task = (WinPosixTask *)data;
+    extern char *passiflora_posix_call(const char *);
+    char *json = passiflora_posix_call(task->params);
+    if (!json) json = _strdup("{}");
+
+    /* Build JS callback: PassifloraIO._posixResolve('id', {json}) */
+    size_t jlen = strlen(task->cb_id) + strlen(json) + 64;
+    char *js8 = (char *)malloc(jlen);
+    if (js8) {
+        snprintf(js8, jlen,
+            "PassifloraIO._posixResolve('%s',%s);",
+            task->cb_id, json);
+        int wlen = MultiByteToWideChar(CP_UTF8, 0, js8, -1, NULL, 0);
+        wchar_t *wjs = (wchar_t *)malloc(wlen * sizeof(wchar_t));
+        if (wjs) {
+            MultiByteToWideChar(CP_UTF8, 0, js8, -1, wjs, wlen);
+            /* Post to UI thread — ExecuteScript must run on the UI thread */
+            if (task->st->hwnd)
+                PostMessage(task->st->hwnd, WM_POSIX_RESULT, 0, (LPARAM)wjs);
+            else
+                free(wjs);
+        }
+        free(js8);
+    }
+    free(json);
+    free(task->params);
+    free(task->cb_id);
+    free(task);
+    return 0;
+}
+
+/* ---- Invoke: web message received ---- */
+static HRESULT STDMETHODCALLTYPE
+OnWebMessageReceived(WV2Handler *self, HRESULT sender_unused, void *argsRaw)
+{
+    (void)sender_unused;
+    WV2State *st = (WV2State *)self->context;
+    ICoreWebView2WebMessageReceivedEventArgs *args =
+        (ICoreWebView2WebMessageReceivedEventArgs *)argsRaw;
+
+    LPWSTR wmsg = NULL;
+    if (FAILED(args->lpVtbl->TryGetWebMessageAsString(args, &wmsg)) || !wmsg)
+        return S_OK;
+
+    /* Convert wide string to UTF-8 */
+    int ulen = WideCharToMultiByte(CP_UTF8, 0, wmsg, -1, NULL, 0, NULL, NULL);
+    char *params = (char *)malloc(ulen);
+    if (!params) { CoTaskMemFree(wmsg); return S_OK; }
+    WideCharToMultiByte(CP_UTF8, 0, wmsg, -1, params, ulen, NULL, NULL);
+    CoTaskMemFree(wmsg);
+
+    /* Extract id= from URL-encoded params */
+    char *cb_id = NULL;
+    char *p = params;
+    while (*p) {
+        if (strncmp(p, "id=", 3) == 0) {
+            p += 3;
+            const char *end = strchr(p, '&');
+            size_t len = end ? (size_t)(end - p) : strlen(p);
+            cb_id = (char *)malloc(len + 1);
+            if (cb_id) { memcpy(cb_id, p, len); cb_id[len] = '\0'; }
+            break;
+        }
+        const char *amp = strchr(p, '&');
+        if (!amp) break;
+        p = (char *)amp + 1;
+    }
+
+    if (!cb_id || !is_valid_posix_id_w(cb_id)) {
+        free(cb_id);
+        free(params);
+        return S_OK;
+    }
+
+    /* Run POSIX call on a worker thread to avoid blocking UI */
+    WinPosixTask *task = (WinPosixTask *)calloc(1, sizeof(WinPosixTask));
+    if (task) {
+        task->params = params;
+        task->cb_id = cb_id;
+        task->st = st;
+        HANDLE h = CreateThread(NULL, 0, win_posix_thread, task, 0, NULL);
+        if (h) CloseHandle(h);
+        else { free(params); free(cb_id); free(task); }
+    } else { free(params); free(cb_id); }
+
+    return S_OK;
+}
+
 /* ---- Invoke: controller created ---- */
 static HRESULT STDMETHODCALLTYPE
 OnControllerCreated(WV2Handler *self, HRESULT hr, void *ctrl)
@@ -1078,6 +1318,23 @@ OnControllerCreated(WV2Handler *self, HRESULT hr, void *ctrl)
         st->webview->lpVtbl->add_PermissionRequested(
             st->webview, (void *)ph, NULL);
         ph->lpVtbl->Release(ph);
+    }
+
+    /* Listen for web messages from JavaScript (POSIX bridge) */
+    {
+        WV2Handler *mh = calloc(1, sizeof *mh);
+        static WV2HandlerVtbl msgVtbl = {
+            Handler_QueryInterface, Handler_AddRef,
+            Handler_Release,
+            (WV2InvokeFn)OnWebMessageReceived
+        };
+        mh->lpVtbl   = &msgVtbl;
+        mh->refCount = 1;
+        mh->iid      = IID_WebMessageReceivedHandler;
+        mh->context  = st;
+        st->webview->lpVtbl->add_WebMessageReceived(
+            st->webview, (void *)mh, NULL);
+        mh->lpVtbl->Release(mh);
     }
 
     /* Navigate */
@@ -1244,6 +1501,17 @@ static LRESULT CALLBACK ZSWndProc(HWND hwnd, UINT msg,
             wv2_resize_to_client(hwnd);
         }
         return 0;
+    case WM_POSIX_RESULT: {
+        /* ExecuteScript callback from worker thread */
+        wchar_t *wjs = (wchar_t *)lp;
+        if (wjs) {
+            if (g_wv2.webview)
+                g_wv2.webview->lpVtbl->ExecuteScript(
+                    g_wv2.webview, wjs, NULL);
+            free(wjs);
+        }
+        return 0;
+    }
     case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
@@ -1833,6 +2101,91 @@ static void on_geoclue_client_ready(GObject *source, GAsyncResult *res,
     /* Now we wait — on_location_updated or on_geo_timeout will fire */
 }
 
+/* ---- POSIX bridge via native message handler ---- */
+
+/* Validate callback ID format (posix_N) to prevent JS injection */
+static int is_valid_posix_id(const char *id)
+{
+    if (!id || strncmp(id, "posix_", 6) != 0) return 0;
+    const char *p = id + 6;
+    if (*p == '\0') return 0;
+    while (*p) { if (*p < '0' || *p > '9') return 0; p++; }
+    return 1;
+}
+
+/* GLib thread function: run POSIX call and schedule JS callback */
+typedef struct {
+    char *params;
+    char *cb_id;
+} PosixTask;
+
+static gboolean posix_result_idle(gpointer data)
+{
+    char **pair = (char **)data;    /* [0]=cb_id, [1]=json */
+    if (g_linux_webview) {
+        char *js = g_strdup_printf(
+            "PassifloraIO._posixResolve('%s',%s);", pair[0], pair[1]);
+        webkit_web_view_evaluate_javascript(g_linux_webview, js, -1,
+                                            NULL, NULL, NULL, NULL, NULL);
+        g_free(js);
+    }
+    free(pair[1]);   /* json from passiflora_posix_call */
+    g_free(pair[0]); /* cb_id */
+    g_free(pair);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer posix_thread_func(gpointer data)
+{
+    PosixTask *task = (PosixTask *)data;
+    extern char *passiflora_posix_call(const char *);
+    char *json = passiflora_posix_call(task->params);
+    char **pair = g_new(char *, 2);
+    pair[0] = task->cb_id;       /* already g_strdup'd */
+    pair[1] = json ? json : strdup("{}");
+    g_idle_add(posix_result_idle, pair);
+    g_free(task->params);
+    g_free(task);
+    return NULL;
+}
+
+static void on_posix_message(WebKitUserContentManager *manager,
+                             WebKitJavascriptResult *js_result,
+                             gpointer data)
+{
+    (void)manager; (void)data;
+    JSCValue *val = webkit_javascript_result_get_js_value(js_result);
+    char *params = jsc_value_to_string(val);
+    if (!params) return;
+
+    /* Extract id= from URL-encoded params */
+    char *cb_id = NULL;
+    char *p = params;
+    while (*p) {
+        if (strncmp(p, "id=", 3) == 0) {
+            p += 3;
+            const char *end = strchr(p, '&');
+            size_t len = end ? (size_t)(end - p) : strlen(p);
+            cb_id = g_strndup(p, len);
+            break;
+        }
+        const char *amp = strchr(p, '&');
+        if (!amp) break;
+        p = (char *)amp + 1;
+    }
+
+    if (!cb_id || !is_valid_posix_id(cb_id)) {
+        g_free(cb_id);
+        g_free(params);
+        return;
+    }
+
+    PosixTask *task = g_new(PosixTask, 1);
+    task->params = params;    /* transfer ownership */
+    task->cb_id = cb_id;
+    g_thread_new("posix", posix_thread_func, task);
+}
+
 /* Validate callback ID format (geo_N) to prevent JS injection */
 static int is_valid_geo_id(const char *id)
 {
@@ -1963,6 +2316,10 @@ void ui_open(int port)
         ucm, "passifloraGeolocation");
     g_signal_connect(ucm, "script-message-received::passifloraGeolocation",
                      G_CALLBACK(on_geolocation_message), NULL);
+    webkit_user_content_manager_register_script_message_handler(
+        ucm, "passifloraPosix");
+    g_signal_connect(ucm, "script-message-received::passifloraPosix",
+                     G_CALLBACK(on_posix_message), NULL);
 
     g_linux_webview = WEBKIT_WEB_VIEW(
         webkit_web_view_new_with_user_content_manager(ucm));

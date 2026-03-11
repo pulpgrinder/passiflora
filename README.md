@@ -15,6 +15,12 @@ Supported target platforms include:
 * Linux (build on Linux)
 * More targets may be added later if they seem useful
 
+Features:
+
+* Access to device location data
+* POSIX(-ish) file system
+* (soon) Access to cameras, mics, etc.
+
 What it *doesn't* do:
 
 * Require that you install 50 million dubious npm packages (or a whole freakin' Rust ecosystem, for the love of all that's holy)
@@ -246,6 +252,117 @@ var PassifloraConfig = {
 - **`PassifloraConfig.handleMenu`** — called by both the native menu bar and the built-in sliding menu when a (non-native) menu item is selected. Override this in your `app.js` to handle menu actions.
 
 This file is auto-generated on every build and should not be edited by hand.
+
+## POSIX Functions
+
+Passiflora bridges a subset of C's stdio file I/O functions so that your JavaScript can read and write files on the host filesystem. All functions are **async** and return Promises. They are available both as global functions and as methods on `PassifloraIO`.
+
+### Quick Example
+
+```javascript
+// Write a file
+let f = await fopen("notes.txt", "w");
+await fputs(f, "Hello from Passiflora!\n");
+await fclose(f);
+
+// Read it back
+f = await fopen("notes.txt", "r");
+let line = await fgets(f);
+await fclose(f);
+alert(line);  // "Hello from Passiflora!\n"
+```
+
+### File Open / Close
+
+| Function | Description |
+|----------|-------------|
+| `fopen(path, mode)` | Open a file. Returns a numeric handle. `mode` defaults to `"r"` if omitted. Modes are the standard C modes: `"r"`, `"w"`, `"a"`, `"r+"`, `"w+"`, `"a+"` (append `"b"` for binary, e.g. `"rb"`). |
+| `fclose(handle)` | Close a previously opened file handle. |
+
+### Text I/O
+
+| Function | Description |
+|----------|-------------|
+| `fgets(handle)` | Read one line (up to 64 KB, including the newline). Returns the line as a string, or `null` at EOF. |
+| `fputs(handle, str)` | Write a string to the file. |
+
+### Binary I/O
+
+| Function | Description |
+|----------|-------------|
+| `fread(handle, size)` | Read up to `size` bytes. Returns a `Uint8Array`, or `null` at EOF. |
+| `fwrite(handle, data)` | Write `data` (a string or `Uint8Array`) to the file. Returns the number of bytes written. |
+
+### Seeking / Position
+
+| Function | Description |
+|----------|-------------|
+| `fseek(handle, offset, whence)` | Seek to a position. `whence`: `SEEK_SET` (0) = from start, `SEEK_CUR` (1) = from current, `SEEK_END` (2) = from end. |
+| `ftell(handle)` | Return the current byte offset in the file. |
+| `frewind(handle)` | Rewind to the beginning (equivalent to `fseek(handle, 0, SEEK_SET)`). |
+| `feof(handle)` | Return `true` if the file position is at end-of-file. |
+| `fflush(handle)` | Flush buffered writes to disk. |
+
+### Filesystem Operations
+
+| Function | Description |
+|----------|-------------|
+| `fremove(path)` | Delete a file. |
+| `frename(oldpath, newpath)` | Rename or move a file. |
+
+### Using via `PassifloraIO`
+
+All functions are also available as methods on the `PassifloraIO` object. The method names match the C originals (without the `f` prefix on `remove`/`rename`):
+
+```javascript
+let f = await PassifloraIO.fopen("data.bin", "rb");
+let bytes = await PassifloraIO.fread(f, 1024);
+await PassifloraIO.fclose(f);
+
+await PassifloraIO.remove("old.txt");
+await PassifloraIO.rename("a.txt", "b.txt");
+```
+
+### Constants
+
+The following constants are available globally and on `PassifloraIO`:
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| `SEEK_SET` | 0 | Seek from start of file |
+| `SEEK_CUR` | 1 | Seek from current position |
+| `SEEK_END` | 2 | Seek from end of file |
+
+### Error Handling
+
+All functions throw an `Error` on failure. The error message comes from the C runtime (e.g. `"No such file or directory"`). Use try/catch:
+
+```javascript
+try {
+    let f = await fopen("nonexistent.txt", "r");
+} catch (e) {
+    console.error("Open failed:", e.message);
+}
+```
+
+### Working Directory
+
+File paths are relative to the process's current working directory, which varies by platform:
+
+* **macOS / Linux / Windows** — wherever you launched the app from.
+* **Android** — the app's private data directory.
+* **iOS** — the app's sandbox container.
+
+Use absolute paths if you need predictable locations.
+
+### Notes
+
+* Calls go through the native WebView bridge (not HTTP), so they are only accessible to code running inside the app's own WebView.
+* On Android, calls are synchronous via `@JavascriptInterface`. On all other platforms they use async message handlers with callbacks.
+* Up to 63 files may be open simultaneously.
+* `fread` reads a maximum of 16 MB per call. For larger files, read in a loop.
+* `fwrite` data is base64-encoded in transit; very large writes may be slow.
+* Path traversal (`..`) is rejected for `fopen`, `fremove`, and `frename`.
 
 ## About this project
 

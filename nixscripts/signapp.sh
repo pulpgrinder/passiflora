@@ -147,6 +147,7 @@ ENTEOF
         # shellcheck disable=SC2086
         codesign --force \
             --sign "$SIGN_ID" \
+            --generate-entitlement-der \
             $ENTITLEMENTS_FLAG \
             "$BUNDLE"
 

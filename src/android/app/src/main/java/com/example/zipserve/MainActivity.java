@@ -21,6 +21,9 @@ import android.webkit.WebChromeClient;
 import android.webkit.JsResult;
 import android.webkit.JsPromptResult;
 import android.app.AlertDialog;
+import android.os.Build;
+import android.os.Environment;
+import android.provider.Settings;
 import android.widget.EditText;
 
 /**
@@ -41,6 +44,9 @@ public class MainActivity extends Activity {
     /** Start the native HTTP server; returns the assigned port. */
     private static native int startServer();
 
+    /** Call native POSIX bridge; returns JSON result string. */
+    private static native String nativePosixCall(String params);
+
     /* Bridge exposed to JavaScript as window.PassifloraBridge */
     private class Bridge {
         @JavascriptInterface
@@ -49,6 +55,23 @@ public class MainActivity extends Activity {
             if (!url.startsWith("http://") && !url.startsWith("https://")) return;
             Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
             startActivity(intent);
+        }
+
+        @JavascriptInterface
+        public String posixCall(String params) {
+            /* Intercept getHomeFolder on Android — return shared Documents dir */
+            if (params != null && params.contains("func=getHomeFolder")) {
+                java.io.File docs = Environment
+                    .getExternalStoragePublicDirectory(
+                        Environment.DIRECTORY_DOCUMENTS);
+                String appName = getString(R.string.app_name);
+                java.io.File dir = new java.io.File(docs, appName);
+                dir.mkdirs();
+                String path = dir.getAbsolutePath()
+                    .replace("\\", "\\\\").replace("\"", "\\\"");
+                return "{\"ok\":true,\"result\":\"" + path + "\"}";
+            }
+            return nativePosixCall(params);
         }
 
         @JavascriptInterface
@@ -172,6 +195,16 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        /* On Android 11+, request all-files access so the POSIX bridge
+           can read/write the shared Documents folder directly. */
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                && !Environment.isExternalStorageManager()) {
+            Intent intent = new Intent(
+                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        }
 
         /* Full-screen: extend behind status bar */
         getWindow().addFlags(

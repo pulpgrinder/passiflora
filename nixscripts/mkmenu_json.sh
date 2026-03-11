@@ -76,6 +76,7 @@ function pad(n,    s, k) { s = ""; for (k = 0; k < n; k++) s = s "  "; return s 
 END {
     printf "// Auto-generated file \xe2\x80\x94 DO NOT EDIT. This file is overwritten on every build.\n"
     printf "var PassifloraConfig = {\n"
+    printf "  progname: \"%s\",\n", progname
     printf "  os_name: \"%s\",\n", os_name
     printf "  menus: ["
 
