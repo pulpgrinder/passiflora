@@ -30,7 +30,7 @@ What it *doesn't* do:
 
 ![Ur Doin' It Worng](doingitwrong.jpg)
 
-Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Bundling a web browser and/or a heavyweight native API bridge made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then. It's my belief that it's now preferable to work through or around whatever inconsistencies and shortcomings that remain than take the enormous hit of bundling an entire browser. Passiflora does do some native bridging (e.g., the Posix-like file system), and it's possible that more native bridging will be added in the future, but the plan is to continue doing everything with web technology that *can* be done with web technology.
+Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Bundling a web browser made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then. It's my belief that it's now preferable to work through or around whatever inconsistencies and shortcomings that remain than take the enormous hit of bundling an entire browser. Passiflora does do some native bridging (e.g., the Posix-like file system), and it's possible that more native bridging will be added in the future, but the plan is to continue doing everything with web technology that *can* be done with web technology.
 
 The Passiflora example code generates the following executable sizes:
 
@@ -66,7 +66,7 @@ Detailed installation, build, cross-compilation, and code signing instructions a
 1. Install the prerequisites for your host system (see the guide above).
 2. Check out this repo.
 3. Edit `PROGNAME` in the Makefile (macOS/Linux) or `build.bat` (Windows).
-4. Put your HTML/JavaScript/CSS in `src/www`.
+4. Put your HTML/JavaScript/CSS in `src/www` (making sure to leave the `passiflora` folder intact).
 5. Build:
 
 **macOS / Linux:**
@@ -84,7 +84,7 @@ make
 | Target | Description |
 |--------|-------------|
 | `make` | Build for current platform (macOS or Linux) |
-| `make makemacos` | Build macOS binary and app bundle (macOS only) |
+| `make macos` | Build macOS binary and app bundle (macOS only) |
 | `make windows` | Cross-compile Windows exe (from macOS/Linux) |
 | `make linux` | Build Linux binary (on Linux only) |
 | `make ios` | Cross-compile iOS binary (macOS only) |

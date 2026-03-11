@@ -111,11 +111,11 @@ GENDIR = src/C/generated
 all: $(BINARY) bundle
 
 # ── macOS (alias for consistency with other platform targets) ────────
-makemacos:
+macos:
 ifeq ($(UNAME_S),Darwin)
 	$(MAKE) all
 else
-	@echo "makemacos target requires macOS." >&2
+	@echo "macos target requires macOS." >&2
 endif
 
 $(GENDIR)/zipdata.h: $(CONTENT)
