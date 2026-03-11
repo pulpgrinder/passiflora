@@ -29,16 +29,16 @@ What it *doesn't* do:
 
 ![Ur Doin' It Worng](doingitwrong.jpg)
 
-Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Similarly, Passiflora doesn't provide a lot of integration with the native OS -- things like file open/save (or at least near-equivalents i.e., upload/download), access to the mic, camera and speaker, GPS data, etc. can now be done from HTML. Bundling a web browser and/or a heavyweight native API bridge made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then. It's my belief that it's now preferable to work through or around whatever inconsistencies and shortcomings that remain than take the enormous hit of bundling an entire browser and native API in the executable. It's possible that some native bridging will be added in the future to handle corner cases, but the plan is to continue doing everything with web technology that *can* be done with web technology.
+Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Bundling a web browser and/or a heavyweight native API bridge made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then. It's my belief that it's now preferable to work through or around whatever inconsistencies and shortcomings that remain than take the enormous hit of bundling an entire browser. Passiflora does do some native bridging (e.g., the Posix-like file system), and it's possible that more native bridging will be added in the future, but the plan is to continue doing everything with web technology that *can* be done with web technology.
 
 The Passiflora example code generates the following executable sizes:
 
-macOS .app 3.6 MB. 
-iOS .ipa 2.3 MB.
-Windows .exe 1.1 MB. 
-Android .apk 2.6 MB.
+macOS: HeckinChonker.app: 3.6 MB. 
+iOS HeckinChonker.ipa 2.3 MB.
+Windows HeckinChonker.exe 1.1 MB. 
+Android HeckinChonker.apk 3 MB.
 
-By comparison, an Electron wrapper for the example code, built using Electron Forge,  weighs over 211 MB. Yikes!
+By comparison, an Electron wrapper for the example code (built with Electron Forge)  weighs over 211 MB. Yikes!
 
  Electron and Electron Forge also install 342 (!) npm packages, and generate scads of deprecation/security warnings (and, yes, I'm following the installation/compilation instructions on the Electron website that are current as of today, March 7, 2026).
 
