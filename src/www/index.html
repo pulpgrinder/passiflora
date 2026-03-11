@@ -22,6 +22,29 @@
         <button onclick="checkLocation()">Check Location</button>
         <button onclick="testFileSystem()">Test File System</button>
     </p>
+    <h2>Media Tests</h2>
+    <p>
+        <button onclick="testScreenshot()">Take Screenshot</button>
+        <button onclick="testListCameras()">List Cameras</button>
+        <button onclick="testCaptureImage()">Capture Image (default)</button>
+        <button onclick="testCaptureImage(1)">Capture Image (camera 1)</button>
+        <button onclick="testCaptureImage(2)">Capture Image (camera 2)</button>
+    </p>
+    <p>
+        <button onclick="testStartAudio()">Start Audio Recording</button>
+        <button onclick="testStopAudio()">Stop Audio Recording</button>
+        <button onclick="testGetAudio()">Get Audio Recording</button>
+    </p>
+    <p>
+        <button onclick="testStartVideo()">Start Video Recording</button>
+        <button onclick="testStopVideo()">Stop Video Recording</button>
+        <button onclick="testGetVideo()">Get Video Recording</button>
+    </p>
+    <p>
+        <img id="mediaPreview" style="max-width:100%;display:none;">
+        <audio id="audioPreview" controls style="display:none;"></audio>
+        <video id="videoPreview" controls style="max-width:100%;display:none;"></video>
+    </p>
     <p id="result">
 
 
@@ -79,6 +102,7 @@
             logResult("On Windows, the home folder will be your user profile directory, typically C:\\Users\\&lt;username&gt;.");
             logResult("On Linux, the home folder will be your user home directory, typically /home/&lt;username&gt;.");
             logResult("On Android, the home folder will be in Documents/" + PassifloraConfig.progname + ", accessible via the Files app or any file manager.");
+            logResult("(Note: On Android, access to this public folder requires the androidexternalstorage permission to be enabled in src/permissions.)");
         } catch(e) {
             logResult("Error writing test file: " + e.message);
         }
@@ -100,10 +124,143 @@
            logResult('Geolocation error: ' + e.message + ' (code: ' + (e.code || 'N/A') + ')');
        }
 }
+
+    async function testScreenshot() {
+        try {
+            logResult("Taking screenshot...");
+            var url = await PassifloraMedia.takeScreenshot();
+            logResult("Screenshot URL: " + url);
+            var img = document.getElementById('mediaPreview');
+            img.src = url;
+            img.style.display = 'block';
+            img.scrollIntoView({behavior:'smooth'});
+        } catch(e) {
+            logResult("Screenshot error: " + e.message);
+        }
+    }
+
+    async function testListCameras() {
+        try {
+            logResult("Listing cameras...");
+            var cameras = await PassifloraMedia.listCameras();
+            if (typeof cameras === 'string') cameras = JSON.parse(cameras);
+            logResult("Found " + cameras.length + " camera(s):");
+            for (var i = 0; i < cameras.length; i++) {
+                logResult("  [" + i + "] id=" + cameras[i].id + " name=" + cameras[i].name + " position=" + cameras[i].position);
+            }
+        } catch(e) {
+            logResult("List cameras error: " + e.message);
+        }
+    }
+
+    async function testCaptureImage(cameraId) {
+        try {
+            if (typeof cameraId === 'number') {
+                var cameras = await PassifloraMedia.listCameras();
+                if (typeof cameras === 'string') cameras = JSON.parse(cameras);
+                var idx = cameraId - 1;
+                if (idx < 0 || idx >= cameras.length) {
+                    logResult("Camera " + cameraId + " not found (only " + cameras.length + " available)");
+                    return;
+                }
+                logResult("Using camera " + cameraId + ": " + cameras[idx].name);
+                cameraId = cameras[idx].id;
+            }
+            logResult("Capturing image" + (cameraId ? " (" + cameraId + ")" : "") + "...");
+            var url = await PassifloraMedia.captureImage(cameraId);
+            logResult("Image URL: " + url);
+            var img = document.getElementById('mediaPreview');
+            img.src = url;
+            img.style.display = 'block';
+            img.scrollIntoView({behavior:'smooth'});
+        } catch(e) {
+            logResult("Capture image error: " + e.message);
+        }
+    }
+
+    async function testStartAudio() {
+        try {
+            logResult("Starting audio recording...");
+            await PassifloraMedia.startAudioRecording();
+            logResult("Audio recording started. Press 'Stop Audio Recording' when done.");
+        } catch(e) {
+            logResult("Start audio error: " + e.message);
+        }
+    }
+
+    async function testStopAudio() {
+        try {
+            logResult("Stopping audio recording...");
+            await PassifloraMedia.stopAudioRecording();
+            logResult("Audio recording stopped. Press 'Get Audio Recording' to retrieve.");
+        } catch(e) {
+            logResult("Stop audio error: " + e.message);
+        }
+    }
+
+    async function testGetAudio() {
+        try {
+            logResult("Retrieving audio recording...");
+            var url = await PassifloraMedia.getAudioRecording();
+            logResult("Audio URL: " + url);
+            var audio = document.getElementById('audioPreview');
+            audio.src = url;
+            audio.style.display = 'block';
+            audio.scrollIntoView({behavior:'smooth'});
+        } catch(e) {
+            logResult("Get audio error: " + e.message);
+        }
+    }
+
+    async function testStartVideo(cameraId) {
+        try {
+            if (typeof cameraId === 'number') {
+                var cameras = await PassifloraMedia.listCameras();
+                if (typeof cameras === 'string') cameras = JSON.parse(cameras);
+                var idx = cameraId - 1;
+                if (idx < 0 || idx >= cameras.length) {
+                    logResult("Camera " + cameraId + " not found (only " + cameras.length + " available)");
+                    return;
+                }
+                logResult("Using camera " + cameraId + ": " + cameras[idx].name);
+                cameraId = cameras[idx].id;
+            }
+            logResult("Starting video recording...");
+            await PassifloraMedia.startVideoRecording(cameraId);
+            logResult("Video recording started. Press 'Stop Video Recording' when done.");
+        } catch(e) {
+            logResult("Start video error: " + e.message);
+        }
+    }
+
+    async function testStopVideo() {
+        try {
+            logResult("Stopping video recording...");
+            await PassifloraMedia.stopVideoRecording();
+            logResult("Video recording stopped. Press 'Get Video Recording' to retrieve.");
+        } catch(e) {
+            logResult("Stop video error: " + e.message);
+        }
+    }
+
+    async function testGetVideo() {
+        try {
+            logResult("Retrieving video recording...");
+            var url = await PassifloraMedia.getVideoRecording();
+            logResult("Video URL: " + url);
+            var video = document.getElementById('videoPreview');
+            video.src = url;
+            video.style.display = 'block';
+            video.scrollIntoView({behavior:'smooth'});
+        } catch(e) {
+            logResult("Get video error: " + e.message);
+        }
+    }
 </script>
 <script src="generated/config.js"></script>
 <script src="passiflora/buildmenu.js"></script>
 <script src="passiflora/PassifloraIO.js"></script>
+<script src="passiflora/PassifloraMedia.js"></script>
 <script src="app.js"></script>
 <script src="init.js"></script>
 

@@ -76,6 +76,10 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void requestLocation(final String callbackId) {
+            if (!BuildConfig.PERM_LOCATION) {
+                rejectGeo(callbackId, 1, "Location permission not configured");
+                return;
+            }
             if (checkSelfPermission(
                     android.Manifest.permission.ACCESS_FINE_LOCATION)
                     != PackageManager.PERMISSION_GRANTED) {
@@ -198,7 +202,8 @@ public class MainActivity extends Activity {
 
         /* On Android 11+, request all-files access so the POSIX bridge
            can read/write the shared Documents folder directly. */
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+        if (BuildConfig.PERM_ANDROIDEXTERNALSTORAGE
+                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
                 && !Environment.isExternalStorageManager()) {
             Intent intent = new Intent(
                 Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
@@ -217,7 +222,7 @@ public class MainActivity extends Activity {
         WebSettings ws = webView.getSettings();
         ws.setJavaScriptEnabled(true);
         ws.setDomStorageEnabled(true);
-        ws.setGeolocationEnabled(true);
+        ws.setGeolocationEnabled(BuildConfig.PERM_LOCATION);
 
         webView.addJavascriptInterface(new Bridge(), "PassifloraBridge");
 
@@ -288,6 +293,10 @@ public class MainActivity extends Activity {
             public void onGeolocationPermissionsShowPrompt(
                     String origin,
                     GeolocationPermissions.Callback callback) {
+                if (!BuildConfig.PERM_LOCATION) {
+                    callback.invoke(origin, false, false);
+                    return;
+                }
                 if (checkSelfPermission(
                         android.Manifest.permission.ACCESS_FINE_LOCATION)
                         == PackageManager.PERMISSION_GRANTED) {

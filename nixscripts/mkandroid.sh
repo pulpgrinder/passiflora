@@ -21,6 +21,65 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ANDROID_DIR="$PROJECT_ROOT/src/android"
 BUILD_TYPE="${BUILD_TYPE:-debug}"
 
+# ── Read src/permissions ───────────────────────────────────────────
+PERM_LOCATION=0
+PERM_CAMERA=0
+PERM_MICROPHONE=0
+PERM_ANDROIDEXTERNALSTORAGE=0
+PERM_FILE="$PROJECT_ROOT/src/permissions"
+if [ -f "$PERM_FILE" ]; then
+    while IFS=' ' read -r name val rest; do
+        case "$name" in
+            location)    PERM_LOCATION="$val" ;;
+            camera)      PERM_CAMERA="$val" ;;
+            microphone)  PERM_MICROPHONE="$val" ;;
+            androidexternalstorage)  PERM_ANDROIDEXTERNALSTORAGE="$val" ;;
+        esac
+    done < "$PERM_FILE"
+fi
+
+# ── Generate AndroidManifest.xml with only enabled permissions ─────
+MANIFEST="$ANDROID_DIR/app/src/main/AndroidManifest.xml"
+{
+    printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>'
+    printf '%s\n' '<manifest xmlns:android="http://schemas.android.com/apk/res/android">'
+    printf '\n'
+    printf '%s\n' '    <uses-permission android:name="android.permission.INTERNET" />'
+    [ "$PERM_LOCATION" = "1" ] && {
+        printf '%s\n' '    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />'
+        printf '%s\n' '    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />'
+    }
+    [ "$PERM_CAMERA" = "1" ] && \
+        printf '%s\n' '    <uses-permission android:name="android.permission.CAMERA" />'
+    [ "$PERM_MICROPHONE" = "1" ] && \
+        printf '%s\n' '    <uses-permission android:name="android.permission.RECORD_AUDIO" />'
+    [ "$PERM_ANDROIDEXTERNALSTORAGE" = "1" ] && \
+        printf '%s\n' '    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />'
+    printf '\n'
+    cat <<'MANIFEST_APP'
+    <!-- Allow cleartext HTTP to localhost -->
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:usesCleartextTraffic="true"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+MANIFEST_APP
+} > "$MANIFEST"
+echo "mkandroid: generated AndroidManifest.xml (location=$PERM_LOCATION camera=$PERM_CAMERA mic=$PERM_MICROPHONE extstore=$PERM_ANDROIDEXTERNALSTORAGE)"
+
 # ── Locate Android SDK ─────────────────────────────────────────────
 if [ -z "$ANDROID_HOME" ]; then
     for d in \
@@ -106,6 +165,10 @@ fi
 GRADLE_TASK="assemble$(echo "$BUILD_TYPE" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
 echo "mkandroid: building $BUILD_TYPE APK ($GRADLE_TASK)..."
 (cd "$ANDROID_DIR" && "$GRADLE" "$GRADLE_TASK" --quiet \
+    -PPERM_LOCATION="$PERM_LOCATION" \
+    -PPERM_CAMERA="$PERM_CAMERA" \
+    -PPERM_MICROPHONE="$PERM_MICROPHONE" \
+    -PPERM_ANDROIDEXTERNALSTORAGE="$PERM_ANDROIDEXTERNALSTORAGE" \
     --project-cache-dir "$PROJECT_ROOT/bin/Android/gradle-cache")
 
 # ── Copy APK to bin/Android/ ───────────────────────────────────────

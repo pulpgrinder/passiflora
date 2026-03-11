@@ -44,6 +44,24 @@ add_library(passiflora SHARED
 
 target_include_directories(passiflora PRIVATE ${SRC_ROOT} ${SRC_ROOT}/src/C)
 
+# ── Read src/permissions and set -DPERM_* compile definitions ──────
+set(PERM_FILE ${SRC_ROOT}/src/permissions)
+if(EXISTS ${PERM_FILE})
+    file(STRINGS ${PERM_FILE} PERM_LINES)
+    foreach(LINE ${PERM_LINES})
+        # Each line is "name 0|1"
+        string(REGEX MATCH "^([a-z]+) +1" _m "${LINE}")
+        if(_m)
+            string(REGEX REPLACE "^([a-z]+) +1" "\\1" PNAME "${LINE}")
+            # androidexternalstorage is Android-only (manifest/Java), not a C define
+            if(NOT PNAME STREQUAL "androidexternalstorage")
+                string(TOUPPER ${PNAME} PUPPER)
+                target_compile_definitions(passiflora PRIVATE PERM_${PUPPER})
+            endif()
+        endif()
+    endforeach()
+endif()
+
 # 16KB page size compatibility (Android 15+)
 target_link_options(passiflora PRIVATE -Wl,-z,max-page-size=16384)
 

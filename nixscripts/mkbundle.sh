@@ -23,6 +23,21 @@ if [ -z "$PROGNAME" ] || [ -z "$BINARY" ]; then
     exit 1
 fi
 
+# Read permissions file (default everything to 0)
+_perm_location=0
+_perm_camera=0
+_perm_microphone=0
+_permfile="$(dirname "$0")/../src/permissions"
+if [ -f "$_permfile" ]; then
+    while read -r _name _val; do
+        case "$_name" in
+            location)   _perm_location="$_val" ;;
+            camera)     _perm_camera="$_val" ;;
+            microphone) _perm_microphone="$_val" ;;
+        esac
+    done < "$_permfile"
+fi
+
 BINDIR="$(dirname "$BINARY")"
 APP="$BINDIR/${PROGNAME}.app"
 
@@ -93,9 +108,32 @@ cat > "$APP/Contents/Info.plist" << PLIST
 
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+PLIST
+
+# Conditionally emit privacy plist keys based on src/permissions
+if [ "$_perm_location" = "1" ]; then
+    cat >> "$APP/Contents/Info.plist" << 'PLIST'
 
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>This app needs your location for location-based features.</string>
+PLIST
+fi
+if [ "$_perm_camera" = "1" ]; then
+    cat >> "$APP/Contents/Info.plist" << 'PLIST'
+
+    <key>NSCameraUsageDescription</key>
+    <string>This app needs access to your camera for photo and video capture.</string>
+PLIST
+fi
+if [ "$_perm_microphone" = "1" ]; then
+    cat >> "$APP/Contents/Info.plist" << 'PLIST'
+
+    <key>NSMicrophoneUsageDescription</key>
+    <string>This app needs access to your microphone for audio and video recording.</string>
+PLIST
+fi
+
+cat >> "$APP/Contents/Info.plist" << 'PLIST'
 </dict>
 </plist>
 PLIST

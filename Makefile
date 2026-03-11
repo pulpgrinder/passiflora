@@ -4,14 +4,36 @@ CFLAGS  ?= -Wall -Wextra -O2
 LDFLAGS ?= -lpthread
 CONTENT ?= src/www
 
+# ── Permissions (read from src/permissions) ─────────────────────────
+PERM_LOCATION   := $(shell awk '/^location /   {print $$2}' src/permissions 2>/dev/null)
+PERM_CAMERA     := $(shell awk '/^camera /     {print $$2}' src/permissions 2>/dev/null)
+PERM_MICROPHONE := $(shell awk '/^microphone / {print $$2}' src/permissions 2>/dev/null)
+
+PERM_DEFS :=
+ifeq ($(PERM_LOCATION),1)
+  PERM_DEFS += -DPERM_LOCATION
+endif
+ifeq ($(PERM_CAMERA),1)
+  PERM_DEFS += -DPERM_CAMERA
+endif
+ifeq ($(PERM_MICROPHONE),1)
+  PERM_DEFS += -DPERM_MICROPHONE
+endif
+
 # Platform detection
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
 
 ifeq ($(UNAME_S),Darwin)
   OS_NAME        = macOS
-  UI_CFLAGS      = -x objective-c -fobjc-arc
-  UI_LDFLAGS     = -framework Cocoa -framework WebKit -framework CoreLocation
+  UI_CFLAGS      = -x objective-c -fobjc-arc $(PERM_DEFS)
+  UI_LDFLAGS     = -framework Cocoa -framework WebKit
+  ifeq ($(PERM_LOCATION),1)
+    UI_LDFLAGS  += -framework CoreLocation
+  endif
+  ifneq (,$(filter 1,$(PERM_CAMERA) $(PERM_MICROPHONE)))
+    UI_LDFLAGS  += -framework AVFoundation -framework CoreMedia
+  endif
   MENU_TEMPLATE  = src/macOS/menus/menu.txt
   BUNDLE_ID     ?= com.example.$(PROGNAME)
   VERSION       ?= 1.0.0
@@ -25,10 +47,16 @@ ifeq ($(UNAME_S),Darwin)
   IOS_MIN       ?= 15.0
   IOS_CFLAGS     = -x objective-c -fobjc-arc -arch $(IOS_ARCH) \
                    -isysroot $(IOS_SDK) -miphoneos-version-min=$(IOS_MIN) \
-                   -Wall -Wextra -O2
+                   $(PERM_DEFS) -Wall -Wextra -O2
   IOS_LDFLAGS    = -arch $(IOS_ARCH) -isysroot $(IOS_SDK) \
                    -miphoneos-version-min=$(IOS_MIN) \
-                   -framework UIKit -framework WebKit -framework CoreGraphics -framework CoreLocation -lpthread
+                   -framework UIKit -framework WebKit -framework CoreGraphics -lpthread
+  ifeq ($(PERM_LOCATION),1)
+    IOS_LDFLAGS += -framework CoreLocation
+  endif
+  ifneq (,$(filter 1,$(PERM_CAMERA) $(PERM_MICROPHONE)))
+    IOS_LDFLAGS += -framework AVFoundation -framework CoreMedia
+  endif
   IOS_BINDIR     = bin/iOS
   IOS_BINARY     = $(IOS_BINDIR)/$(PROGNAME)
   IOS_APP_BUNDLE = $(IOS_BINDIR)/$(PROGNAME).app
@@ -39,10 +67,16 @@ ifeq ($(UNAME_S),Darwin)
   SIMOS_ARCH    ?= arm64
   SIMOS_CFLAGS   = -x objective-c -fobjc-arc -arch $(SIMOS_ARCH) \
                    -isysroot $(SIMOS_SDK) -mios-simulator-version-min=$(IOS_MIN) \
-                   -Wall -Wextra -O2
+                   $(PERM_DEFS) -Wall -Wextra -O2
   SIMOS_LDFLAGS  = -arch $(SIMOS_ARCH) -isysroot $(SIMOS_SDK) \
                    -mios-simulator-version-min=$(IOS_MIN) \
-                   -framework UIKit -framework WebKit -framework CoreGraphics -framework CoreLocation -lpthread
+                   -framework UIKit -framework WebKit -framework CoreGraphics -lpthread
+  ifeq ($(PERM_LOCATION),1)
+    SIMOS_LDFLAGS += -framework CoreLocation
+  endif
+  ifneq (,$(filter 1,$(PERM_CAMERA) $(PERM_MICROPHONE)))
+    SIMOS_LDFLAGS += -framework AVFoundation -framework CoreMedia
+  endif
   SIMOS_BINDIR   = bin/iOS-sim
   SIMOS_BINARY   = $(SIMOS_BINDIR)/$(PROGNAME)
   SIMOS_APP_BUNDLE = $(SIMOS_BINDIR)/$(PROGNAME).app
@@ -75,6 +109,14 @@ SRCDIR = src/C
 GENDIR = src/C/generated
 
 all: $(BINARY) bundle
+
+# ── macOS (alias for consistency with other platform targets) ────────
+makemacos:
+ifeq ($(UNAME_S),Darwin)
+	$(MAKE) all
+else
+	@echo "makemacos target requires macOS." >&2
+endif
 
 $(GENDIR)/zipdata.h: $(CONTENT)
 	@mkdir -p $(GENDIR)

@@ -74,6 +74,7 @@ make
 | Target | Description |
 |--------|-------------|
 | `make` | Build for current platform (macOS or Linux) |
+| `make makemacos` | Build macOS binary and app bundle (macOS only) |
 | `make windows` | Cross-compile Windows exe (from macOS/Linux) |
 | `make linux` | Build Linux binary (on Linux only) |
 | `make ios` | Cross-compile iOS binary (macOS only) |
@@ -91,6 +92,17 @@ make
 | `.\build sign-android` | Sign the Android APK (Windows) |
 | `.\build icons` | Generate icon sets (Windows) |
 | `.\build clean` | Remove all build artifacts (Windows) |
+
+### Permissions
+
+The file `src/permissions` controls which platform capabilities are compiled into the app. Each line has the form `name 0` or `name 1`. Permissions default to off (0) if omitted. By default, all permissions are turned on. For you're planning to distribute, you should turn everything off except the ones you actually need (app stores frown on unnecessary permissions).
+
+| Permission | Affects | Description |
+|------------|---------|-------------|
+| `location` | All platforms | Enables GPS / geolocation. On iOS and macOS this links CoreLocation and adds the required `NSLocation*` plist keys. On Android it adds `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` to the manifest and enables the WebView geolocation prompt. |
+| `camera` | All platforms | Enables camera access (screenshots, image capture, video recording). On iOS / macOS this links AVFoundation and adds `NSCameraUsageDescription`. On Android it adds the `CAMERA` manifest permission. |
+| `microphone` | All platforms | Enables microphone access (audio recording, video with audio). On iOS / macOS this adds `NSMicrophoneUsageDescription`. On Android it adds `RECORD_AUDIO` to the manifest. |
+| `androidexternalstorage` | Android only | Grants the app access to the shared Documents folder via `MANAGE_EXTERNAL_STORAGE`. When off, the Android build omits the manifest permission and skips the all-files-access prompt. File I/O on all other platforms is always available and is not affected by this setting. |
 
 ## Making the App Your Own
 
