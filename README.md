@@ -4,7 +4,9 @@
 
 Passiflora is a no-nonsense cross-platform packager that wraps HTML/JavaScript/CSS/etc. in an executable (similar to Electron and its ilk). 
 
-Note that this should be considered **experimental** at this point. Things are still in a "move fast and break stuff" phase.  Please report any issues. In addition, much of this project was vibe-coded as an experiment. While everything seems to be working fine, I'm not an expert in all these systems and I'm sure there are numerous uglinesses and infelicities present. Again, please raise an issue if you notice anything amiss.
+Note that this should be considered **experimental** at this point. Things are still in a "move fast and break stuff" phase.  Please report any issues. In addition, much of this project was vibe-coded as an experiment. The basic idea for this has been hanging around my todo list for several years. I finally decided to make it a proof of concept for vibe-coding.
+
+While everything seems to be working fine, I'm not an expert in all these systems and I'm sure there are numerous uglinesses and infelicities present. Again, please raise an issue if you notice anything amiss (especially security issues).
 
 Supported target platforms include:
 
@@ -17,9 +19,8 @@ Supported target platforms include:
 
 Features:
 
-* Access to device location data
+* Access to device location data, cameras, mics, etc.
 * POSIX(-ish) file system
-* (soon) Access to cameras, mics, etc.
 
 What it *doesn't* do:
 
