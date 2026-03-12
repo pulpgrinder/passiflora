@@ -163,3 +163,4 @@ vite.config.ts.timestamp-*
 
 # Mac specific files
 .DS_Store
+InstallationLog.txt

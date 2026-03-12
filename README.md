@@ -56,9 +56,8 @@ Detailed installation, build, cross-compilation, and code signing instructions a
 
 1. Install the prerequisites for your host system (see the guide above).
 2. Check out this repo.
-3. Edit `PROGNAME` in the `Makefile` (macOS/Linux) or `build.bat` (Windows).
-4. Put your HTML/JavaScript/CSS in `src/www` (making sure to leave the `passiflora` folder intact).
-5. Build:
+3. Put your HTML/JavaScript/CSS in `src/www` (making sure to leave the `passiflora` folder intact).
+4. Build:
 
 **macOS / Linux:**
 ```
@@ -69,6 +68,9 @@ make
 ```
 .\build
 ```
+
+5. There is no step 5, at least in the sense of building a functioning binary. You'll probably want to customize some of the settings to (e.g.) set your app's name and so on (see below).
+
 
 ### Make/Build Targets Summary
 
@@ -95,6 +97,15 @@ make
 | `.\build clean` | Remove all build artifacts (Windows) |
 
 
+
+## Making the App Your Own
+
+Obviously you're gonna want to put your own HTML, JavaScript, CSS, images, and such inside the src/www folder. Here are some other customizations you'll probably want to make before building something for release.
+
+### Setting the Program Name
+
+Edit `PROGNAME` in the `Makefile` (macOS/Linux) or `build.bat` (Windows) to your preferred name for the package.
+
 ### Permissions
 
 The file `src/permissions` controls which platform capabilities are compiled into the app. Each line has the form `name 0` or `name 1`. Permissions default to off (0) if omitted. By default, all permissions are turned on. For apps you're planning to distribute, you should turn everything off except the ones you actually need (app stores frown on unnecessary permissions).
@@ -104,11 +115,10 @@ The file `src/permissions` controls which platform capabilities are compiled int
 | `location` | All platforms | Enables GPS / geolocation. On iOS and macOS this links CoreLocation and adds the required `NSLocation*` plist keys. On Android it adds `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` to the manifest and enables the WebView geolocation prompt. |
 | `camera` | All platforms | Enables camera access (screenshots, image capture, video recording). On iOS / macOS this links AVFoundation and adds `NSCameraUsageDescription`. On Android it adds the `CAMERA` manifest permission. |
 | `microphone` | All platforms | Enables microphone access (audio recording, video with audio). On iOS / macOS this adds `NSMicrophoneUsageDescription`. On Android it adds `RECORD_AUDIO` to the manifest. |
-| `androidexternalstorage` | Android only | Grants the app access to the shared Documents folder via `MANAGE_EXTERNAL_STORAGE`. When off, the Android build omits the manifest permission and skips the all-files-access prompt. File I/O on all other platforms (limited to  the app's private storage on Android) is always available and is not affected by this setting. |
+| `androidexternalstorage` | Android only | Grants the app access to the shared Documents folder via `MANAGE_EXTERNAL_STORAGE`. When off, the Android build omits the manifest permission and skips the all-files-access prompt. In that case, the app will only have access to files in the app's private storage.
 
-## Making the App Your Own
+File I/O on all other platforms is always available and is not affected by this setting. |
 
-Obviously you're gonna want to put your own HTML, JavaScript, CSS, images, and such inside the src/www folder. Here are some other customizations you'll probably want to make before building something for release.
 
 ### Icons
 
@@ -126,7 +136,7 @@ or
 
 to generate a new icon set.
 
-Note that these may need some manual tweaking for legibility, particularly at the smaller sizes, but it's still a substantial time savings over generating them all individually. Icons are *not* regenerated automatically during a normal build (not even after make clean). This is so any hand-tuned versions you have won't be overwritten. If you *do* want to wipe out all the generated icons and start over, run `make icons` or `.\build icons` again.
+Note that these may need some manual tweaking for legibility, particularly at the smaller sizes, but it's still a substantial time savings over generating them all individually. Icons are *not* regenerated automatically during a normal build (not even after `make clean`). This is so any hand-tuned versions you've created won't be overwritten. If you *do* want to wipe out all existing icons and start over, run `make icons` or `.\build icons` again.
 
 ### Menus
 
@@ -207,7 +217,7 @@ PassifloraConfig.handleMenu = function(title) {
 
 ### Sliding Menu (optional)
 
-Passiflora includes a built-in basic sliding menu for platforms that don't have a native menu bar (iOS, Android), or for web-style navigation on any platform. **This is entirely optional** — you can use it as-is, customise it, or remove it and replace it with your own menu solution.
+Passiflora includes a built-in basic sliding menu for platforms that don't have a native menu bar (iOS, Android), or for web-style navigation on any platform. **This is entirely optional** — you can use it as-is, customise it, or remove it and replace it with your own menu package.
 
 The menu is built automatically from `PassifloraConfig.menus` at page load. It slides in from the right edge of the screen, supports arbitrarily nested submenus, and calls `PassifloraConfig.handleMenu(title)` when a leaf item is tapped.
 
