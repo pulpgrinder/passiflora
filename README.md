@@ -36,19 +36,10 @@ The Passiflora example code generates the following executable sizes:
 
 ### Passiflora
 
-macOS: HeckinChonker.app: 3.6 MB
+The sample program weighs 1.5 MB when built for macOS, 1.1 MB of which is accounted for by the .icns icon file, leaving around 400 KB for the actual binary executable. 
 
-iOS HeckinChonker.ipa 2.3 MB
+By comparison, the same program when built for macOS using Electron/Electron Forge weighs 211 MB. Yikes!
 
-Windows HeckinChonker.exe 1.1 MB
-
-Android HeckinChonker.apk 3 MB
-
-### Electron/Electron Forge
-
-macOS: HeckinChonker.app:  211 MB. Yikes!
-
-Not only that, but 3.3 MB of the 3.6 MB in the macOS Passiflora app is in the .icns file. Use a simpler/more compressible icon and you can save stil more.
 
 ---
 
