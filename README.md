@@ -48,6 +48,8 @@ Android HeckinChonker.apk 3 MB
 
 macOS: HeckinChonker.app:  211 MB. Yikes!
 
+Not only that, but 3.3 MB of the 3.6 MB in the macOS Passiflora app is in the .icns file. Use a simpler/more compressible icon and you can save stil more.
+
 ---
 
 Electron and Electron Forge also install 342 (!) npm packages, and generate scads of deprecation/security warnings (and, yes, I'm following the installation/compilation instructions on the Electron website that are current as of today, March 7, 2026).

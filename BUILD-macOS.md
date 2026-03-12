@@ -25,12 +25,18 @@ If you don't have Homebrew, install it from https://brew.sh/
 ```
 make
 ```
+or:
+
+```
+make macos
+```
 
 This produces `bin/macOS/<progname>.app` — a standard macOS application bundle.
 
 | Command | Description |
 |---------|-------------|
 | `make` | Build macOS app bundle |
+| `make macos` | Build macOS app bundle (same as plain `make` on this platform) |
 | `make icons` | Generate icon sets for all platforms |
 | `make clean` | Remove all build artifacts |
 
