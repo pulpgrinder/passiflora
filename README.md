@@ -4,9 +4,9 @@
 
 Passiflora is a no-nonsense cross-platform packager that wraps HTML/JavaScript/CSS/etc. in an executable (similar to Electron and its ilk). 
 
-Note that this should be considered **experimental** at this point. Things are still in a "move fast and break stuff" phase.  Please report any issues. In addition, much of this project was vibe-coded as an experiment. The basic idea for this has been hanging around my todo list for several years. I finally decided to make it a proof of concept for vibe-coding.
+Note that this should be considered **experimental** at this point. Things are still in a "move fast and break stuff" phase.  Please report any issues. In addition, much of this project was vibe coded as an experiment. The basic idea for this has been hanging around my todo list, along with code snippets, for several years. I finally decided to use it as a proof of concept for vibe coding. If it's of interest, the vibe code per se was mostly written with GitHub Copilot using Claude Opus 4.6. Configuration questions and similar (e.g., "Why aren't location services working on my Ubuntu Linux system running in a Parallels Desktop VM?") were mostly handled with Grok 4.0.
 
-While everything seems to be working fine, I'm not an expert in all these systems and I'm sure there are numerous uglinesses and infelicities present. Again, please raise an issue if you notice anything amiss (especially security issues).
+While everything seems to be working fine, I'm far from an expert in all these systems and I'm sure there are numerous uglinesses and infelicities present. Again, please raise an issue if you notice anything amiss (especially security issues).
 
 Supported target platforms include:
 
@@ -24,26 +24,24 @@ Features:
 
 What it *doesn't* do:
 
-* Require that you install 50 million dubious npm packages (or a whole freakin' Rust ecosystem, for the love of all that's holy)
+* Require that you install 50 million dubious npm packages (or a whole freakin' Rust ecosystem, for the love of all that's holy -- tauri, I'm looking in your direction)
 * Generate 60 petabyte binaries for a "Hello, world!" program
-* Engage in baroque configuration gymnastics -- no need to fool with those nasty-ass package.json scripts
+* Require baroque configuration gymnastics -- there's no need to fool with nasty-ass package.json scripts or even nastier-ass XML files. We won't even go into Gradle 🤮, the only good thing about which is that it's not Maven or Ant (Passiflora does *use* Gradle (technically gradlew) for Android builds, but you don't have to get the stench of it on you).
 
 ![Ur Doin' It Worng](doingitwrong.jpg)
 
 Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Bundling a web browser made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then. It's my belief that it's now preferable to work through or around whatever inconsistencies and shortcomings that remain than take the enormous hit of bundling an entire browser. Passiflora does do some native bridging (e.g., the Posix-like file system), and it's possible that more native bridging will be added in the future, but the plan is to continue doing everything with web technology that *can* be done with web technology.
 
-The Passiflora example code generates the following executable sizes:
-
-### Passiflora
+### Executable Size
 
 The sample program weighs 1.5 MB when built for macOS, 1.1 MB of which is accounted for by the .icns icon file, leaving around 400 KB for the actual binary executable. 
 
-By comparison, the same program when built for macOS using Electron/Electron Forge weighs 211 MB. Yikes!
+By comparison, the same program when built for macOS using Electron/Electron Forge weighs **211 MB**. Yikes!
 
 
 ---
 
-Electron and Electron Forge also install 342 (!) npm packages, and generate scads of deprecation/security warnings (and, yes, I'm following the installation/compilation instructions on the Electron website that are current as of today, March 7, 2026).
+Electron and Electron Forge also install 342 (!) npm packages, which generate scads of deprecation/security warnings (and, yes, I'm following the installation/compilation instructions on the Electron website that are current as of today, March 7, 2026).
 
 
 ## Prerequisites and Building
@@ -58,7 +56,7 @@ Detailed installation, build, cross-compilation, and code signing instructions a
 
 1. Install the prerequisites for your host system (see the guide above).
 2. Check out this repo.
-3. Edit `PROGNAME` in the Makefile (macOS/Linux) or `build.bat` (Windows).
+3. Edit `PROGNAME` in the `Makefile` (macOS/Linux) or `build.bat` (Windows).
 4. Put your HTML/JavaScript/CSS in `src/www` (making sure to leave the `passiflora` folder intact).
 5. Build:
 
@@ -106,7 +104,7 @@ The file `src/permissions` controls which platform capabilities are compiled int
 | `location` | All platforms | Enables GPS / geolocation. On iOS and macOS this links CoreLocation and adds the required `NSLocation*` plist keys. On Android it adds `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` to the manifest and enables the WebView geolocation prompt. |
 | `camera` | All platforms | Enables camera access (screenshots, image capture, video recording). On iOS / macOS this links AVFoundation and adds `NSCameraUsageDescription`. On Android it adds the `CAMERA` manifest permission. |
 | `microphone` | All platforms | Enables microphone access (audio recording, video with audio). On iOS / macOS this adds `NSMicrophoneUsageDescription`. On Android it adds `RECORD_AUDIO` to the manifest. |
-| `androidexternalstorage` | Android only | Grants the app access to the shared Documents folder via `MANAGE_EXTERNAL_STORAGE`. When off, the Android build omits the manifest permission and skips the all-files-access prompt. File I/O on all other platforms, and to the app's private storage on Android, is always available and is not affected by this setting. |
+| `androidexternalstorage` | Android only | Grants the app access to the shared Documents folder via `MANAGE_EXTERNAL_STORAGE`. When off, the Android build omits the manifest permission and skips the all-files-access prompt. File I/O on all other platforms (limited to  the app's private storage on Android) is always available and is not affected by this setting. |
 
 ## Making the App Your Own
 
@@ -124,9 +122,9 @@ Once you've updated the base icons, run:
 
 or
 
-`.\winscripts\buildicons.bat` (Windows)
+`.\build icons` (Windows)
 
-to generate a new icon set (on Windows `.\build icons` would also work).
+to generate a new icon set.
 
 Note that these may need some manual tweaking for legibility, particularly at the smaller sizes, but it's still a substantial time savings over generating them all individually. Icons are *not* regenerated automatically during a normal build (not even after make clean). This is so any hand-tuned versions you have won't be overwritten. If you *do* want to wipe out all the generated icons and start over, run `make icons` or `.\build icons` again.
 
@@ -139,7 +137,7 @@ Underneath `src`, each platform has a folder which contains a `menu.txt` file. T
 
 #### menu.txt format
 
-Menu hierarchy is expressed with simple indentation. Submenus can be nested to any depth. Blank lines and separators (`-`) are supported.
+Menu hierarchy is expressed with simple four-space indentation. Submenus can be nested to any depth. Blank lines and separators (`-`) are supported.
 
 ```
 {{progname}}
@@ -222,13 +220,12 @@ You can close the sliding menu without choosing an item in three ways:
 * Tap/click outside the menu panels
 * Press **Escape**
 * Navigate back through all levels
-
-**Styling:** The menu's appearance is controlled by `src/www/passiflora/menu.css`. You can customize colours, sizes, transitions, etc. by editing this file.
+ 
 
 **Files:**
 
 * `src/www/passiflora/buildmenu.js` — menu logic (the `PassifloraMenu` IIFE)
-* `src/www/passiflora/menu.css` — menu styling
+* `src/www/passiflora/menu.css` — menu styling. You can customize colours, sizes, transitions, etc. by editing this file.
 
 Items prefixed with `*` in `menu.txt` are excluded from the sliding menu entirely — they only exist in the native menu bar (if there is one).
 
