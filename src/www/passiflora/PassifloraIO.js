@@ -1,57 +1,61 @@
 PassifloraIO = {
 
+    /* ================================================================ */
+    /*  Geolocation bridge — native location on macOS / iOS             */
+    /* ================================================================ */
+
     _geoCallbacks: {},
     _geoCounter: 0,
+    _nativeGeolocation: null,
 
-    _geoResolve: function (id, lat, lon, accuracy) {
-        var cb = PassifloraIO._geoCallbacks[id];
+    _geoResolve: function (id, lat, lon, accuracy, altitude,
+                           altitudeAccuracy, heading, speed, timestamp) {
+        const cb = PassifloraIO._geoCallbacks[id];
         if (cb) {
             delete PassifloraIO._geoCallbacks[id];
             cb.resolve({
-                coords: { latitude: lat, longitude: lon, accuracy: accuracy,
-                          altitude: null, altitudeAccuracy: null,
-                          heading: null, speed: null },
-                timestamp: Date.now()
+                coords: {
+                    latitude: lat,
+                    longitude: lon,
+                    accuracy: accuracy,
+                    altitude: altitudeAccuracy >= 0 ? altitude : null,
+                    altitudeAccuracy: altitudeAccuracy >= 0 ? altitudeAccuracy : null,
+                    heading: heading >= 0 ? heading : null,
+                    speed: speed >= 0 ? speed : null
+                },
+                timestamp: timestamp
             });
         }
     },
 
     _geoReject: function (id, code, message) {
-        var cb = PassifloraIO._geoCallbacks[id];
+        const cb = PassifloraIO._geoCallbacks[id];
         if (cb) {
             delete PassifloraIO._geoCallbacks[id];
-            var err = new Error(message);
+            const err = new Error(message);
             err.code = code;
             cb.reject(err);
         }
     },
 
-    getCurrentPosition: function () {
-        /* Use native bridge if available (WKWebView on macOS/iOS/Linux) */
+    getCurrentPosition: function (successCb, errorCb) {
+        /* WKWebView bridge (macOS/iOS) */
         if (window.webkit && window.webkit.messageHandlers &&
             window.webkit.messageHandlers.passifloraGeolocation) {
-            var id = "geo_" + (++PassifloraIO._geoCounter);
-            return new Promise(function (resolve, reject) {
-                PassifloraIO._geoCallbacks[id] = { resolve: resolve, reject: reject };
-                window.webkit.messageHandlers.passifloraGeolocation.postMessage(id);
-            });
+            const id = "geo_" + (++PassifloraIO._geoCounter);
+            PassifloraIO._geoCallbacks[id] = {
+                resolve: successCb || function () {},
+                reject: errorCb || function () {}
+            };
+            window.webkit.messageHandlers.passifloraGeolocation.postMessage(id);
+            return;
         }
-        /* Android native bridge */
-        if (window.PassifloraBridge && window.PassifloraBridge.requestLocation) {
-            var id = "geo_" + (++PassifloraIO._geoCounter);
-            return new Promise(function (resolve, reject) {
-                PassifloraIO._geoCallbacks[id] = { resolve: resolve, reject: reject };
-                window.PassifloraBridge.requestLocation(id);
-            });
-        }
-        /* Fallback to standard Geolocation API (regular browsers) */
-        if (!navigator.geolocation) {
-            return Promise.reject(new Error("Geolocation API not supported"));
-        }
-        return new Promise(function (resolve, reject) {
-            navigator.geolocation.getCurrentPosition(resolve, reject);
-        }); 
+        /* Other platforms — use native API */
+        const geo = PassifloraIO._nativeGeolocation || navigator.geolocation;
+        if (geo) { geo.getCurrentPosition(successCb, errorCb); return; }
+        if (errorCb) errorCb({ code: 2, message: "Geolocation not available" });
     },
+
     openExternal: function (url) {
         /* Android native bridge */
         if (window.PassifloraBridge && window.PassifloraBridge.openExternal) {
@@ -67,10 +71,10 @@ PassifloraIO = {
             });
     },
     patchLinks: function () {
-        var links = document.querySelectorAll("a[href]");
-        for (var i = 0; i < links.length; i++) {
+        const links = document.querySelectorAll("a[href]");
+        for (let i = 0; i < links.length; i++) {
             (function (a) {
-                var href = a.getAttribute("href");
+                const href = a.getAttribute("href");
                 if (/^https?:\/\//i.test(href)) {
                     a.addEventListener("click", function (e) {
                         e.preventDefault();
@@ -92,7 +96,7 @@ PassifloraIO = {
        id: callback ID (e.g. "posix_1")
        result: parsed JSON object {ok:true,result:...} or {ok:false,error:"..."} */
     _posixResolve: function (id, result) {
-        var cb = PassifloraIO._posixCallbacks[id];
+        const cb = PassifloraIO._posixCallbacks[id];
         if (cb) {
             delete PassifloraIO._posixCallbacks[id];
             if (result && result.ok) {
@@ -105,9 +109,9 @@ PassifloraIO = {
 
     _posixCall: function (fn, params) {
         /* Build URL-encoded params string: func=fn&key=val&... */
-        var parts = "func=" + encodeURIComponent(fn);
-        var keys = Object.keys(params);
-        for (var i = 0; i < keys.length; i++) {
+        let parts = "func=" + encodeURIComponent(fn);
+        const keys = Object.keys(params);
+        for (let i = 0; i < keys.length; i++) {
             parts += "&" + encodeURIComponent(keys[i]) + "=" +
                      encodeURIComponent(params[keys[i]]);
         }
@@ -115,8 +119,8 @@ PassifloraIO = {
         /* Android: synchronous @JavascriptInterface return */
         if (window.PassifloraBridge && window.PassifloraBridge.posixCall) {
             try {
-                var json = window.PassifloraBridge.posixCall(parts);
-                var result = JSON.parse(json);
+                const json = window.PassifloraBridge.posixCall(parts);
+                const result = JSON.parse(json);
                 if (result.ok) return Promise.resolve(result.result);
                 return Promise.reject(new Error(result.error));
             } catch (e) {
@@ -127,7 +131,7 @@ PassifloraIO = {
         /* macOS / iOS / Linux: async via WKScriptMessageHandler */
         if (window.webkit && window.webkit.messageHandlers &&
             window.webkit.messageHandlers.passifloraPosix) {
-            var id = "posix_" + (++PassifloraIO._posixCounter);
+            const id = "posix_" + (++PassifloraIO._posixCounter);
             return new Promise(function (resolve, reject) {
                 PassifloraIO._posixCallbacks[id] = { resolve: resolve, reject: reject };
                 window.webkit.messageHandlers.passifloraPosix.postMessage(
@@ -137,7 +141,7 @@ PassifloraIO = {
 
         /* Windows WebView2: async via chrome.webview.postMessage */
         if (window.chrome && window.chrome.webview) {
-            var id = "posix_" + (++PassifloraIO._posixCounter);
+            const id = "posix_" + (++PassifloraIO._posixCounter);
             return new Promise(function (resolve, reject) {
                 PassifloraIO._posixCallbacks[id] = { resolve: resolve, reject: reject };
                 window.chrome.webview.postMessage(
@@ -167,21 +171,21 @@ PassifloraIO = {
             handle: handle, size: size
         }).then(function (b64) {
             if (b64 === null || b64 === undefined) return null;
-            var binary = atob(b64);
-            var bytes = new Uint8Array(binary.length);
-            for (var i = 0; i < binary.length; i++)
+            const binary = atob(b64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++)
                 bytes[i] = binary.charCodeAt(i);
             return bytes;
         });
     },
 
     fwrite: function (handle, data) {
-        var b64;
+        let b64;
         if (typeof data === "string") {
             b64 = btoa(unescape(encodeURIComponent(data)));
         } else {
-            var binary = "";
-            for (var i = 0; i < data.length; i++)
+            let binary = "";
+            for (let i = 0; i < data.length; i++)
                 binary += String.fromCharCode(data[i]);
             b64 = btoa(binary);
         }
@@ -245,7 +249,7 @@ PassifloraIO = {
 };
 
 /* POSIX constants (global) */
-var SEEK_SET = 0, SEEK_CUR = 1, SEEK_END = 2;
+const SEEK_SET = 0, SEEK_CUR = 1, SEEK_END = 2;
 
 /* Global convenience aliases for POSIX functions */
 function fopen(path, mode)         { return PassifloraIO.fopen(path, mode); }
@@ -266,3 +270,23 @@ function rename(oldpath, newpath)  { return PassifloraIO.rename(oldpath, newpath
 document.addEventListener("DOMContentLoaded", function () {
     PassifloraIO.patchLinks();
 });
+
+/* Geolocation polyfill for WKWebView (macOS/iOS) —
+   navigator.geolocation is blocked for non-sandboxed apps,
+   so override it with the native CLLocationManager bridge. */
+(function () {
+    if (window.webkit && window.webkit.messageHandlers &&
+        window.webkit.messageHandlers.passifloraGeolocation) {
+        PassifloraIO._nativeGeolocation = navigator.geolocation;
+        Object.defineProperty(navigator, 'geolocation', {
+            value: {
+                getCurrentPosition: function (s, e) {
+                    PassifloraIO.getCurrentPosition(s, e);
+                },
+                watchPosition: function () { return 0; },
+                clearWatch: function () {}
+            },
+            configurable: true
+        });
+    }
+})();

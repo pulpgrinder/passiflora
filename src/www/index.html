@@ -24,35 +24,124 @@
     </p>
     <h2>Media Tests</h2>
     <p>
-        <button onclick="testScreenshot()">Take Screenshot</button>
-        <button onclick="testListCameras()">List Cameras</button>
-        <button onclick="testCaptureImage()">Capture Image (default)</button>
-        <button onclick="testCaptureImage(1)">Capture Image (camera 1)</button>
-        <button onclick="testCaptureImage(2)">Capture Image (camera 2)</button>
+        <label for="cameraSelect">Camera:</label>
+        <select id="cameraSelect"><option value="">-- select --</option></select>
+        <label for="micSelect">Microphone:</label>
+        <select id="micSelect"><option value="">-- select --</option></select>
+        <button onclick="refreshDevices()">Refresh Devices</button>
     </p>
     <p>
-        <button onclick="testStartAudio()">Start Audio Recording</button>
-        <button onclick="testStopAudio()">Stop Audio Recording</button>
-        <button onclick="testGetAudio()">Get Audio Recording</button>
+        <button onclick="startMedia('both')">Start Camera + Microphone</button>
+        <button onclick="startMedia('video')">Start Camera Only</button>
+        <button onclick="startMedia('audio')">Start Microphone Only</button>
+        <button onclick="stopMedia()">Stop</button>
     </p>
-    <p>
-        <button onclick="testStartVideo()">Start Video Recording</button>
-        <button onclick="testStopVideo()">Stop Video Recording</button>
-        <button onclick="testGetVideo()">Get Video Recording</button>
-    </p>
-    <p>
-        <img id="mediaPreview" style="max-width:100%;display:none;">
-        <audio id="audioPreview" controls style="display:none;"></audio>
-        <video id="videoPreview" controls style="max-width:100%;display:none;"></video>
-    </p>
+    <div id="mediaContainer"></div>
     <p id="result">
 
 
     </p>
 <script>
+    let activeStream = null;
+
+    function stopMedia() {
+        if (activeStream) {
+            activeStream.getTracks().forEach(function(t) { t.stop(); });
+            activeStream = null;
+        }
+        const container = document.getElementById('mediaContainer');
+        container.innerHTML = '';
+    }
+
+    function populateSelect(selectId, devices) {
+        const sel = document.getElementById(selectId);
+        const prev = sel.value;
+        sel.innerHTML = '<option value="">-- default --</option>';
+        devices.forEach(function(d, i) {
+            const opt = document.createElement('option');
+            opt.value = d.deviceId;
+            opt.textContent = d.label || (selectId === 'cameraSelect' ? 'Camera ' : 'Mic ') + (i + 1);
+            sel.appendChild(opt);
+        });
+        if (prev) sel.value = prev;
+    }
+
+    function refreshDevices() {
+        // Request each media type separately to avoid crashes when
+        // one type is not permitted (e.g. no NSMicrophoneUsageDescription).
+        let videoOk = false, audioOk = false;
+
+        function tryVideo() {
+            return navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+            .then(function(s) { videoOk = true; s.getTracks().forEach(function(t) { t.stop(); }); })
+            .catch(function() {});
+        }
+        function tryAudio() {
+            return navigator.mediaDevices.getUserMedia({ video: false, audio: true })
+            .then(function(s) { audioOk = true; s.getTracks().forEach(function(t) { t.stop(); }); })
+            .catch(function() {});
+        }
+
+        tryVideo().then(tryAudio).then(function() {
+            return navigator.mediaDevices.enumerateDevices();
+        })
+        .then(function(devices) {
+            const cameras = devices.filter(function(d) { return d.kind === 'videoinput'; });
+            const mics = devices.filter(function(d) { return d.kind === 'audioinput'; });
+            populateSelect('cameraSelect', cameras);
+            populateSelect('micSelect', mics);
+            const parts = [];
+            if (videoOk) parts.push(cameras.length + ' camera(s)');
+            if (audioOk) parts.push(mics.length + ' microphone(s)');
+            if (parts.length) logResult('Found ' + parts.join(', ') + '.');
+            else logResult('No camera or microphone access available.');
+        })
+        .catch(function(err) {
+            logResult('Could not enumerate devices: ' + err.name + ': ' + err.message);
+        });
+    }
+
+    function startMedia(mode) {
+        stopMedia();
+        const camId = document.getElementById('cameraSelect').value;
+        const micId = document.getElementById('micSelect').value;
+        const constraints = {};
+        if (mode === 'video' || mode === 'both') {
+            constraints.video = camId ? { deviceId: { exact: camId } } : true;
+        } else {
+            constraints.video = false;
+        }
+        if (mode === 'audio' || mode === 'both') {
+            constraints.audio = micId ? { deviceId: { exact: micId } } : true;
+        } else {
+            constraints.audio = false;
+        }
+        navigator.mediaDevices.getUserMedia(constraints)
+        .then(function(stream) {
+            activeStream = stream;
+            const tracks = stream.getTracks().map(function(t) { return t.kind + ' (' + t.label + ')'; });
+            logResult('Active: ' + tracks.join(', '));
+            if (stream.getVideoTracks().length > 0) {
+                const video = document.createElement('video');
+                video.autoplay = true;
+                video.playsInline = true;
+                video.muted = true;
+                video.style.maxWidth = '100%';
+                video.srcObject = stream;
+                document.getElementById('mediaContainer').appendChild(video);
+            }
+        })
+        .catch(function(err) {
+            alert('Error (' + mode + '): ' + err.name + ': ' + err.message);
+        });
+    }
+
+    // Populate device lists on startup
+    refreshDevices();
+   
     async function testFileSystem() {
         try {
-            var username = await PassifloraIO.getUsername();
+            const username = await PassifloraIO.getUsername();
             logResult("Current username: " + username);
         } catch(e) {
             logResult("Error getting username: " + e.message);
@@ -115,152 +204,26 @@
         const resultElem = document.getElementById('result');
         resultElem.innerHTML = resultElem.innerHTML + result + "<br />\n";
     }
-    async function checkLocation(){
-       try {
-           const position = await PassifloraIO.getCurrentPosition();
-           console.log(position);
-           logResult(`Latitude: ${position.coords.latitude}, Longitude: ${position.coords.longitude}`);
-       } catch(e) {
-           logResult('Geolocation error: ' + e.message + ' (code: ' + (e.code || 'N/A') + ')');
+    function checkLocation(){
+       if (!navigator.geolocation) {
+           logResult('Geolocation API not supported');
+           return;
        }
-}
-
-    async function testScreenshot() {
-        try {
-            logResult("Taking screenshot...");
-            var url = await PassifloraMedia.takeScreenshot();
-            logResult("Screenshot URL: " + url);
-            var img = document.getElementById('mediaPreview');
-            img.src = url;
-            img.style.display = 'block';
-            img.scrollIntoView({behavior:'smooth'});
-        } catch(e) {
-            logResult("Screenshot error: " + e.message);
-        }
+       navigator.geolocation.getCurrentPosition(
+           function(position) {
+               logResult('Latitude: ' + position.coords.latitude +
+                          ', Longitude: ' + position.coords.longitude);
+           },
+           function(e) {
+               logResult('Geolocation error: ' + e.message + ' (code: ' + (e.code || 'N/A') + ')');
+           }
+       );
     }
 
-    async function testListCameras() {
-        try {
-            logResult("Listing cameras...");
-            var cameras = await PassifloraMedia.listCameras();
-            if (typeof cameras === 'string') cameras = JSON.parse(cameras);
-            logResult("Found " + cameras.length + " camera(s):");
-            for (var i = 0; i < cameras.length; i++) {
-                logResult("  [" + i + "] id=" + cameras[i].id + " name=" + cameras[i].name + " position=" + cameras[i].position);
-            }
-        } catch(e) {
-            logResult("List cameras error: " + e.message);
-        }
-    }
-
-    async function testCaptureImage(cameraId) {
-        try {
-            if (typeof cameraId === 'number') {
-                var cameras = await PassifloraMedia.listCameras();
-                if (typeof cameras === 'string') cameras = JSON.parse(cameras);
-                var idx = cameraId - 1;
-                if (idx < 0 || idx >= cameras.length) {
-                    logResult("Camera " + cameraId + " not found (only " + cameras.length + " available)");
-                    return;
-                }
-                logResult("Using camera " + cameraId + ": " + cameras[idx].name);
-                cameraId = cameras[idx].id;
-            }
-            logResult("Capturing image" + (cameraId ? " (" + cameraId + ")" : "") + "...");
-            var url = await PassifloraMedia.captureImage(cameraId);
-            logResult("Image URL: " + url);
-            var img = document.getElementById('mediaPreview');
-            img.src = url;
-            img.style.display = 'block';
-            img.scrollIntoView({behavior:'smooth'});
-        } catch(e) {
-            logResult("Capture image error: " + e.message);
-        }
-    }
-
-    async function testStartAudio() {
-        try {
-            logResult("Starting audio recording...");
-            await PassifloraMedia.startAudioRecording();
-            logResult("Audio recording started. Press 'Stop Audio Recording' when done.");
-        } catch(e) {
-            logResult("Start audio error: " + e.message);
-        }
-    }
-
-    async function testStopAudio() {
-        try {
-            logResult("Stopping audio recording...");
-            await PassifloraMedia.stopAudioRecording();
-            logResult("Audio recording stopped. Press 'Get Audio Recording' to retrieve.");
-        } catch(e) {
-            logResult("Stop audio error: " + e.message);
-        }
-    }
-
-    async function testGetAudio() {
-        try {
-            logResult("Retrieving audio recording...");
-            var url = await PassifloraMedia.getAudioRecording();
-            logResult("Audio URL: " + url);
-            var audio = document.getElementById('audioPreview');
-            audio.src = url;
-            audio.style.display = 'block';
-            audio.scrollIntoView({behavior:'smooth'});
-        } catch(e) {
-            logResult("Get audio error: " + e.message);
-        }
-    }
-
-    async function testStartVideo(cameraId) {
-        try {
-            if (typeof cameraId === 'number') {
-                var cameras = await PassifloraMedia.listCameras();
-                if (typeof cameras === 'string') cameras = JSON.parse(cameras);
-                var idx = cameraId - 1;
-                if (idx < 0 || idx >= cameras.length) {
-                    logResult("Camera " + cameraId + " not found (only " + cameras.length + " available)");
-                    return;
-                }
-                logResult("Using camera " + cameraId + ": " + cameras[idx].name);
-                cameraId = cameras[idx].id;
-            }
-            logResult("Starting video recording...");
-            await PassifloraMedia.startVideoRecording(cameraId);
-            logResult("Video recording started. Press 'Stop Video Recording' when done.");
-        } catch(e) {
-            logResult("Start video error: " + e.message);
-        }
-    }
-
-    async function testStopVideo() {
-        try {
-            logResult("Stopping video recording...");
-            await PassifloraMedia.stopVideoRecording();
-            logResult("Video recording stopped. Press 'Get Video Recording' to retrieve.");
-        } catch(e) {
-            logResult("Stop video error: " + e.message);
-        }
-    }
-
-    async function testGetVideo() {
-        try {
-            logResult("Retrieving video recording...");
-            var url = await PassifloraMedia.getVideoRecording();
-            logResult("Video URL: " + url);
-            var video = document.getElementById('videoPreview');
-            video.src = url;
-            video.style.display = 'block';
-            video.scrollIntoView({behavior:'smooth'});
-        } catch(e) {
-            logResult("Get video error: " + e.message);
-        }
-    }
 </script>
 <script src="generated/config.js"></script>
 <script src="passiflora/buildmenu.js"></script>
 <script src="passiflora/PassifloraIO.js"></script>
-<script src="passiflora/PassifloraMedia.js"></script>
 <script src="app.js"></script>
 <script src="init.js"></script>
 

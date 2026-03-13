@@ -1,5 +1,9 @@
 /* PassifloraMenu styles */
 
+body {
+    padding-bottom: 1em;
+}
+
 .hamburgermenu {
     position: fixed;
     top: 8px;

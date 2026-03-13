@@ -116,6 +116,12 @@ if [ "$_perm_location" = "1" ]; then
 
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>This app needs your location for location-based features.</string>
+    <key>NSLocationUsageDescription</key>
+    <string>This app needs your location for location-based features.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>This app needs your location for location-based features.</string>
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>This app needs your location for location-based features.</string>
 PLIST
 fi
 if [ "$_perm_camera" = "1" ]; then

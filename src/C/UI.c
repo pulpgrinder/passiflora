@@ -34,9 +34,6 @@
 #ifdef PERM_LOCATION
 #import <CoreLocation/CoreLocation.h>
 #endif
-#if defined(PERM_CAMERA) || defined(PERM_MICROPHONE)
-#import <AVFoundation/AVFoundation.h>
-#endif
 #include "generated/menu.h"
 
 /* Port passed from main() to the app delegate via a global */
@@ -56,7 +53,8 @@ static WKWebView *g_ios_webView = nil;
 @property (nonatomic, strong) UIWindow *window;
 #ifdef PERM_LOCATION
 @property (nonatomic, strong) CLLocationManager *locationManager;
-@property (nonatomic, copy) void (^locationCallback)(CLLocation *location, NSError *error);
+@property (nonatomic, copy) void (^pendingGeoDecision)(WKPermissionDecision);
+@property (nonatomic, strong) NSMutableArray *pendingGeoCallbacks;
 #endif
 @end
 
@@ -68,28 +66,25 @@ static WKWebView *g_ios_webView = nil;
     (void)session; (void)connectionOptions;
     UIWindowScene *windowScene = (UIWindowScene *)scene;
 
-    self.window = [[UIWindow alloc] initWithWindowScene:windowScene];
-
 #ifdef PERM_LOCATION
-    /* Initialise location manager for native geolocation */
     self.locationManager = [[CLLocationManager alloc] init];
     self.locationManager.delegate = self;
-    if (self.locationManager.authorizationStatus == kCLAuthorizationStatusNotDetermined) {
-        [self.locationManager requestWhenInUseAuthorization];
-    }
+    [self.locationManager requestWhenInUseAuthorization];
 #endif
+
+    self.window = [[UIWindow alloc] initWithWindowScene:windowScene];
 
     /* Full-screen WKWebView */
     WKWebViewConfiguration *config =
         [[WKWebViewConfiguration alloc] init];
     /* Allow inline media playback (no forced fullscreen) */
     config.allowsInlineMediaPlayback = YES;
+    [config.userContentController addScriptMessageHandler:self
+                                                     name:@"passifloraPosix"];
 #ifdef PERM_LOCATION
     [config.userContentController addScriptMessageHandler:self
                                                      name:@"passifloraGeolocation"];
 #endif
-    [config.userContentController addScriptMessageHandler:self
-                                                     name:@"passifloraPosix"];
 
     WKWebView *webView =
         [[WKWebView alloc] initWithFrame:CGRectZero configuration:config];
@@ -201,9 +196,95 @@ static WKWebView *g_ios_webView = nil;
     API_AVAILABLE(ios(15.0))
 {
     (void)wv; (void)origin; (void)frame;
-    decisionHandler(WKPermissionDecisionGrant);
+    CLAuthorizationStatus status = self.locationManager.authorizationStatus;
+    if (status == kCLAuthorizationStatusAuthorizedWhenInUse ||
+        status == kCLAuthorizationStatusAuthorizedAlways) {
+        decisionHandler(WKPermissionDecisionGrant);
+    } else if (status == kCLAuthorizationStatusNotDetermined) {
+        self.pendingGeoDecision = decisionHandler;
+        [self.locationManager requestWhenInUseAuthorization];
+    } else {
+        decisionHandler(WKPermissionDecisionDeny);
+    }
+}
+
+- (void)locationManagerDidChangeAuthorization:(CLLocationManager *)manager
+    API_AVAILABLE(ios(14.0))
+{
+    if (!self.pendingGeoDecision) return;
+    CLAuthorizationStatus status = manager.authorizationStatus;
+    if (status == kCLAuthorizationStatusAuthorizedWhenInUse ||
+        status == kCLAuthorizationStatusAuthorizedAlways) {
+        self.pendingGeoDecision(WKPermissionDecisionGrant);
+    } else if (status != kCLAuthorizationStatusNotDetermined) {
+        self.pendingGeoDecision(WKPermissionDecisionDeny);
+    } else {
+        return; /* still not determined — keep waiting */
+    }
+    self.pendingGeoDecision = nil;
+}
+
+- (void)locationManager:(CLLocationManager *)manager
+     didUpdateLocations:(NSArray<CLLocation *> *)locations
+{
+    (void)manager;
+    CLLocation *loc = locations.lastObject;
+    if (!loc) return;
+    NSArray *pending = [self.pendingGeoCallbacks copy];
+    [self.pendingGeoCallbacks removeAllObjects];
+    for (NSString *cbId in pending) {
+        NSString *js = [NSString stringWithFormat:
+            @"PassifloraIO._geoResolve('%@',%f,%f,%f,%f,%f,%f,%f,%f);",
+            cbId,
+            loc.coordinate.latitude,
+            loc.coordinate.longitude,
+            loc.horizontalAccuracy,
+            loc.altitude,
+            loc.verticalAccuracy,
+            loc.course,
+            loc.speed,
+            [loc.timestamp timeIntervalSince1970] * 1000.0];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [g_ios_webView evaluateJavaScript:js completionHandler:nil];
+        });
+    }
+}
+
+- (void)locationManager:(CLLocationManager *)manager
+       didFailWithError:(NSError *)error
+{
+    (void)manager;
+    NSArray *pending = [self.pendingGeoCallbacks copy];
+    [self.pendingGeoCallbacks removeAllObjects];
+    int code = 2; /* POSITION_UNAVAILABLE */
+    if (error.code == kCLErrorDenied) code = 1; /* PERMISSION_DENIED */
+    NSString *msg = [error localizedDescription];
+    msg = [msg stringByReplacingOccurrencesOfString:@"'"
+                                         withString:@"\\'"];
+    for (NSString *cbId in pending) {
+        NSString *js = [NSString stringWithFormat:
+            @"PassifloraIO._geoReject('%@',%d,'%@');",
+            cbId, code, msg];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [g_ios_webView evaluateJavaScript:js completionHandler:nil];
+        });
+    }
 }
 #endif /* PERM_LOCATION */
+
+#if defined(PERM_CAMERA) || defined(PERM_MICROPHONE)
+/* WKUIDelegate: getUserMedia (camera/microphone) permission */
+- (void)webView:(WKWebView *)wv
+    requestMediaCapturePermissionForOrigin:(WKSecurityOrigin *)origin
+    initiatedByFrame:(WKFrameInfo *)frame
+    type:(WKMediaCaptureType)type
+    decisionHandler:(void (^)(WKPermissionDecision))decisionHandler
+    API_AVAILABLE(ios(15.0))
+{
+    (void)wv; (void)origin; (void)frame; (void)type;
+    decisionHandler(WKPermissionDecisionGrant);
+}
+#endif
 
 /* WKNavigationDelegate: intercept link clicks to external URLs */
 - (void)webView:(WKWebView *)wv
@@ -230,83 +311,11 @@ static WKWebView *g_ios_webView = nil;
     decisionHandler(WKNavigationActionPolicyAllow);
 }
 
-#ifdef PERM_LOCATION
-/* CLLocationManagerDelegate: got location */
-- (void)locationManager:(CLLocationManager *)manager
-     didUpdateLocations:(NSArray<CLLocation *> *)locations
-{
-    [manager stopUpdatingLocation];
-    CLLocation *loc = [locations lastObject];
-    if (self.locationCallback) {
-        self.locationCallback(loc, nil);
-        self.locationCallback = nil;
-    }
-}
-
-/* CLLocationManagerDelegate: error */
-- (void)locationManager:(CLLocationManager *)manager
-       didFailWithError:(NSError *)error
-{
-    [manager stopUpdatingLocation];
-    if (self.locationCallback) {
-        self.locationCallback(nil, error);
-        self.locationCallback = nil;
-    }
-}
-
-/* Validate callback ID format (geo_N) to prevent JS injection */
-static BOOL isValidGeoId(NSString *geoId) {
-    NSRegularExpression *re = [NSRegularExpression
-        regularExpressionWithPattern:@"^geo_[0-9]+$" options:0 error:nil];
-    return [re numberOfMatchesInString:geoId options:0
-        range:NSMakeRange(0, geoId.length)] == 1;
-}
-#endif /* PERM_LOCATION */
-
 /* WKScriptMessageHandler: handle messages from JavaScript */
 - (void)userContentController:(WKUserContentController *)controller
       didReceiveScriptMessage:(WKScriptMessage *)message
 {
     (void)controller;
-#ifdef PERM_LOCATION
-    if ([message.name isEqualToString:@"passifloraGeolocation"]) {
-        NSString *callbackId = [NSString stringWithFormat:@"%@", message.body];
-        if (!isValidGeoId(callbackId)) return;
-
-        CLAuthorizationStatus status = self.locationManager.authorizationStatus;
-        if (status == kCLAuthorizationStatusDenied ||
-            status == kCLAuthorizationStatusRestricted) {
-            NSString *js = [NSString stringWithFormat:
-                @"PassifloraIO._geoReject('%@', 1, 'Location permission denied');",
-                callbackId];
-            [g_ios_webView evaluateJavaScript:js completionHandler:nil];
-            return;
-        }
-
-        __weak typeof(self) weakSelf = self;
-        self.locationCallback = ^(CLLocation *loc, NSError *err) {
-            (void)err;
-            NSString *js;
-            if (loc) {
-                js = [NSString stringWithFormat:
-                    @"PassifloraIO._geoResolve('%@', %f, %f, %f);",
-                    callbackId,
-                    loc.coordinate.latitude,
-                    loc.coordinate.longitude,
-                    loc.horizontalAccuracy];
-            } else {
-                js = [NSString stringWithFormat:
-                    @"PassifloraIO._geoReject('%@', 2, 'Position unavailable');",
-                    callbackId];
-            }
-            dispatch_async(dispatch_get_main_queue(), ^{
-                (void)weakSelf;
-                [g_ios_webView evaluateJavaScript:js completionHandler:nil];
-            });
-        };
-        [self.locationManager requestLocation];
-    }
-#endif /* PERM_LOCATION */
     if ([message.name isEqualToString:@"passifloraPosix"]) {
         NSString *params = [NSString stringWithFormat:@"%@", message.body];
         /* Extract callback ID and validate */
@@ -341,6 +350,19 @@ static BOOL isValidGeoId(NSString *geoId) {
             });
         });
     }
+#ifdef PERM_LOCATION
+    else if ([message.name isEqualToString:@"passifloraGeolocation"]) {
+        NSString *cbId = [NSString stringWithFormat:@"%@", message.body];
+        NSRegularExpression *re = [NSRegularExpression
+            regularExpressionWithPattern:@"^geo_[0-9]+$" options:0 error:nil];
+        if ([re numberOfMatchesInString:cbId options:0
+                range:NSMakeRange(0, cbId.length)] != 1) return;
+        if (!self.pendingGeoCallbacks)
+            self.pendingGeoCallbacks = [NSMutableArray array];
+        [self.pendingGeoCallbacks addObject:[cbId copy]];
+        [self.locationManager requestLocation];
+    }
+#endif
 }
 @end
 
@@ -364,452 +386,6 @@ static BOOL isValidGeoId(NSString *geoId) {
 }
 @end
 
-/* ================================================================== */
-/*  Media functions — iOS                                              */
-/* ================================================================== */
-
-/* JSON helpers from passiflora.c */
-extern char *json_error(const char *msg);
-extern char *json_ok_str(const char *val);
-extern char *json_ok_void(void);
-extern char *json_ok_b64(const unsigned char *data, size_t len);
-extern char *json_ok_null(void);
-extern char *json_ok_raw(const char *json_val);
-#if defined(PERM_CAMERA) || defined(PERM_MICROPHONE)
-extern char *media_temp_register(const char *filepath, const char *mime,
-                                 int delete_after);
-#endif
-
-#ifdef PERM_CAMERA
-/* ---- Photo capture delegate ---- */
-@interface ZSPhotoCaptureDelegate : NSObject <AVCapturePhotoCaptureDelegate>
-@property (nonatomic) dispatch_semaphore_t semaphore;
-@property (nonatomic, strong) NSData *photoData;
-@end
-
-@implementation ZSPhotoCaptureDelegate
-- (void)captureOutput:(AVCapturePhotoOutput *)output
-    didFinishProcessingPhoto:(AVCapturePhoto *)photo
-    error:(NSError *)error
-{
-    (void)output;
-    if (!error) {
-        self.photoData = [photo fileDataRepresentation];
-    }
-    dispatch_semaphore_signal(self.semaphore);
-}
-@end
-
-/* ---- Video recording delegate ---- */
-@interface ZSVideoRecordDelegate : NSObject <AVCaptureFileOutputRecordingDelegate>
-@property (nonatomic) dispatch_semaphore_t semaphore;
-@property (nonatomic, strong) NSError *recordingError;
-@end
-
-@implementation ZSVideoRecordDelegate
-- (void)captureOutput:(AVCaptureFileOutput *)output
-    didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
-    fromConnections:(NSArray<AVCaptureConnection *> *)connections
-    error:(NSError *)error
-{
-    (void)output; (void)outputFileURL; (void)connections;
-    self.recordingError = error;
-    if (self.semaphore) dispatch_semaphore_signal(self.semaphore);
-}
-@end
-#endif /* PERM_CAMERA */
-
-/* ---- Static media state ---- */
-#ifdef PERM_MICROPHONE
-static AVAudioRecorder          *g_ios_audio_recorder      = nil;
-static NSString                 *g_ios_audio_recording_path = nil;
-#endif
-#ifdef PERM_CAMERA
-static AVCaptureSession         *g_ios_video_session       = nil;
-static AVCaptureMovieFileOutput *g_ios_video_output        = nil;
-static ZSVideoRecordDelegate   *g_ios_video_delegate      = nil;
-static NSString                 *g_ios_video_recording_path = nil;
-#endif
-
-#ifdef PERM_CAMERA
-/* ---- Helper: find AVCaptureDevice by ID string (iOS) ---- */
-static AVCaptureDevice *findCamera(const char *camera_id)
-{
-    @autoreleasepool {
-        NSString *camId = [NSString stringWithUTF8String:camera_id];
-
-        NSArray *types = @[
-            AVCaptureDeviceTypeBuiltInWideAngleCamera,
-            AVCaptureDeviceTypeBuiltInTelephotoCamera,
-            AVCaptureDeviceTypeBuiltInUltraWideCamera
-        ];
-
-        AVCaptureDeviceDiscoverySession *session =
-            [AVCaptureDeviceDiscoverySession
-                discoverySessionWithDeviceTypes:types
-                mediaType:AVMediaTypeVideo
-                position:AVCaptureDevicePositionUnspecified];
-
-        NSArray<AVCaptureDevice *> *devices = session.devices;
-        if (devices.count == 0) return nil;
-
-        if ([camId isEqualToString:@"0"])
-            return devices.firstObject;
-
-        if ([camId isEqualToString:@"front"]) {
-            for (AVCaptureDevice *d in devices)
-                if (d.position == AVCaptureDevicePositionFront) return d;
-        }
-        if ([camId isEqualToString:@"back"]) {
-            for (AVCaptureDevice *d in devices)
-                if (d.position == AVCaptureDevicePositionBack) return d;
-        }
-
-        for (AVCaptureDevice *d in devices) {
-            if ([d.uniqueID isEqualToString:camId]) return d;
-            if ([d.localizedName isEqualToString:camId]) return d;
-        }
-        return nil;
-    }
-}
-
-/* ---- takeScreenshot (iOS) ---- */
-char *media_take_screenshot(void)
-{
-    __block NSData *pngData = nil;
-    dispatch_semaphore_t sem = dispatch_semaphore_create(0);
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [g_ios_webView takeSnapshotWithConfiguration:nil
-            completionHandler:^(UIImage *image, NSError *error) {
-                if (image && !error) {
-                    pngData = UIImagePNGRepresentation(image);
-                }
-                dispatch_semaphore_signal(sem);
-            }];
-    });
-    dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
-    if (!pngData) return json_error("Screenshot failed");
-    NSString *tmp = [NSTemporaryDirectory()
-        stringByAppendingPathComponent:
-            [NSString stringWithFormat:@"passiflora_ss_%u.png",
-                arc4random()]];
-    if (![pngData writeToFile:tmp atomically:YES])
-        return json_error("Failed to write screenshot file");
-    return media_temp_register([tmp UTF8String], "image/png", 1);
-}
-
-/* ---- listCameras (iOS) ---- */
-char *media_list_cameras(void)
-{
-    @autoreleasepool {
-        NSArray *types = @[
-            AVCaptureDeviceTypeBuiltInWideAngleCamera,
-            AVCaptureDeviceTypeBuiltInTelephotoCamera,
-            AVCaptureDeviceTypeBuiltInUltraWideCamera
-        ];
-
-        AVCaptureDeviceDiscoverySession *disc =
-            [AVCaptureDeviceDiscoverySession
-                discoverySessionWithDeviceTypes:types
-                mediaType:AVMediaTypeVideo
-                position:AVCaptureDevicePositionUnspecified];
-
-        NSArray<AVCaptureDevice *> *devices = disc.devices;
-        NSMutableString *json = [NSMutableString stringWithString:@"["];
-        for (NSUInteger i = 0; i < devices.count; i++) {
-            AVCaptureDevice *dev = devices[i];
-            if (i > 0) [json appendString:@","];
-            NSString *pos = @"unspecified";
-            if (dev.position == AVCaptureDevicePositionFront) pos = @"front";
-            else if (dev.position == AVCaptureDevicePositionBack) pos = @"back";
-            NSString *name = [dev.localizedName
-                stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"];
-            name = [name stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
-            NSString *uid = [dev.uniqueID
-                stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"];
-            uid = [uid stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
-            [json appendFormat:
-                @"{\"id\":\"%@\",\"name\":\"%@\",\"position\":\"%@\"}",
-                uid, name, pos];
-        }
-        [json appendString:@"]"];
-        return json_ok_raw([json UTF8String]);
-    }
-}
-
-/* ---- captureImage (iOS) ---- */
-char *media_capture_image(const char *camera_id)
-{
-    @autoreleasepool {
-        /* Request camera permission */
-        __block BOOL granted = NO;
-        dispatch_semaphore_t psem = dispatch_semaphore_create(0);
-        [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo
-            completionHandler:^(BOOL g) { granted = g;
-                dispatch_semaphore_signal(psem); }];
-        dispatch_semaphore_wait(psem, DISPATCH_TIME_FOREVER);
-        if (!granted) return json_error("Camera permission denied");
-
-        AVCaptureDevice *camera = findCamera(camera_id);
-        if (!camera) return json_error("Camera not found");
-
-        NSError *error = nil;
-        AVCaptureDeviceInput *input =
-            [AVCaptureDeviceInput deviceInputWithDevice:camera error:&error];
-        if (!input) return json_error(
-            [[error localizedDescription] UTF8String]);
-
-        AVCaptureSession *session = [[AVCaptureSession alloc] init];
-        [session setSessionPreset:AVCaptureSessionPresetPhoto];
-        if (![session canAddInput:input]) {
-            return json_error("Cannot add camera input");
-        }
-        [session addInput:input];
-
-        AVCapturePhotoOutput *photoOutput =
-            [[AVCapturePhotoOutput alloc] init];
-        if (![session canAddOutput:photoOutput]) {
-            return json_error("Cannot add photo output");
-        }
-        [session addOutput:photoOutput];
-
-        [session startRunning];
-        [NSThread sleepForTimeInterval:0.5]; /* let camera auto-expose */
-
-        ZSPhotoCaptureDelegate *delegate =
-            [[ZSPhotoCaptureDelegate alloc] init];
-        delegate.semaphore = dispatch_semaphore_create(0);
-
-        AVCapturePhotoSettings *settings =
-            [AVCapturePhotoSettings photoSettings];
-        [photoOutput capturePhotoWithSettings:settings delegate:delegate];
-
-        dispatch_semaphore_wait(delegate.semaphore,
-            dispatch_time(DISPATCH_TIME_NOW, 10LL * NSEC_PER_SEC));
-
-        [session stopRunning];
-
-        if (!delegate.photoData)
-            return json_error("Photo capture failed");
-        NSString *tmp = [NSTemporaryDirectory()
-            stringByAppendingPathComponent:
-                [NSString stringWithFormat:@"passiflora_cap_%u.jpg",
-                    arc4random()]];
-        if (![delegate.photoData writeToFile:tmp atomically:YES])
-            return json_error("Failed to write captured image");
-        return media_temp_register([tmp UTF8String], "image/jpeg", 1);
-    }
-}
-#endif /* PERM_CAMERA */
-
-#ifdef PERM_MICROPHONE
-/* ---- startAudioRecording (iOS) ---- */
-char *media_start_audio_recording(void)
-{
-    @autoreleasepool {
-        if (g_ios_audio_recorder && g_ios_audio_recorder.isRecording)
-            return json_error("Audio recording already in progress");
-
-        /* Request microphone permission */
-        __block BOOL granted = NO;
-        dispatch_semaphore_t psem = dispatch_semaphore_create(0);
-        [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio
-            completionHandler:^(BOOL g) { granted = g;
-                dispatch_semaphore_signal(psem); }];
-        dispatch_semaphore_wait(psem, DISPATCH_TIME_FOREVER);
-        if (!granted) return json_error("Microphone permission denied");
-
-        /* Configure audio session for recording */
-        AVAudioSession *audioSession = [AVAudioSession sharedInstance];
-        NSError *error = nil;
-        [audioSession setCategory:AVAudioSessionCategoryRecord error:&error];
-        if (error) return json_error(
-            [[error localizedDescription] UTF8String]);
-        [audioSession setActive:YES error:&error];
-        if (error) return json_error(
-            [[error localizedDescription] UTF8String]);
-
-        NSString *tmp = NSTemporaryDirectory();
-        g_ios_audio_recording_path =
-            [tmp stringByAppendingPathComponent:@"passiflora_audio.m4a"];
-        NSURL *url = [NSURL fileURLWithPath:g_ios_audio_recording_path];
-
-        NSDictionary *settings = @{
-            AVFormatIDKey:              @(kAudioFormatMPEG4AAC),
-            AVSampleRateKey:            @44100.0,
-            AVNumberOfChannelsKey:      @2,
-            AVEncoderAudioQualityKey:   @(AVAudioQualityHigh)
-        };
-
-        g_ios_audio_recorder = [[AVAudioRecorder alloc] initWithURL:url
-                                                            settings:settings
-                                                               error:&error];
-        if (!g_ios_audio_recorder)
-            return json_error([[error localizedDescription] UTF8String]);
-
-        if (![g_ios_audio_recorder record]) {
-            g_ios_audio_recorder = nil;
-            return json_error("Failed to start audio recording");
-        }
-        return json_ok_void();
-    }
-}
-
-/* ---- stopAudioRecording (iOS) ---- */
-char *media_stop_audio_recording(void)
-{
-    @autoreleasepool {
-        if (!g_ios_audio_recorder || !g_ios_audio_recorder.isRecording)
-            return json_error("No audio recording in progress");
-        [g_ios_audio_recorder stop];
-        return json_ok_void();
-    }
-}
-
-/* ---- getAudioRecording (iOS) ---- */
-char *media_get_audio_recording(void)
-{
-    @autoreleasepool {
-        if (!g_ios_audio_recording_path)
-            return json_error("No audio recording available");
-        if (![[NSFileManager defaultManager]
-                fileExistsAtPath:g_ios_audio_recording_path])
-            return json_error("Audio recording file not found");
-        return media_temp_register(
-            [g_ios_audio_recording_path UTF8String], "audio/mp4", 0);
-    }
-}
-#endif /* PERM_MICROPHONE */
-
-#ifdef PERM_CAMERA
-/* ---- startVideoRecording (iOS) ---- */
-char *media_start_video_recording(const char *camera_id)
-{
-    @autoreleasepool {
-        if (g_ios_video_session && g_ios_video_session.isRunning)
-            return json_error("Video recording already in progress");
-
-        /* Request camera permission */
-        __block BOOL camGranted = NO;
-        dispatch_semaphore_t psem = dispatch_semaphore_create(0);
-        [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo
-            completionHandler:^(BOOL g) { camGranted = g;
-                dispatch_semaphore_signal(psem); }];
-        dispatch_semaphore_wait(psem, DISPATCH_TIME_FOREVER);
-        if (!camGranted) return json_error("Camera permission denied");
-
-        /* Request microphone permission (optional for video) */
-        dispatch_semaphore_t psem2 = dispatch_semaphore_create(0);
-        [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio
-            completionHandler:^(BOOL g) { (void)g;
-                dispatch_semaphore_signal(psem2); }];
-        dispatch_semaphore_wait(psem2, DISPATCH_TIME_FOREVER);
-
-        AVCaptureDevice *camera = findCamera(camera_id);
-        if (!camera) return json_error("Camera not found");
-
-        /* Audio session for recording */
-        AVAudioSession *audioSession = [AVAudioSession sharedInstance];
-        [audioSession setCategory:AVAudioSessionCategoryPlayAndRecord
-                            error:nil];
-        [audioSession setActive:YES error:nil];
-
-        NSError *error = nil;
-        AVCaptureDeviceInput *videoInput =
-            [AVCaptureDeviceInput deviceInputWithDevice:camera error:&error];
-        if (!videoInput)
-            return json_error([[error localizedDescription] UTF8String]);
-
-        g_ios_video_session = [[AVCaptureSession alloc] init];
-        [g_ios_video_session setSessionPreset:AVCaptureSessionPresetHigh];
-
-        if (![g_ios_video_session canAddInput:videoInput]) {
-            g_ios_video_session = nil;
-            return json_error("Cannot add camera input");
-        }
-        [g_ios_video_session addInput:videoInput];
-
-        /* Try to add microphone */
-        AVCaptureDevice *mic =
-            [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
-        if (mic) {
-            AVCaptureDeviceInput *audioInput =
-                [AVCaptureDeviceInput deviceInputWithDevice:mic error:nil];
-            if (audioInput &&
-                [g_ios_video_session canAddInput:audioInput])
-                [g_ios_video_session addInput:audioInput];
-        }
-
-        g_ios_video_output = [[AVCaptureMovieFileOutput alloc] init];
-        if (![g_ios_video_session canAddOutput:g_ios_video_output]) {
-            g_ios_video_session = nil;
-            g_ios_video_output = nil;
-            return json_error("Cannot add movie output");
-        }
-        [g_ios_video_session addOutput:g_ios_video_output];
-
-        [g_ios_video_session startRunning];
-
-        NSString *tmp = NSTemporaryDirectory();
-        g_ios_video_recording_path =
-            [tmp stringByAppendingPathComponent:@"passiflora_video.mov"];
-        /* Remove any leftover file — AVCaptureMovieFileOutput will not
-           overwrite and silently fails to start if the file exists. */
-        [[NSFileManager defaultManager]
-            removeItemAtPath:g_ios_video_recording_path error:nil];
-        NSURL *url = [NSURL fileURLWithPath:g_ios_video_recording_path];
-
-        g_ios_video_delegate = [[ZSVideoRecordDelegate alloc] init];
-        [g_ios_video_output startRecordingToOutputFileURL:url
-                                        recordingDelegate:g_ios_video_delegate];
-        return json_ok_void();
-    }
-}
-
-/* ---- stopVideoRecording (iOS) ---- */
-char *media_stop_video_recording(void)
-{
-    @autoreleasepool {
-        if (!g_ios_video_session || !g_ios_video_output.isRecording)
-            return json_error("No video recording in progress");
-
-        g_ios_video_delegate.semaphore = dispatch_semaphore_create(0);
-        [g_ios_video_output stopRecording];
-        dispatch_semaphore_wait(g_ios_video_delegate.semaphore,
-            dispatch_time(DISPATCH_TIME_NOW, 10LL * NSEC_PER_SEC));
-
-        [g_ios_video_session stopRunning];
-        g_ios_video_session = nil;
-        g_ios_video_output = nil;
-
-        if (g_ios_video_delegate.recordingError) {
-            char *err = json_error(
-                [[g_ios_video_delegate.recordingError localizedDescription]
-                    UTF8String]);
-            g_ios_video_delegate = nil;
-            return err;
-        }
-        g_ios_video_delegate = nil;
-        return json_ok_void();
-    }
-}
-
-/* ---- getVideoRecording (iOS) ---- */
-char *media_get_video_recording(void)
-{
-    @autoreleasepool {
-        if (!g_ios_video_recording_path)
-            return json_error("No video recording available");
-        if (![[NSFileManager defaultManager]
-                fileExistsAtPath:g_ios_video_recording_path])
-            return json_error("Video recording file not found");
-        return media_temp_register(
-            [g_ios_video_recording_path UTF8String],
-            "video/quicktime", 0);
-    }
-}
-#endif /* PERM_CAMERA */
-
 void ui_open(int port)
 {
     g_ios_port = port;
@@ -827,12 +403,6 @@ void ui_open(int port)
 #import <WebKit/WebKit.h>
 #ifdef PERM_LOCATION
 #import <CoreLocation/CoreLocation.h>
-#endif
-#if defined(PERM_CAMERA) || defined(PERM_MICROPHONE)
-#import <AVFoundation/AVFoundation.h>
-#endif
-#ifdef PERM_CAMERA
-#import <ImageIO/ImageIO.h>
 #endif
 #include "generated/menu.h"
 
@@ -1027,7 +597,7 @@ static void build_menus(void)
      >
 #ifdef PERM_LOCATION
 @property (nonatomic, strong) CLLocationManager *locationManager;
-@property (nonatomic, copy) void (^locationCallback)(CLLocation *location, NSError *error);
+@property (nonatomic, strong) NSMutableArray *pendingGeoCallbacks;
 #endif
 @end
 
@@ -1042,116 +612,19 @@ static void build_menus(void)
 {
     (void)note;
     [NSApp activateIgnoringOtherApps:YES];
-
 #ifdef PERM_LOCATION
-    /* Initialise location manager for native geolocation */
     self.locationManager = [[CLLocationManager alloc] init];
     self.locationManager.delegate = self;
-    if (self.locationManager.authorizationStatus == kCLAuthorizationStatusNotDetermined) {
-        [self.locationManager requestWhenInUseAuthorization];
-    }
+    [self.locationManager requestAlwaysAuthorization];
+    [self.locationManager startUpdatingLocation];
 #endif
 }
-
-#ifdef PERM_LOCATION
-/* CLLocationManagerDelegate: authorisation changed */
-- (void)locationManagerDidChangeAuthorization:(CLLocationManager *)manager
-{
-    (void)manager;
-    fprintf(stderr, "passiflora: location auth status = %d\n",
-            (int)manager.authorizationStatus);
-}
-
-/* CLLocationManagerDelegate: got location */
-- (void)locationManager:(CLLocationManager *)manager
-     didUpdateLocations:(NSArray<CLLocation *> *)locations
-{
-    [manager stopUpdatingLocation];
-    CLLocation *loc = [locations lastObject];
-    if (self.locationCallback) {
-        self.locationCallback(loc, nil);
-        self.locationCallback = nil;
-    }
-}
-
-/* CLLocationManagerDelegate: error */
-- (void)locationManager:(CLLocationManager *)manager
-       didFailWithError:(NSError *)error
-{
-    [manager stopUpdatingLocation];
-    if (self.locationCallback) {
-        self.locationCallback(nil, error);
-        self.locationCallback = nil;
-    }
-}
-
-/* Validate callback ID format (geo_N) to prevent JS injection */
-static BOOL isValidGeoId(NSString *geoId) {
-    NSRegularExpression *re = [NSRegularExpression
-        regularExpressionWithPattern:@"^geo_[0-9]+$" options:0 error:nil];
-    return [re numberOfMatchesInString:geoId options:0
-        range:NSMakeRange(0, geoId.length)] == 1;
-}
-#endif /* PERM_LOCATION */
 
 /* WKScriptMessageHandler: handle messages from JavaScript */
 - (void)userContentController:(WKUserContentController *)controller
       didReceiveScriptMessage:(WKScriptMessage *)message
 {
     (void)controller;
-#ifdef PERM_LOCATION
-    if ([message.name isEqualToString:@"passifloraGeolocation"]) {
-        NSString *callbackId = [NSString stringWithFormat:@"%@", message.body];
-        if (!isValidGeoId(callbackId)) return;
-
-        CLAuthorizationStatus status = self.locationManager.authorizationStatus;
-        if (status == kCLAuthorizationStatusDenied ||
-            status == kCLAuthorizationStatusRestricted) {
-            NSAlert *alert = [[NSAlert alloc] init];
-            [alert setMessageText:@"Location Services Disabled"];
-            [alert setInformativeText:
-                @"This app needs access to your location. "
-                 "You can enable it in System Settings > "
-                 "Privacy & Security > Location Services."];
-            [alert addButtonWithTitle:@"Open Settings"];
-            [alert addButtonWithTitle:@"Cancel"];
-            NSModalResponse resp = [alert runModal];
-            if (resp == NSAlertFirstButtonReturn) {
-                [[NSWorkspace sharedWorkspace] openURL:
-                    [NSURL URLWithString:
-                        @"x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices"]];
-            }
-            NSString *js = [NSString stringWithFormat:
-                @"PassifloraIO._geoReject('%@', 1, 'Location permission denied');",
-                callbackId];
-            [g_webView evaluateJavaScript:js completionHandler:nil];
-            return;
-        }
-
-        __weak typeof(self) weakSelf = self;
-        self.locationCallback = ^(CLLocation *loc, NSError *err) {
-            (void)err;
-            NSString *js;
-            if (loc) {
-                js = [NSString stringWithFormat:
-                    @"PassifloraIO._geoResolve('%@', %f, %f, %f);",
-                    callbackId,
-                    loc.coordinate.latitude,
-                    loc.coordinate.longitude,
-                    loc.horizontalAccuracy];
-            } else {
-                js = [NSString stringWithFormat:
-                    @"PassifloraIO._geoReject('%@', 2, 'Position unavailable');",
-                    callbackId];
-            }
-            dispatch_async(dispatch_get_main_queue(), ^{
-                (void)weakSelf;
-                [g_webView evaluateJavaScript:js completionHandler:nil];
-            });
-        };
-        [self.locationManager requestLocation];
-    }
-#endif /* PERM_LOCATION */
     if ([message.name isEqualToString:@"passifloraPosix"]) {
         NSString *params = [NSString stringWithFormat:@"%@", message.body];
         NSString *cbId = nil;
@@ -1184,6 +657,19 @@ static BOOL isValidGeoId(NSString *geoId) {
             });
         });
     }
+#ifdef PERM_LOCATION
+    else if ([message.name isEqualToString:@"passifloraGeolocation"]) {
+        NSString *cbId = [NSString stringWithFormat:@"%@", message.body];
+        NSRegularExpression *re = [NSRegularExpression
+            regularExpressionWithPattern:@"^geo_[0-9]+$" options:0 error:nil];
+        if ([re numberOfMatchesInString:cbId options:0
+                range:NSMakeRange(0, cbId.length)] != 1) return;
+        if (!self.pendingGeoCallbacks)
+            self.pendingGeoCallbacks = [NSMutableArray array];
+        [self.pendingGeoCallbacks addObject:[cbId copy]];
+        [self.locationManager requestLocation];
+    }
+#endif
 }
 
 /* WKUIDelegate: JavaScript alert() */
@@ -1247,7 +733,76 @@ static BOOL isValidGeoId(NSString *geoId) {
     (void)wv; (void)origin; (void)frame;
     decisionHandler(WKPermissionDecisionGrant);
 }
+
+- (void)locationManagerDidChangeAuthorization:(CLLocationManager *)manager
+    API_AVAILABLE(macos(11.0))
+{
+    CLAuthorizationStatus status = manager.authorizationStatus;
+    if (status == kCLAuthorizationStatusAuthorizedAlways ||
+        status == kCLAuthorizationStatusAuthorized) {
+        [manager stopUpdatingLocation];
+    } else if (status != kCLAuthorizationStatusNotDetermined) {
+        [manager stopUpdatingLocation];
+    }
+}
+
+- (void)locationManager:(CLLocationManager *)manager
+     didUpdateLocations:(NSArray<CLLocation *> *)locations
+{
+    (void)manager;
+    CLLocation *loc = locations.lastObject;
+    if (!loc) return;
+    NSArray *pending = [self.pendingGeoCallbacks copy];
+    [self.pendingGeoCallbacks removeAllObjects];
+    for (NSString *cbId in pending) {
+        NSString *js = [NSString stringWithFormat:
+            @"PassifloraIO._geoResolve('%@',%f,%f,%f,%f,%f,%f,%f,%f);",
+            cbId,
+            loc.coordinate.latitude,
+            loc.coordinate.longitude,
+            loc.horizontalAccuracy,
+            loc.altitude,
+            loc.verticalAccuracy,
+            loc.course,
+            loc.speed,
+            [loc.timestamp timeIntervalSince1970] * 1000.0];
+        [g_webView evaluateJavaScript:js completionHandler:nil];
+    }
+}
+
+- (void)locationManager:(CLLocationManager *)manager
+       didFailWithError:(NSError *)error
+{
+    (void)manager;
+    NSArray *pending = [self.pendingGeoCallbacks copy];
+    [self.pendingGeoCallbacks removeAllObjects];
+    int code = 2; /* POSITION_UNAVAILABLE */
+    if (error.code == kCLErrorDenied) code = 1; /* PERMISSION_DENIED */
+    NSString *msg = [error localizedDescription];
+    msg = [msg stringByReplacingOccurrencesOfString:@"'"
+                                         withString:@"\\'"];
+    for (NSString *cbId in pending) {
+        NSString *js = [NSString stringWithFormat:
+            @"PassifloraIO._geoReject('%@',%d,'%@');",
+            cbId, code, msg];
+        [g_webView evaluateJavaScript:js completionHandler:nil];
+    }
+}
 #endif /* PERM_LOCATION */
+
+#if defined(PERM_CAMERA) || defined(PERM_MICROPHONE)
+/* WKUIDelegate: getUserMedia (camera/microphone) permission */
+- (void)webView:(WKWebView *)wv
+    requestMediaCapturePermissionForOrigin:(WKSecurityOrigin *)origin
+    initiatedByFrame:(WKFrameInfo *)frame
+    type:(WKMediaCaptureType)type
+    decisionHandler:(void (^)(WKPermissionDecision))decisionHandler
+    API_AVAILABLE(macos(12.0))
+{
+    (void)wv; (void)origin; (void)frame; (void)type;
+    decisionHandler(WKPermissionDecisionGrant);
+}
+#endif
 
 @end
 
@@ -1287,12 +842,15 @@ void ui_open(int port)
         /* WKWebView filling the entire content area */
         WKWebViewConfiguration *config =
             [[WKWebViewConfiguration alloc] init];
+#if defined(PERM_CAMERA) || defined(PERM_MICROPHONE)
+        config.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
+#endif
+        [config.userContentController addScriptMessageHandler:delegate
+                                                         name:@"passifloraPosix"];
 #ifdef PERM_LOCATION
         [config.userContentController addScriptMessageHandler:delegate
                                                          name:@"passifloraGeolocation"];
 #endif
-        [config.userContentController addScriptMessageHandler:delegate
-                                                         name:@"passifloraPosix"];
         g_webView =
             [[WKWebView alloc] initWithFrame:[[window contentView] bounds]
                                configuration:config];
@@ -1313,467 +871,6 @@ void ui_open(int port)
 
     exit(0);
 }
-
-/* ================================================================== */
-/*  Media functions — macOS                                            */
-/* ================================================================== */
-
-/* JSON helpers from passiflora.c */
-extern char *json_error(const char *msg);
-extern char *json_ok_str(const char *val);
-extern char *json_ok_void(void);
-extern char *json_ok_b64(const unsigned char *data, size_t len);
-extern char *json_ok_null(void);
-extern char *json_ok_raw(const char *json_val);
-#if defined(PERM_CAMERA) || defined(PERM_MICROPHONE)
-extern char *media_temp_register(const char *filepath, const char *mime,
-                                 int delete_after);
-#endif
-
-#ifdef PERM_CAMERA
-/* ---- Photo capture delegate ---- */
-@interface ZSPhotoCaptureDelegate : NSObject <AVCapturePhotoCaptureDelegate>
-@property (nonatomic) dispatch_semaphore_t semaphore;
-@property (nonatomic, strong) NSData *photoData;
-@end
-
-@implementation ZSPhotoCaptureDelegate
-- (void)captureOutput:(AVCapturePhotoOutput *)output
-    didFinishProcessingPhoto:(AVCapturePhoto *)photo
-    error:(NSError *)error
-{
-    (void)output;
-    if (!error) {
-        self.photoData = [photo fileDataRepresentation];
-    }
-    dispatch_semaphore_signal(self.semaphore);
-}
-@end
-
-/* ---- Video recording delegate ---- */
-@interface ZSVideoRecordDelegate : NSObject <AVCaptureFileOutputRecordingDelegate>
-@property (nonatomic) dispatch_semaphore_t semaphore;
-@property (nonatomic, strong) NSError *recordingError;
-@end
-
-@implementation ZSVideoRecordDelegate
-- (void)captureOutput:(AVCaptureFileOutput *)output
-    didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
-    fromConnections:(NSArray<AVCaptureConnection *> *)connections
-    error:(NSError *)error
-{
-    (void)output; (void)outputFileURL; (void)connections;
-    self.recordingError = error;
-    if (self.semaphore) dispatch_semaphore_signal(self.semaphore);
-}
-@end
-#endif /* PERM_CAMERA */
-
-/* ---- Static media state ---- */
-#ifdef PERM_MICROPHONE
-static AVAudioRecorder          *g_audio_recorder      = nil;
-static NSString                 *g_audio_recording_path = nil;
-#endif
-#ifdef PERM_CAMERA
-static AVCaptureSession         *g_video_session       = nil;
-static AVCaptureMovieFileOutput *g_video_output        = nil;
-static ZSVideoRecordDelegate   *g_video_delegate      = nil;
-static NSString                 *g_video_recording_path = nil;
-#endif
-
-#ifdef PERM_CAMERA
-/* ---- Helper: find AVCaptureDevice by ID string ---- */
-static AVCaptureDevice *findCamera(const char *camera_id)
-{
-    @autoreleasepool {
-        NSString *camId = [NSString stringWithUTF8String:camera_id];
-
-        NSMutableArray *types = [NSMutableArray arrayWithObject:
-            AVCaptureDeviceTypeBuiltInWideAngleCamera];
-        if (@available(macOS 14.0, *)) {
-            [types addObject:AVCaptureDeviceTypeExternal];
-        }
-
-        AVCaptureDeviceDiscoverySession *session =
-            [AVCaptureDeviceDiscoverySession
-                discoverySessionWithDeviceTypes:types
-                mediaType:AVMediaTypeVideo
-                position:AVCaptureDevicePositionUnspecified];
-
-        NSArray<AVCaptureDevice *> *devices = session.devices;
-        if (devices.count == 0) return nil;
-
-        if ([camId isEqualToString:@"0"])
-            return devices.firstObject;
-
-        if ([camId isEqualToString:@"front"]) {
-            for (AVCaptureDevice *d in devices)
-                if (d.position == AVCaptureDevicePositionFront) return d;
-        }
-        if ([camId isEqualToString:@"back"]) {
-            for (AVCaptureDevice *d in devices)
-                if (d.position == AVCaptureDevicePositionBack) return d;
-        }
-
-        for (AVCaptureDevice *d in devices) {
-            if ([d.uniqueID isEqualToString:camId]) return d;
-            if ([d.localizedName isEqualToString:camId]) return d;
-        }
-        return nil;
-    }
-}
-
-/* ---- takeScreenshot ---- */
-char *media_take_screenshot(void)
-{
-    __block NSData *pngData = nil;
-    dispatch_semaphore_t sem = dispatch_semaphore_create(0);
-    dispatch_async(dispatch_get_main_queue(), ^{
-        WKSnapshotConfiguration *snapCfg =
-            [[WKSnapshotConfiguration alloc] init];
-        snapCfg.afterScreenUpdates = YES;
-
-        [g_webView takeSnapshotWithConfiguration:snapCfg
-            completionHandler:^(NSImage *image, NSError *error) {
-                if (image && !error) {
-                    /* Get pixel-accurate CGImage */
-                    NSRect proposedRect = NSMakeRect(
-                        0, 0, image.size.width, image.size.height);
-                    CGImageRef cgImg = [image CGImageForProposedRect:
-                        &proposedRect context:nil hints:nil];
-                    if (cgImg) {
-                        /* Use ImageIO (CGImageDestination) for a clean
-                           standard PNG — avoids NSBitmapImageRep
-                           colour-profile quirks. */
-                        CFMutableDataRef cfData = CFDataCreateMutable(
-                            kCFAllocatorDefault, 0);
-                        CGImageDestinationRef dest =
-                            CGImageDestinationCreateWithData(
-                                cfData,
-                                CFSTR("public.png"), 1, NULL);
-                        if (dest) {
-                            CGImageDestinationAddImage(dest, cgImg, NULL);
-                            if (CGImageDestinationFinalize(dest))
-                                pngData = CFBridgingRelease(cfData);
-                            else
-                                CFRelease(cfData);
-                            CFRelease(dest);
-                        } else {
-                            CFRelease(cfData);
-                        }
-                    }
-                }
-                dispatch_semaphore_signal(sem);
-            }];
-    });
-    dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
-    if (!pngData) return json_error("Screenshot failed");
-    NSString *tmp = [NSTemporaryDirectory()
-        stringByAppendingPathComponent:
-            [NSString stringWithFormat:@"passiflora_ss_%u.png",
-                arc4random()]];
-    if (![pngData writeToFile:tmp atomically:YES])
-        return json_error("Failed to write screenshot file");
-    return media_temp_register([tmp UTF8String], "image/png", 1);
-}
-
-/* ---- listCameras ---- */
-char *media_list_cameras(void)
-{
-    @autoreleasepool {
-        NSMutableArray *types = [NSMutableArray arrayWithObject:
-            AVCaptureDeviceTypeBuiltInWideAngleCamera];
-        if (@available(macOS 14.0, *)) {
-            [types addObject:AVCaptureDeviceTypeExternal];
-        }
-
-        AVCaptureDeviceDiscoverySession *disc =
-            [AVCaptureDeviceDiscoverySession
-                discoverySessionWithDeviceTypes:types
-                mediaType:AVMediaTypeVideo
-                position:AVCaptureDevicePositionUnspecified];
-
-        NSArray<AVCaptureDevice *> *devices = disc.devices;
-        NSMutableString *json = [NSMutableString stringWithString:@"["];
-        for (NSUInteger i = 0; i < devices.count; i++) {
-            AVCaptureDevice *dev = devices[i];
-            if (i > 0) [json appendString:@","];
-            NSString *pos = @"unspecified";
-            if (dev.position == AVCaptureDevicePositionFront) pos = @"front";
-            else if (dev.position == AVCaptureDevicePositionBack) pos = @"back";
-            NSString *name = [dev.localizedName
-                stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"];
-            name = [name stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
-            NSString *uid = [dev.uniqueID
-                stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"];
-            uid = [uid stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
-            [json appendFormat:
-                @"{\"id\":\"%@\",\"name\":\"%@\",\"position\":\"%@\"}",
-                uid, name, pos];
-        }
-        [json appendString:@"]"];
-        return json_ok_raw([json UTF8String]);
-    }
-}
-
-/* ---- captureImage ---- */
-char *media_capture_image(const char *camera_id)
-{
-    @autoreleasepool {
-        /* Request camera permission (macOS 10.14+) */
-        __block BOOL granted = NO;
-        dispatch_semaphore_t psem = dispatch_semaphore_create(0);
-        [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo
-            completionHandler:^(BOOL g) { granted = g;
-                dispatch_semaphore_signal(psem); }];
-        dispatch_semaphore_wait(psem, DISPATCH_TIME_FOREVER);
-        if (!granted) return json_error("Camera permission denied");
-
-        AVCaptureDevice *camera = findCamera(camera_id);
-        if (!camera) return json_error("Camera not found");
-
-        NSError *error = nil;
-        AVCaptureDeviceInput *input =
-            [AVCaptureDeviceInput deviceInputWithDevice:camera error:&error];
-        if (!input) return json_error(
-            [[error localizedDescription] UTF8String]);
-
-        AVCaptureSession *session = [[AVCaptureSession alloc] init];
-        [session setSessionPreset:AVCaptureSessionPresetPhoto];
-        if (![session canAddInput:input]) {
-            return json_error("Cannot add camera input");
-        }
-        [session addInput:input];
-
-        AVCapturePhotoOutput *photoOutput =
-            [[AVCapturePhotoOutput alloc] init];
-        if (![session canAddOutput:photoOutput]) {
-            return json_error("Cannot add photo output");
-        }
-        [session addOutput:photoOutput];
-
-        [session startRunning];
-        [NSThread sleepForTimeInterval:0.5]; /* let camera auto-expose */
-
-        ZSPhotoCaptureDelegate *delegate =
-            [[ZSPhotoCaptureDelegate alloc] init];
-        delegate.semaphore = dispatch_semaphore_create(0);
-
-        AVCapturePhotoSettings *settings =
-            [AVCapturePhotoSettings photoSettings];
-        [photoOutput capturePhotoWithSettings:settings delegate:delegate];
-
-        dispatch_semaphore_wait(delegate.semaphore,
-            dispatch_time(DISPATCH_TIME_NOW, 10LL * NSEC_PER_SEC));
-
-        [session stopRunning];
-
-        if (!delegate.photoData)
-            return json_error("Photo capture failed");
-        NSString *tmp = [NSTemporaryDirectory()
-            stringByAppendingPathComponent:
-                [NSString stringWithFormat:@"passiflora_cap_%u.jpg",
-                    arc4random()]];
-        if (![delegate.photoData writeToFile:tmp atomically:YES])
-            return json_error("Failed to write captured image");
-        return media_temp_register([tmp UTF8String], "image/jpeg", 1);
-    }
-}
-#endif /* PERM_CAMERA */
-
-#ifdef PERM_MICROPHONE
-/* ---- startAudioRecording ---- */
-char *media_start_audio_recording(void)
-{
-    @autoreleasepool {
-        if (g_audio_recorder && g_audio_recorder.isRecording)
-            return json_error("Audio recording already in progress");
-
-        /* Request microphone permission (macOS 10.14+) */
-        __block BOOL granted = NO;
-        dispatch_semaphore_t psem = dispatch_semaphore_create(0);
-        [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio
-            completionHandler:^(BOOL g) { granted = g;
-                dispatch_semaphore_signal(psem); }];
-        dispatch_semaphore_wait(psem, DISPATCH_TIME_FOREVER);
-        if (!granted) return json_error("Microphone permission denied");
-
-        NSString *tmp = NSTemporaryDirectory();
-        g_audio_recording_path =
-            [tmp stringByAppendingPathComponent:@"passiflora_audio.m4a"];
-        NSURL *url = [NSURL fileURLWithPath:g_audio_recording_path];
-
-        NSDictionary *settings = @{
-            AVFormatIDKey:              @(kAudioFormatMPEG4AAC),
-            AVSampleRateKey:            @44100.0,
-            AVNumberOfChannelsKey:      @2,
-            AVEncoderAudioQualityKey:   @(AVAudioQualityHigh)
-        };
-
-        NSError *error = nil;
-        g_audio_recorder = [[AVAudioRecorder alloc] initWithURL:url
-                                                        settings:settings
-                                                           error:&error];
-        if (!g_audio_recorder)
-            return json_error([[error localizedDescription] UTF8String]);
-
-        if (![g_audio_recorder record]) {
-            g_audio_recorder = nil;
-            return json_error("Failed to start audio recording");
-        }
-        return json_ok_void();
-    }
-}
-
-/* ---- stopAudioRecording ---- */
-char *media_stop_audio_recording(void)
-{
-    @autoreleasepool {
-        if (!g_audio_recorder || !g_audio_recorder.isRecording)
-            return json_error("No audio recording in progress");
-        [g_audio_recorder stop];
-        return json_ok_void();
-    }
-}
-
-/* ---- getAudioRecording ---- */
-char *media_get_audio_recording(void)
-{
-    @autoreleasepool {
-        if (!g_audio_recording_path)
-            return json_error("No audio recording available");
-        if (![[NSFileManager defaultManager]
-                fileExistsAtPath:g_audio_recording_path])
-            return json_error("Audio recording file not found");
-        return media_temp_register(
-            [g_audio_recording_path UTF8String], "audio/mp4", 0);
-    }
-}
-#endif /* PERM_MICROPHONE */
-
-#ifdef PERM_CAMERA
-/* ---- startVideoRecording ---- */
-char *media_start_video_recording(const char *camera_id)
-{
-    @autoreleasepool {
-        if (g_video_session && g_video_session.isRunning)
-            return json_error("Video recording already in progress");
-
-        /* Request camera permission */
-        __block BOOL camGranted = NO;
-        dispatch_semaphore_t psem = dispatch_semaphore_create(0);
-        [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo
-            completionHandler:^(BOOL g) { camGranted = g;
-                dispatch_semaphore_signal(psem); }];
-        dispatch_semaphore_wait(psem, DISPATCH_TIME_FOREVER);
-        if (!camGranted) return json_error("Camera permission denied");
-
-        /* Request microphone permission (optional — just triggers the
-           prompt so the mic input can be added below) */
-        dispatch_semaphore_t psem2 = dispatch_semaphore_create(0);
-        [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio
-            completionHandler:^(BOOL g) { (void)g;
-                dispatch_semaphore_signal(psem2); }];
-        dispatch_semaphore_wait(psem2, DISPATCH_TIME_FOREVER);
-
-        AVCaptureDevice *camera = findCamera(camera_id);
-        if (!camera) return json_error("Camera not found");
-
-        NSError *error = nil;
-        AVCaptureDeviceInput *videoInput =
-            [AVCaptureDeviceInput deviceInputWithDevice:camera error:&error];
-        if (!videoInput)
-            return json_error([[error localizedDescription] UTF8String]);
-
-        g_video_session = [[AVCaptureSession alloc] init];
-        [g_video_session setSessionPreset:AVCaptureSessionPresetHigh];
-
-        if (![g_video_session canAddInput:videoInput]) {
-            g_video_session = nil;
-            return json_error("Cannot add camera input");
-        }
-        [g_video_session addInput:videoInput];
-
-        /* Try to add microphone */
-        AVCaptureDevice *mic =
-            [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
-        if (mic) {
-            AVCaptureDeviceInput *audioInput =
-                [AVCaptureDeviceInput deviceInputWithDevice:mic error:nil];
-            if (audioInput && [g_video_session canAddInput:audioInput])
-                [g_video_session addInput:audioInput];
-        }
-
-        g_video_output = [[AVCaptureMovieFileOutput alloc] init];
-        if (![g_video_session canAddOutput:g_video_output]) {
-            g_video_session = nil;
-            g_video_output = nil;
-            return json_error("Cannot add movie output");
-        }
-        [g_video_session addOutput:g_video_output];
-
-        [g_video_session startRunning];
-
-        NSString *tmp = NSTemporaryDirectory();
-        g_video_recording_path =
-            [tmp stringByAppendingPathComponent:@"passiflora_video.mov"];
-        /* Remove any leftover file — AVCaptureMovieFileOutput will not
-           overwrite and silently fails to start if the file exists. */
-        [[NSFileManager defaultManager]
-            removeItemAtPath:g_video_recording_path error:nil];
-        NSURL *url = [NSURL fileURLWithPath:g_video_recording_path];
-
-        g_video_delegate = [[ZSVideoRecordDelegate alloc] init];
-        [g_video_output startRecordingToOutputFileURL:url
-                                    recordingDelegate:g_video_delegate];
-        return json_ok_void();
-    }
-}
-
-/* ---- stopVideoRecording ---- */
-char *media_stop_video_recording(void)
-{
-    @autoreleasepool {
-        if (!g_video_session || !g_video_output.isRecording)
-            return json_error("No video recording in progress");
-
-        g_video_delegate.semaphore = dispatch_semaphore_create(0);
-        [g_video_output stopRecording];
-        dispatch_semaphore_wait(g_video_delegate.semaphore,
-            dispatch_time(DISPATCH_TIME_NOW, 10LL * NSEC_PER_SEC));
-
-        [g_video_session stopRunning];
-        g_video_session = nil;
-        g_video_output = nil;
-
-        if (g_video_delegate.recordingError) {
-            char *err = json_error(
-                [[g_video_delegate.recordingError localizedDescription]
-                    UTF8String]);
-            g_video_delegate = nil;
-            return err;
-        }
-        g_video_delegate = nil;
-        return json_ok_void();
-    }
-}
-
-/* ---- getVideoRecording ---- */
-char *media_get_video_recording(void)
-{
-    @autoreleasepool {
-        if (!g_video_recording_path)
-            return json_error("No video recording available");
-        if (![[NSFileManager defaultManager]
-                fileExistsAtPath:g_video_recording_path])
-            return json_error("Video recording file not found");
-        return media_temp_register(
-            [g_video_recording_path UTF8String],
-            "video/quicktime", 0);
-    }
-}
-#endif /* PERM_CAMERA */
-
 #endif /* TARGET_OS_IPHONE */
 
 /* ================================================================== */
@@ -1788,6 +885,7 @@ char *media_get_video_recording(void)
 #endif
 #include <windows.h>
 #include <shellapi.h>
+#include <shlwapi.h>
 #include <ole2.h>
 
 /* Generated menu data — MENU_PROGNAME, menu_template[] */
@@ -1854,7 +952,12 @@ typedef struct {
     void *_pad28;  /* RemoveScriptToExecuteOnDocumentCreated */
     HRESULT (STDMETHODCALLTYPE *ExecuteScript)(
         ICoreWebView2*,LPCWSTR,void*);    /* 29 */
-    void *_pad30;  /* CapturePreview */
+        HRESULT (STDMETHODCALLTYPE *CapturePreview)(
+            ICoreWebView2*,
+            int /* COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT */,
+            void* /* IStream* */,
+            void* /* ICoreWebView2CapturePreviewCompletedHandler* */
+        ); /* 30 */
     void *_pad31;  /* Reload */
     void *_pad32;  /* PostWebMessageAsJson */
     void *_pad33;  /* PostWebMessageAsString */
@@ -2106,7 +1209,16 @@ OnPermissionRequested(WV2Handler *self, HRESULT sender_unused, void *argsRaw)
     int kind = 0;
     args->lpVtbl->get_PermissionKind(args, &kind);
     /* COREWEBVIEW2_PERMISSION_KIND_GEOLOCATION = 3 */
-    if (kind == 3) {
+    if (kind == 3
+#ifdef PERM_CAMERA
+        /* COREWEBVIEW2_PERMISSION_KIND_CAMERA = 2 */
+        || kind == 2
+#endif
+#ifdef PERM_MICROPHONE
+        /* COREWEBVIEW2_PERMISSION_KIND_MICROPHONE = 1 */
+        || kind == 1
+#endif
+       ) {
         /* COREWEBVIEW2_PERMISSION_STATE_ALLOW = 1 */
         args->lpVtbl->put_State(args, 1);
     }
@@ -2575,25 +1687,6 @@ void ui_open(int port)
     ExitProcess(0);
 }
 
-/* ---- Media stubs — Windows (not yet implemented) ---- */
-extern char *json_error(const char *msg);
-extern char *json_ok_void(void);
-#ifdef PERM_CAMERA
-char *media_take_screenshot(void)        { return json_error("Not implemented on Windows"); }
-char *media_list_cameras(void)           { return json_error("Not implemented on Windows"); }
-char *media_capture_image(const char *c) { (void)c; return json_error("Not implemented on Windows"); }
-#endif
-#ifdef PERM_MICROPHONE
-char *media_start_audio_recording(void)  { return json_error("Not implemented on Windows"); }
-char *media_stop_audio_recording(void)   { return json_error("Not implemented on Windows"); }
-char *media_get_audio_recording(void)    { return json_error("Not implemented on Windows"); }
-#endif
-#ifdef PERM_CAMERA
-char *media_start_video_recording(const char *c) { (void)c; return json_error("Not implemented on Windows"); }
-char *media_stop_video_recording(void)   { return json_error("Not implemented on Windows"); }
-char *media_get_video_recording(void)    { return json_error("Not implemented on Windows"); }
-#endif
-
 /* ================================================================== */
 /*  Android                                                            */
 /* ================================================================== */
@@ -2606,23 +1699,7 @@ void ui_open(int port)
     (void)port;
 }
 
-/* ---- Media stubs — Android (not yet implemented) ---- */
-extern char *json_error(const char *msg);
-#ifdef PERM_CAMERA
-char *media_take_screenshot(void)        { return json_error("Not implemented on Android"); }
-char *media_list_cameras(void)           { return json_error("Not implemented on Android"); }
-char *media_capture_image(const char *c) { (void)c; return json_error("Not implemented on Android"); }
-#endif
-#ifdef PERM_MICROPHONE
-char *media_start_audio_recording(void)  { return json_error("Not implemented on Android"); }
-char *media_stop_audio_recording(void)   { return json_error("Not implemented on Android"); }
-char *media_get_audio_recording(void)    { return json_error("Not implemented on Android"); }
-#endif
-#ifdef PERM_CAMERA
-char *media_start_video_recording(const char *c) { (void)c; return json_error("Not implemented on Android"); }
-char *media_stop_video_recording(void)   { return json_error("Not implemented on Android"); }
-char *media_get_video_recording(void)    { return json_error("Not implemented on Android"); }
-#endif
+
 
 /* ================================================================== */
 /*  Linux — GTK3 + WebKitGTK                                           */
@@ -2887,7 +1964,7 @@ static void linux_ensure_desktop_integration(void)
     g_free(desktop_path);
 }
 
-/* ---- Auto-grant geolocation permission ---- */
+/* ---- Auto-grant permissions ---- */
 static gboolean on_permission_request(WebKitWebView *wv,
                                       WebKitPermissionRequest *request,
                                       gpointer data)
@@ -2895,199 +1972,18 @@ static gboolean on_permission_request(WebKitWebView *wv,
     (void)wv; (void)data;
     if (WEBKIT_IS_GEOLOCATION_PERMISSION_REQUEST(request)) {
         webkit_permission_request_allow(request);
-        return TRUE;   /* handled */
+        return TRUE;
     }
+#if defined(PERM_CAMERA) || defined(PERM_MICROPHONE)
+    if (WEBKIT_IS_USER_MEDIA_PERMISSION_REQUEST(request)) {
+        webkit_permission_request_allow(request);
+        return TRUE;
+    }
+#endif
     return FALSE;      /* let WebKit deny other types */
 }
 
-/* ---- Native geolocation via GeoClue2 D-Bus ---- */
-
-/* Data passed through the async GeoClue2 chain */
-typedef struct {
-    char        *callback_id;   /* JS callback id, e.g. "geo_1" */
-    GDBusProxy  *client;        /* GeoClue2 Client proxy */
-    gulong       sig_id;        /* "g-signal" handler id */
-    guint        timeout_id;    /* GSource id for timeout */
-} GeoRequest;
-
-static void geo_request_finish(GeoRequest *gr)
-{
-    if (gr->timeout_id) { g_source_remove(gr->timeout_id); gr->timeout_id = 0; }
-    if (gr->sig_id && gr->client)
-        { g_signal_handler_disconnect(gr->client, gr->sig_id); gr->sig_id = 0; }
-    if (gr->client) {
-        g_dbus_proxy_call_sync(gr->client, "Stop", NULL,
-            G_DBUS_CALL_FLAGS_NONE, -1, NULL, NULL);
-        g_object_unref(gr->client);
-        gr->client = NULL;
-    }
-    g_free(gr->callback_id);
-    g_free(gr);
-}
-
-/* Called when GeoClue2 emits LocationUpdated(old_path, new_path) */
-static void on_location_updated(GDBusProxy *proxy,
-                                const gchar *sender_name,
-                                const gchar *signal_name,
-                                GVariant *parameters,
-                                gpointer data)
-{
-    (void)proxy; (void)sender_name;
-    GeoRequest *gr = data;
-
-    if (strcmp(signal_name, "LocationUpdated") != 0) return;
-
-    const char *old_path = NULL, *new_path = NULL;
-    g_variant_get(parameters, "(&o&o)", &old_path, &new_path);
-    (void)old_path;
-
-    if (!new_path || strcmp(new_path, "/") == 0) return;
-
-    /* Read properties from the Location object */
-    GError *err = NULL;
-    GDBusProxy *loc = g_dbus_proxy_new_for_bus_sync(
-        G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_NONE, NULL,
-        "org.freedesktop.GeoClue2", new_path,
-        "org.freedesktop.GeoClue2.Location",
-        NULL, &err);
-
-    if (!loc) {
-        char js2[512];
-        snprintf(js2, sizeof js2,
-            "PassifloraIO._geoReject('%s', 2, 'Position unavailable');",
-            gr->callback_id);
-        if (g_linux_webview)
-            webkit_web_view_evaluate_javascript(g_linux_webview, js2, -1,
-                                                NULL, NULL, NULL, NULL, NULL);
-        if (err) g_error_free(err);
-        geo_request_finish(gr);
-        return;
-    }
-
-    double lat = 0, lon = 0, accuracy = 0;
-    GVariant *v;
-    v = g_dbus_proxy_get_cached_property(loc, "Latitude");
-    if (v) { lat = g_variant_get_double(v); g_variant_unref(v); }
-    v = g_dbus_proxy_get_cached_property(loc, "Longitude");
-    if (v) { lon = g_variant_get_double(v); g_variant_unref(v); }
-    v = g_dbus_proxy_get_cached_property(loc, "Accuracy");
-    if (v) { accuracy = g_variant_get_double(v); g_variant_unref(v); }
-
-    char js[512];
-    snprintf(js, sizeof js,
-        "PassifloraIO._geoResolve('%s', %.8f, %.8f, %.2f);",
-        gr->callback_id, lat, lon, accuracy);
-    if (g_linux_webview)
-        webkit_web_view_evaluate_javascript(g_linux_webview, js, -1,
-                                            NULL, NULL, NULL, NULL, NULL);
-    g_object_unref(loc);
-    geo_request_finish(gr);
-}
-
-/* Timeout if GeoClue2 never delivers a location */
-static gboolean on_geo_timeout(gpointer data)
-{
-    GeoRequest *gr = data;
-    gr->timeout_id = 0;   /* source is auto-removed after firing */
-    char js[512];
-    snprintf(js, sizeof js,
-        "PassifloraIO._geoReject('%s', 2, 'Position unavailable');",
-        gr->callback_id);
-    if (g_linux_webview)
-        webkit_web_view_evaluate_javascript(g_linux_webview, js, -1,
-                                            NULL, NULL, NULL, NULL, NULL);
-    geo_request_finish(gr);
-    return G_SOURCE_REMOVE;
-}
-
-/* GetClient callback — set up client, listen for LocationUpdated, Start */
-static void on_geoclue_client_ready(GObject *source, GAsyncResult *res,
-                                    gpointer data)
-{
-    GeoRequest *gr = data;
-    GError *err = NULL;
-    GVariant *result = g_dbus_proxy_call_finish(G_DBUS_PROXY(source),
-                                                res, &err);
-    if (!result || err) {
-        char js[512];
-        snprintf(js, sizeof js,
-            "PassifloraIO._geoReject('%s', 2, 'Position unavailable');",
-            gr->callback_id);
-        if (g_linux_webview)
-            webkit_web_view_evaluate_javascript(g_linux_webview, js, -1,
-                                                NULL, NULL, NULL, NULL, NULL);
-        if (err) g_error_free(err);
-        geo_request_finish(gr);
-        return;
-    }
-
-    const char *client_path = NULL;
-    g_variant_get(result, "(&o)", &client_path);
-
-    gr->client = g_dbus_proxy_new_for_bus_sync(
-        G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_NONE, NULL,
-        "org.freedesktop.GeoClue2", client_path,
-        "org.freedesktop.GeoClue2.Client",
-        NULL, &err);
-    g_variant_unref(result);
-
-    if (!gr->client) {
-        char js[512];
-        snprintf(js, sizeof js,
-            "PassifloraIO._geoReject('%s', 2, 'Position unavailable');",
-            gr->callback_id);
-        if (g_linux_webview)
-            webkit_web_view_evaluate_javascript(g_linux_webview, js, -1,
-                                                NULL, NULL, NULL, NULL, NULL);
-        if (err) g_error_free(err);
-        geo_request_finish(gr);
-        return;
-    }
-
-    /* Set DesktopId */
-    g_dbus_proxy_call_sync(gr->client,
-        "org.freedesktop.DBus.Properties.Set",
-        g_variant_new("(ssv)",
-            "org.freedesktop.GeoClue2.Client", "DesktopId",
-            g_variant_new_string(MENU_PROGNAME)),
-        G_DBUS_CALL_FLAGS_NONE, -1, NULL, NULL);
-
-    /* Set accuracy level (EXACT = 8) */
-    g_dbus_proxy_call_sync(gr->client,
-        "org.freedesktop.DBus.Properties.Set",
-        g_variant_new("(ssv)",
-            "org.freedesktop.GeoClue2.Client", "RequestedAccuracyLevel",
-            g_variant_new_uint32(8)),
-        G_DBUS_CALL_FLAGS_NONE, -1, NULL, NULL);
-
-    /* Listen for LocationUpdated signal BEFORE calling Start */
-    gr->sig_id = g_signal_connect(gr->client, "g-signal",
-                                  G_CALLBACK(on_location_updated), gr);
-
-    /* 5-second timeout */
-    gr->timeout_id = g_timeout_add_seconds(5, on_geo_timeout, gr);
-
-    /* Start the client — GeoClue2 will emit LocationUpdated when ready */
-    g_dbus_proxy_call_sync(gr->client, "Start", NULL,
-        G_DBUS_CALL_FLAGS_NONE, -1, NULL, &err);
-    if (err) {
-        char js[512];
-        snprintf(js, sizeof js,
-            "PassifloraIO._geoReject('%s', 2, 'Position unavailable');",
-            gr->callback_id);
-        if (g_linux_webview)
-            webkit_web_view_evaluate_javascript(g_linux_webview, js, -1,
-                                                NULL, NULL, NULL, NULL, NULL);
-        g_error_free(err);
-        geo_request_finish(gr);
-        return;
-    }
-    /* Now we wait — on_location_updated or on_geo_timeout will fire */
-}
-
-/* ---- POSIX bridge via native message handler ---- */
-
-/* Validate callback ID format (posix_N) to prevent JS injection */
+/* ---- POSIX bridge via native message handler ---- */\n\n/* Validate callback ID format (posix_N) to prevent JS injection */
 static int is_valid_posix_id(const char *id)
 {
     if (!id || strncmp(id, "posix_", 6) != 0) return 0;
@@ -3170,58 +2066,6 @@ static void on_posix_message(WebKitUserContentManager *manager,
     g_thread_new("posix", posix_thread_func, task);
 }
 
-/* Validate callback ID format (geo_N) to prevent JS injection */
-static int is_valid_geo_id(const char *id)
-{
-    if (!id || strncmp(id, "geo_", 4) != 0) return 0;
-    const char *p = id + 4;
-    if (*p == '\0') return 0;
-    while (*p) { if (*p < '0' || *p > '9') return 0; p++; }
-    return 1;
-}
-
-/* JS sent passifloraGeolocation message — start GeoClue2 */
-static void on_geolocation_message(WebKitUserContentManager *manager,
-                                   WebKitJavascriptResult *js_result,
-                                   gpointer data)
-{
-    (void)manager; (void)data;
-    JSCValue *val = webkit_javascript_result_get_js_value(js_result);
-    char *callback_id = jsc_value_to_string(val);
-
-    if (!is_valid_geo_id(callback_id)) {
-        g_free(callback_id);
-        return;
-    }
-
-    GeoRequest *gr = g_new0(GeoRequest, 1);
-    gr->callback_id = callback_id;
-
-    GError *err = NULL;
-    GDBusProxy *mgr = g_dbus_proxy_new_for_bus_sync(
-        G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_NONE, NULL,
-        "org.freedesktop.GeoClue2",
-        "/org/freedesktop/GeoClue2/Manager",
-        "org.freedesktop.GeoClue2.Manager",
-        NULL, &err);
-    if (!mgr) {
-        char js[512];
-        snprintf(js, sizeof js,
-            "PassifloraIO._geoReject('%s', 2, 'Position unavailable');",
-            gr->callback_id);
-        if (g_linux_webview)
-            webkit_web_view_evaluate_javascript(g_linux_webview, js, -1,
-                                                NULL, NULL, NULL, NULL, NULL);
-        if (err) g_error_free(err);
-        geo_request_finish(gr);
-        return;
-    }
-
-    g_dbus_proxy_call(mgr, "GetClient", NULL,
-        G_DBUS_CALL_FLAGS_NONE, -1, NULL,
-        on_geoclue_client_ready, gr);
-}
-
 /* ---- Notify user about desktop setup once the page has loaded ---- */
 static void on_page_loaded(WebKitWebView *wv, WebKitLoadEvent event,
                            gpointer data)
@@ -3294,12 +2138,8 @@ void ui_open(int port)
     GtkWidget *menubar = build_gtk_menus();
     gtk_box_pack_start(GTK_BOX(vbox), menubar, FALSE, FALSE, 0);
 
-    /* WebKit web view with script message handler for geolocation */
+    /* WebKit web view with script message handler */
     WebKitUserContentManager *ucm = webkit_user_content_manager_new();
-    webkit_user_content_manager_register_script_message_handler(
-        ucm, "passifloraGeolocation");
-    g_signal_connect(ucm, "script-message-received::passifloraGeolocation",
-                     G_CALLBACK(on_geolocation_message), NULL);
     webkit_user_content_manager_register_script_message_handler(
         ucm, "passifloraPosix");
     g_signal_connect(ucm, "script-message-received::passifloraPosix",
@@ -3326,23 +2166,7 @@ void ui_open(int port)
     exit(0);
 }
 
-/* ---- Media stubs — Linux (not yet implemented) ---- */
-extern char *json_error(const char *msg);
-#ifdef PERM_CAMERA
-char *media_take_screenshot(void)        { return json_error("Not implemented on Linux"); }
-char *media_list_cameras(void)           { return json_error("Not implemented on Linux"); }
-char *media_capture_image(const char *c) { (void)c; return json_error("Not implemented on Linux"); }
-#endif
-#ifdef PERM_MICROPHONE
-char *media_start_audio_recording(void)  { return json_error("Not implemented on Linux"); }
-char *media_stop_audio_recording(void)   { return json_error("Not implemented on Linux"); }
-char *media_get_audio_recording(void)    { return json_error("Not implemented on Linux"); }
-#endif
-#ifdef PERM_CAMERA
-char *media_start_video_recording(const char *c) { (void)c; return json_error("Not implemented on Linux"); }
-char *media_stop_video_recording(void)   { return json_error("Not implemented on Linux"); }
-char *media_get_video_recording(void)    { return json_error("Not implemented on Linux"); }
-#endif
+
 
 /* ================================================================== */
 /*  Unsupported platform                                               */
@@ -3354,23 +2178,5 @@ void ui_open(int port)
     (void)port;
     fprintf(stderr, "ui_open: unsupported platform\n");
 }
-
-/* ---- Media stubs — unsupported platform ---- */
-extern char *json_error(const char *msg);
-#ifdef PERM_CAMERA
-char *media_take_screenshot(void)        { return json_error("Not implemented on this platform"); }
-char *media_list_cameras(void)           { return json_error("Not implemented on this platform"); }
-char *media_capture_image(const char *c) { (void)c; return json_error("Not implemented on this platform"); }
-#endif
-#ifdef PERM_MICROPHONE
-char *media_start_audio_recording(void)  { return json_error("Not implemented on this platform"); }
-char *media_stop_audio_recording(void)   { return json_error("Not implemented on this platform"); }
-char *media_get_audio_recording(void)    { return json_error("Not implemented on this platform"); }
-#endif
-#ifdef PERM_CAMERA
-char *media_start_video_recording(const char *c) { (void)c; return json_error("Not implemented on this platform"); }
-char *media_stop_video_recording(void)   { return json_error("Not implemented on this platform"); }
-char *media_get_video_recording(void)    { return json_error("Not implemented on this platform"); }
-#endif
 
 #endif

@@ -3,14 +3,8 @@ package com.example.zipserve;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.location.Criteria;
-import android.location.Location;
-import android.location.LocationListener;
-import android.location.LocationManager;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.view.WindowManager;
 import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
@@ -20,6 +14,7 @@ import android.webkit.WebViewClient;
 import android.webkit.WebChromeClient;
 import android.webkit.JsResult;
 import android.webkit.JsPromptResult;
+import android.webkit.PermissionRequest;
 import android.app.AlertDialog;
 import android.os.Build;
 import android.os.Environment;
@@ -33,11 +28,9 @@ import android.widget.EditText;
 public class MainActivity extends Activity {
 
     private static final int LOCATION_PERMISSION_REQUEST = 1;
-    private static final int BRIDGE_LOCATION_PERMISSION = 2;
     private WebView webView;
     private GeolocationPermissions.Callback pendingGeoCallback;
     private String pendingGeoOrigin;
-    private String pendingBridgeGeoId;
 
     static { System.loadLibrary("passiflora"); }
 
@@ -73,127 +66,6 @@ public class MainActivity extends Activity {
             }
             return nativePosixCall(params);
         }
-
-        @JavascriptInterface
-        public void requestLocation(final String callbackId) {
-            if (!BuildConfig.PERM_LOCATION) {
-                rejectGeo(callbackId, 1, "Location permission not configured");
-                return;
-            }
-            if (checkSelfPermission(
-                    android.Manifest.permission.ACCESS_FINE_LOCATION)
-                    != PackageManager.PERMISSION_GRANTED) {
-                pendingBridgeGeoId = callbackId;
-                runOnUiThread(() -> requestPermissions(
-                    new String[]{
-                        android.Manifest.permission.ACCESS_FINE_LOCATION,
-                        android.Manifest.permission.ACCESS_COARSE_LOCATION
-                    },
-                    BRIDGE_LOCATION_PERMISSION));
-                return;
-            }
-            doLocationRequest(callbackId);
-        }
-    }
-
-    private void doLocationRequest(final String callbackId) {
-        if (checkSelfPermission(
-                android.Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
-            rejectGeo(callbackId, 1, "Location permission denied");
-            return;
-        }
-        LocationManager lm = (LocationManager)
-            getSystemService(LOCATION_SERVICE);
-        if (lm == null) {
-            rejectGeo(callbackId, 2, "LocationManager unavailable");
-            return;
-        }
-
-        /* Pick the best enabled provider via Criteria */
-        Criteria criteria = new Criteria();
-        criteria.setAccuracy(Criteria.ACCURACY_FINE);
-        String provider = lm.getBestProvider(criteria, true);
-
-        if (provider == null) {
-            rejectGeo(callbackId, 2,
-                "No location provider available – enable Location in device Settings");
-            return;
-        }
-
-        /* Check for a cached location first (< 60 s old) */
-        Location last = lm.getLastKnownLocation(provider);
-        if (last != null
-                && System.currentTimeMillis() - last.getTime() < 60_000) {
-            resolveGeo(callbackId, last.getLatitude(),
-                       last.getLongitude(), last.getAccuracy());
-            return;
-        }
-
-        /* Request a fresh fix with a 15-second timeout */
-        final boolean[] responded = { false };
-        Handler handler = new Handler(Looper.getMainLooper());
-
-        LocationListener listener = new LocationListener() {
-            @Override
-            public void onLocationChanged(Location loc) {
-                if (responded[0]) return;
-                responded[0] = true;
-                resolveGeo(callbackId, loc.getLatitude(),
-                           loc.getLongitude(), loc.getAccuracy());
-            }
-            @Override public void onProviderDisabled(String p) {
-                if (responded[0]) return;
-                responded[0] = true;
-                rejectGeo(callbackId, 2, "Provider disabled");
-            }
-            @Override public void onProviderEnabled(String p) {}
-            @Override public void onStatusChanged(String p, int s, Bundle e) {}
-        };
-
-        lm.requestSingleUpdate(provider, listener, Looper.getMainLooper());
-
-        handler.postDelayed(() -> {
-            if (responded[0]) return;
-            responded[0] = true;
-            lm.removeUpdates(listener);
-            /* Timeout — try last known from any provider as fallback */
-            Location fallback = lm.getLastKnownLocation(provider);
-            if (fallback == null)
-                fallback = lm.getLastKnownLocation(
-                    LocationManager.GPS_PROVIDER);
-            if (fallback == null)
-                fallback = lm.getLastKnownLocation(
-                    LocationManager.NETWORK_PROVIDER);
-            if (fallback != null) {
-                resolveGeo(callbackId, fallback.getLatitude(),
-                           fallback.getLongitude(), fallback.getAccuracy());
-            } else {
-                rejectGeo(callbackId, 2, "Location request timed out");
-            }
-        }, 15_000);
-    }
-
-    /** Validate callback IDs to prevent JS injection (must be geo_N) */
-    private static boolean isValidGeoId(String id) {
-        return id != null && id.matches("^geo_[0-9]+$");
-    }
-
-    private void resolveGeo(String id, double lat, double lon, double acc) {
-        if (!isValidGeoId(id)) return;
-        String js = String.format(
-            "PassifloraIO._geoResolve('%s', %.8f, %.8f, %.2f);",
-            id, lat, lon, acc);
-        runOnUiThread(() -> webView.evaluateJavascript(js, null));
-    }
-
-    private void rejectGeo(String id, int code, String msg) {
-        if (!isValidGeoId(id)) return;
-        String safeMsg = msg.replace("\\", "\\\\").replace("'", "\\'");
-        String js = String.format(
-            "PassifloraIO._geoReject('%s', %d, '%s');",
-            id, code, safeMsg);
-        runOnUiThread(() -> webView.evaluateJavascript(js, null));
     }
 
     @Override
@@ -312,6 +184,27 @@ public class MainActivity extends Activity {
                         LOCATION_PERMISSION_REQUEST);
                 }
             }
+
+            @Override
+            public void onPermissionRequest(PermissionRequest request) {
+                String[] resources = request.getResources();
+                java.util.List<String> granted = new java.util.ArrayList<>();
+                for (String r : resources) {
+                    if (BuildConfig.PERM_CAMERA
+                            && PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r)) {
+                        granted.add(r);
+                    }
+                    if (BuildConfig.PERM_MICROPHONE
+                            && PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r)) {
+                        granted.add(r);
+                    }
+                }
+                if (!granted.isEmpty()) {
+                    request.grant(granted.toArray(new String[0]));
+                } else {
+                    request.deny();
+                }
+            }
         });
 
         setContentView(webView);
@@ -328,18 +221,6 @@ public class MainActivity extends Activity {
             pendingGeoCallback.invoke(pendingGeoOrigin, granted, false);
             pendingGeoCallback = null;
             pendingGeoOrigin = null;
-        }
-        if (requestCode == BRIDGE_LOCATION_PERMISSION
-                && pendingBridgeGeoId != null) {
-            String id = pendingBridgeGeoId;
-            pendingBridgeGeoId = null;
-            boolean granted = grantResults.length > 0
-                && grantResults[0] == PackageManager.PERMISSION_GRANTED;
-            if (granted) {
-                doLocationRequest(id);
-            } else {
-                rejectGeo(id, 1, "Location permission denied");
-            }
         }
     }
 }

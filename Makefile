@@ -8,7 +8,6 @@ CONTENT ?= src/www
 PERM_LOCATION   := $(shell awk '/^location /   {print $$2}' src/permissions 2>/dev/null)
 PERM_CAMERA     := $(shell awk '/^camera /     {print $$2}' src/permissions 2>/dev/null)
 PERM_MICROPHONE := $(shell awk '/^microphone / {print $$2}' src/permissions 2>/dev/null)
-
 PERM_DEFS :=
 ifeq ($(PERM_LOCATION),1)
   PERM_DEFS += -DPERM_LOCATION
@@ -31,9 +30,6 @@ ifeq ($(UNAME_S),Darwin)
   ifeq ($(PERM_LOCATION),1)
     UI_LDFLAGS  += -framework CoreLocation
   endif
-  ifneq (,$(filter 1,$(PERM_CAMERA) $(PERM_MICROPHONE)))
-    UI_LDFLAGS  += -framework AVFoundation -framework CoreMedia
-  endif
   MENU_TEMPLATE  = src/macOS/menus/menu.txt
   BUNDLE_ID     ?= com.example.$(PROGNAME)
   VERSION       ?= 1.0.0
@@ -54,9 +50,6 @@ ifeq ($(UNAME_S),Darwin)
   ifeq ($(PERM_LOCATION),1)
     IOS_LDFLAGS += -framework CoreLocation
   endif
-  ifneq (,$(filter 1,$(PERM_CAMERA) $(PERM_MICROPHONE)))
-    IOS_LDFLAGS += -framework AVFoundation -framework CoreMedia
-  endif
   IOS_BINDIR     = bin/iOS
   IOS_BINARY     = $(IOS_BINDIR)/$(PROGNAME)
   IOS_APP_BUNDLE = $(IOS_BINDIR)/$(PROGNAME).app
@@ -74,9 +67,6 @@ ifeq ($(UNAME_S),Darwin)
   ifeq ($(PERM_LOCATION),1)
     SIMOS_LDFLAGS += -framework CoreLocation
   endif
-  ifneq (,$(filter 1,$(PERM_CAMERA) $(PERM_MICROPHONE)))
-    SIMOS_LDFLAGS += -framework AVFoundation -framework CoreMedia
-  endif
   SIMOS_BINDIR   = bin/iOS-sim
   SIMOS_BINARY   = $(SIMOS_BINDIR)/$(PROGNAME)
   SIMOS_APP_BUNDLE = $(SIMOS_BINDIR)/$(PROGNAME).app
@@ -93,8 +83,8 @@ endif
 # Windows cross-compilation (mingw-w64)
 WIN_CC        ?= x86_64-w64-mingw32-gcc
 WIN_WINDRES   ?= x86_64-w64-mingw32-windres
-WIN_CFLAGS     = -Wall -Wextra -O2
-WIN_LDFLAGS    = -lws2_32 -lshell32 -lgdi32 -lole32 -luuid -mwindows -static -lpthread
+WIN_CFLAGS     = -Wall -Wextra -O2 $(PERM_DEFS)
+WIN_LDFLAGS    = -lws2_32 -lshell32 -lgdi32 -lole32 -luuid -lshlwapi -mwindows -static -lpthread
 WIN_BINDIR     = bin/Windows
 WIN_BINARY     = $(WIN_BINDIR)/$(PROGNAME).exe
 

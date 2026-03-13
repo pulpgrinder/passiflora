@@ -37,11 +37,11 @@
   #include <ws2tcpip.h>
   #include <windows.h>
   #include <shellapi.h>
-  #define sock_read(fd,buf,len)   recv((fd),(char*)(buf),(int)(len),0)
-  #define sock_write(fd,buf,len)  send((fd),(const char*)(buf),(int)(len),0)
-  #define sock_close(fd)          closesocket(fd)
-  #define sock_errno()            WSAGetLastError()
-  #define SOCK_EINTR              WSAEINTR
+  #define sock_read(fd,buf,len)       recv((fd),(char*)(buf),(int)(len),0)
+  #define sock_write(fd,buf,len)      send((fd),(const char*)(buf),(int)(len),0)
+  #define sock_close(fd)              closesocket(fd)
+  #define sock_errno()                WSAGetLastError()
+  #define SOCK_EINTR                  WSAEINTR
   static inline void sock_perror(const char *msg) {
       fprintf(stderr, "%s: Winsock error %d\n", msg, WSAGetLastError());
   }
@@ -55,10 +55,10 @@
   #include <arpa/inet.h>
   #define sock_read(fd,buf,len)   read(fd,buf,len)
   #define sock_write(fd,buf,len)  write(fd,buf,len)
-  #define sock_close(fd)          close(fd)
-  #define sock_errno()            errno
-  #define SOCK_EINTR              EINTR
-  #define sock_perror(msg)        perror(msg)
+  #define sock_close(fd)              close(fd)
+  #define sock_errno()                errno
+  #define SOCK_EINTR                  EINTR
+  #define sock_perror(msg)            perror(msg)
 #endif
 
 /* ---- macOS: NSWorkspace for opening external URLs ---- */
@@ -191,7 +191,8 @@ static void send_response(int fd, int code, const char *status,
         "Content-Length: %zu\r\n"
         "X-Content-Type-Options: nosniff\r\n"
         "X-Frame-Options: DENY\r\n"
-        "Content-Security-Policy: default-src 'self' 'unsafe-inline'\r\n"
+        "Content-Security-Policy: default-src 'self' 'unsafe-inline'; media-src 'self' mediastream: blob:\r\n"
+        "Permissions-Policy: camera=(self), microphone=(self), geolocation=(self)\r\n"
         "Referrer-Policy: no-referrer\r\n"
         "Connection: close\r\n"
         "\r\n",
@@ -484,119 +485,6 @@ char *json_ok_raw(const char *json_val)
     return buf;
 }
 
-/* ================================================================== */
-/*  Temp media file registry — one-time-use URLs for media data       */
-/* ================================================================== */
-
-#if defined(PERM_CAMERA) || defined(PERM_MICROPHONE)
-
-#define MAX_MEDIA_TEMPS    32
-#define MEDIA_TOKEN_BYTES  16   /* 16 bytes -> 32 hex chars */
-
-typedef struct {
-    char token[MEDIA_TOKEN_BYTES * 2 + 1];
-    char filepath[2048];
-    char mime[64];
-    int  active;
-    int  delete_after;   /* remove file from disk after serving */
-} media_temp_t;
-
-static media_temp_t    media_temps[MAX_MEDIA_TEMPS];
-static pthread_mutex_t media_temp_lock = PTHREAD_MUTEX_INITIALIZER;
-
-static void gen_hex_token(char *out)
-{
-    unsigned char buf[MEDIA_TOKEN_BYTES];
-#if defined(__APPLE__) || defined(__FreeBSD__)
-    arc4random_buf(buf, MEDIA_TOKEN_BYTES);
-#elif defined(_WIN32)
-    for (int i = 0; i < MEDIA_TOKEN_BYTES; i++)
-        buf[i] = (unsigned char)(rand() & 0xFF);
-#else
-    FILE *f = fopen("/dev/urandom", "rb");
-    if (f) {
-        size_t n = fread(buf, 1, MEDIA_TOKEN_BYTES, f);
-        fclose(f);
-        for (size_t i = n; i < MEDIA_TOKEN_BYTES; i++)
-            buf[i] = (unsigned char)(rand() & 0xFF);
-    } else {
-        for (int i = 0; i < MEDIA_TOKEN_BYTES; i++)
-            buf[i] = (unsigned char)(rand() & 0xFF);
-    }
-#endif
-    for (int i = 0; i < MEDIA_TOKEN_BYTES; i++)
-        snprintf(out + i * 2, 3, "%02x", buf[i]);
-    out[MEDIA_TOKEN_BYTES * 2] = '\0';
-}
-
-/* Register a file to be served once via /__passiflora/media/<token>.
- * Returns a malloc'd JSON string with the URL.  Caller frees.
- * If delete_after is true the file is removed from disk after serving. */
-char *media_temp_register(const char *filepath, const char *mime,
-                          int delete_after)
-{
-    pthread_mutex_lock(&media_temp_lock);
-    for (int i = 0; i < MAX_MEDIA_TEMPS; i++) {
-        if (!media_temps[i].active) {
-            gen_hex_token(media_temps[i].token);
-            snprintf(media_temps[i].filepath,
-                     sizeof media_temps[i].filepath, "%s", filepath);
-            snprintf(media_temps[i].mime,
-                     sizeof media_temps[i].mime, "%s", mime);
-            media_temps[i].active = 1;
-            media_temps[i].delete_after = delete_after;
-
-            char url[128];
-            snprintf(url, sizeof url,
-                     "/__passiflora/media/%s", media_temps[i].token);
-            pthread_mutex_unlock(&media_temp_lock);
-            return json_ok_str(url);
-        }
-    }
-    pthread_mutex_unlock(&media_temp_lock);
-    return json_error("Too many pending media files");
-}
-
-/* Look up and consume a token.  Copies filepath/mime, frees the slot. */
-static int media_temp_take(const char *token,
-                           char *out_path, size_t path_sz,
-                           char *out_mime, size_t mime_sz,
-                           int *out_delete)
-{
-    pthread_mutex_lock(&media_temp_lock);
-    for (int i = 0; i < MAX_MEDIA_TEMPS; i++) {
-        if (media_temps[i].active &&
-            strcmp(media_temps[i].token, token) == 0)
-        {
-            snprintf(out_path, path_sz, "%s", media_temps[i].filepath);
-            snprintf(out_mime, mime_sz, "%s", media_temps[i].mime);
-            *out_delete = media_temps[i].delete_after;
-            media_temps[i].active = 0;
-            pthread_mutex_unlock(&media_temp_lock);
-            return 1;
-        }
-    }
-    pthread_mutex_unlock(&media_temp_lock);
-    return 0;
-}
-
-#endif /* PERM_CAMERA || PERM_MICROPHONE */
-
-/* ---- Media functions (implemented per-platform in UI.c) ---- */
-#ifdef PERM_CAMERA
-extern char *media_take_screenshot(void);
-extern char *media_list_cameras(void);
-extern char *media_capture_image(const char *camera_id);
-extern char *media_start_video_recording(const char *camera_id);
-extern char *media_stop_video_recording(void);
-extern char *media_get_video_recording(void);
-#endif
-#ifdef PERM_MICROPHONE
-extern char *media_start_audio_recording(void);
-extern char *media_stop_audio_recording(void);
-extern char *media_get_audio_recording(void);
-#endif
-
 /* ---- POSIX dispatcher (called from native UI bridge) ---- */
 /*  params: URL-encoded string "func=fopen&path=...&mode=..."          */
 /*  Returns malloc'd JSON string. Caller must free().                  */
@@ -840,84 +728,6 @@ char *passiflora_posix_call(const char *params)
         return home ? json_ok_str(home) : json_ok_null();
     }
 
-    /* ---- Media functions (delegated to UI.c) ---- */
-    if (strcmp(func, "takeScreenshot") == 0) {
-        free(body);
-#ifdef PERM_CAMERA
-        return media_take_screenshot();
-#else
-        return json_error("Camera permission not configured");
-#endif
-    }
-    if (strcmp(func, "listCameras") == 0) {
-        free(body);
-#ifdef PERM_CAMERA
-        return media_list_cameras();
-#else
-        return json_error("Camera permission not configured");
-#endif
-    }
-    if (strcmp(func, "captureImage") == 0) {
-        char cam_buf[256] = "0";
-        form_get_str(body, "camera", cam_buf, sizeof cam_buf);
-        free(body);
-#ifdef PERM_CAMERA
-        return media_capture_image(cam_buf);
-#else
-        return json_error("Camera permission not configured");
-#endif
-    }
-    if (strcmp(func, "startAudioRecording") == 0) {
-        free(body);
-#ifdef PERM_MICROPHONE
-        return media_start_audio_recording();
-#else
-        return json_error("Microphone permission not configured");
-#endif
-    }
-    if (strcmp(func, "stopAudioRecording") == 0) {
-        free(body);
-#ifdef PERM_MICROPHONE
-        return media_stop_audio_recording();
-#else
-        return json_error("Microphone permission not configured");
-#endif
-    }
-    if (strcmp(func, "getAudioRecording") == 0) {
-        free(body);
-#ifdef PERM_MICROPHONE
-        return media_get_audio_recording();
-#else
-        return json_error("Microphone permission not configured");
-#endif
-    }
-    if (strcmp(func, "startVideoRecording") == 0) {
-        char cam_buf[256] = "0";
-        form_get_str(body, "camera", cam_buf, sizeof cam_buf);
-        free(body);
-#ifdef PERM_CAMERA
-        return media_start_video_recording(cam_buf);
-#else
-        return json_error("Camera permission not configured");
-#endif
-    }
-    if (strcmp(func, "stopVideoRecording") == 0) {
-        free(body);
-#ifdef PERM_CAMERA
-        return media_stop_video_recording();
-#else
-        return json_error("Camera permission not configured");
-#endif
-    }
-    if (strcmp(func, "getVideoRecording") == 0) {
-        free(body);
-#ifdef PERM_CAMERA
-        return media_get_video_recording();
-#else
-        return json_error("Camera permission not configured");
-#endif
-    }
-
     free(body);
     return json_error("Unknown POSIX function");
 }
@@ -1072,73 +882,6 @@ static void handle_request(int fd)
         return;
     }
 
-    /* ---- Internal API: serve one-time media temp file ---- */
-#if defined(PERM_CAMERA) || defined(PERM_MICROPHONE)
-    if (strncmp(path, "/__passiflora/media/", 20) == 0) {
-        if (strcasecmp(method, "HEAD") == 0) {
-            send_text(fd, 405, "Method Not Allowed",
-                      "HEAD not supported for media URLs\n");
-            free(hdr);
-            return;
-        }
-        const char *token = path + 20;
-        /* Validate: must be exactly MEDIA_TOKEN_BYTES*2 hex chars */
-        size_t tlen = strlen(token);
-        if (tlen != MEDIA_TOKEN_BYTES * 2) {
-            send_text(fd, 400, "Bad Request", "Invalid token\n");
-            free(hdr);
-            return;
-        }
-        for (size_t ti = 0; ti < tlen; ti++) {
-            if (!isxdigit((unsigned char)token[ti])) {
-                send_text(fd, 400, "Bad Request", "Invalid token\n");
-                free(hdr);
-                return;
-            }
-        }
-        char mpath[2048], mmime[64];
-        int del_after = 0;
-        if (!media_temp_take(token, mpath, sizeof mpath,
-                             mmime, sizeof mmime, &del_after)) {
-            send_text(fd, 404, "Not Found",
-                      "Token not found or already used\n");
-            free(hdr);
-            return;
-        }
-        FILE *mf = fopen(mpath, "rb");
-        if (!mf) {
-            send_text(fd, 404, "Not Found", "Media file not found\n");
-            free(hdr);
-            return;
-        }
-        fseek(mf, 0, SEEK_END);
-        long mfsize = ftell(mf);
-        fseek(mf, 0, SEEK_SET);
-        if (mfsize <= 0) {
-            fclose(mf);
-            send_text(fd, 500, "Internal Server Error",
-                      "Empty media file\n");
-            free(hdr);
-            return;
-        }
-        unsigned char *mdata = malloc((size_t)mfsize);
-        if (!mdata) {
-            fclose(mf);
-            send_text(fd, 500, "Internal Server Error",
-                      "Out of memory\n");
-            free(hdr);
-            return;
-        }
-        size_t mnread = fread(mdata, 1, (size_t)mfsize, mf);
-        fclose(mf);
-        send_response(fd, 200, "OK", mmime, mdata, mnread);
-        free(mdata);
-        if (del_after) remove(mpath);
-        free(hdr);
-        return;
-    }
-#endif /* PERM_CAMERA || PERM_MICROPHONE */
-
     /* ---- Internal API: open URL in external browser ---- */
     if (strncmp(path, "/__passiflora/openexternal?", 27) == 0) {
         const char *qs = path + 27;
@@ -1224,6 +967,7 @@ static void *handle_connection(void *arg)
 #endif
 
     handle_request(fd);
+
     sock_close(fd);
 
     pthread_mutex_lock(&conn_lock);
