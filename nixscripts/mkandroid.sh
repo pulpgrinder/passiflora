@@ -53,9 +53,18 @@ MANIFEST="$ANDROID_DIR/app/src/main/AndroidManifest.xml"
         printf '%s\n' '    <uses-permission android:name="android.permission.CAMERA" />'
     [ "$PERM_MICROPHONE" = "1" ] && \
         printf '%s\n' '    <uses-permission android:name="android.permission.RECORD_AUDIO" />'
+    [ "$PERM_MICROPHONE" = "1" ] && \
+        printf '%s\n' '    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />'
     [ "$PERM_ANDROIDEXTERNALSTORAGE" = "1" ] && \
         printf '%s\n' '    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />'
     printf '\n'
+    # Hardware feature declarations (optional, so required=false)
+    [ "$PERM_CAMERA" = "1" ] && {
+        printf '%s\n' '    <uses-feature android:name="android.hardware.camera" android:required="false" />'
+        printf '%s\n' '    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />'
+    }
+    [ "$PERM_MICROPHONE" = "1" ] && \
+        printf '%s\n' '    <uses-feature android:name="android.hardware.microphone" android:required="false" />'
     cat <<'MANIFEST_APP'
     <!-- Allow cleartext HTTP to localhost -->
     <application
@@ -63,6 +72,7 @@ MANIFEST="$ANDROID_DIR/app/src/main/AndroidManifest.xml"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:usesCleartextTraffic="true"
+        android:hardwareAccelerated="true"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
 
         <activity

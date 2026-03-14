@@ -35,6 +35,12 @@
         <button onclick="startMedia('video')">Start Camera Only</button>
         <button onclick="startMedia('audio')">Start Microphone Only</button>
         <button onclick="stopMedia()">Stop</button>
+        <button onclick="diagAudio()">Diagnose Audio</button>
+    </p>
+    <h2>Record &amp; Playback</h2>
+    <p>
+        <button id="recordBtn" onclick="toggleRecording()">Record Video + Audio</button>
+        <button id="playBtn" onclick="playRecording()" disabled>Play Recording</button>
     </p>
     <div id="mediaContainer"></div>
     <p id="result">
@@ -43,6 +49,85 @@
     </p>
 <script>
     let activeStream = null;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let recordedBlob = null;
+
+    function toggleRecording() {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+            return;
+        }
+        // Get camera + mic stream for recording
+        const camId = document.getElementById('cameraSelect').value;
+        const micId = document.getElementById('micSelect').value;
+        const constraints = {
+            video: camId ? { deviceId: { exact: camId } } : true,
+            audio: micId ? { deviceId: { exact: micId } } : true
+        };
+        navigator.mediaDevices.getUserMedia(constraints)
+        .then(function(stream) {
+            stopMedia();
+            activeStream = stream;
+            recordedChunks = [];
+            recordedBlob = null;
+            document.getElementById('playBtn').disabled = true;
+
+            // Show live preview
+            const container = document.getElementById('mediaContainer');
+            container.innerHTML = '';
+            const preview = document.createElement('video');
+            preview.autoplay = true;
+            preview.playsInline = true;
+            preview.muted = true;
+            preview.style.maxWidth = '100%';
+            preview.srcObject = stream;
+            container.appendChild(preview);
+
+            // Pick a supported MIME type
+            let mimeType = '';
+            var types = ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus',
+                         'video/webm', 'video/mp4'];
+            for (var i = 0; i < types.length; i++) {
+                if (MediaRecorder.isTypeSupported(types[i])) { mimeType = types[i]; break; }
+            }
+            var options = mimeType ? { mimeType: mimeType } : {};
+            mediaRecorder = new MediaRecorder(stream, options);
+            mediaRecorder.ondataavailable = function(e) {
+                if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+            };
+            mediaRecorder.onstop = function() {
+                var type = mediaRecorder.mimeType || 'video/webm';
+                recordedBlob = new Blob(recordedChunks, { type: type });
+                recordedChunks = [];
+                document.getElementById('recordBtn').textContent = 'Record Video + Audio';
+                document.getElementById('playBtn').disabled = false;
+                logResult('Recording saved (' + (recordedBlob.size / 1024).toFixed(1) + ' KB, ' + type + ')');
+                stopMedia();
+            };
+            mediaRecorder.start();
+            document.getElementById('recordBtn').textContent = 'Stop Recording';
+            logResult('Recording started...');
+        })
+        .catch(function(err) {
+            alert('Cannot record: ' + err.name + ': ' + err.message);
+        });
+    }
+
+    function playRecording() {
+        if (!recordedBlob) return;
+        stopMedia();
+        var container = document.getElementById('mediaContainer');
+        container.innerHTML = '';
+        var video = document.createElement('video');
+        video.controls = true;
+        video.autoplay = true;
+        video.playsInline = true;
+        video.style.maxWidth = '100%';
+        video.src = URL.createObjectURL(recordedBlob);
+        container.appendChild(video);
+        logResult('Playing recording...');
+    }
 
     function stopMedia() {
         if (activeStream) {
@@ -69,6 +154,9 @@
     function refreshDevices() {
         // Request each media type separately to avoid crashes when
         // one type is not permitted (e.g. no NSMicrophoneUsageDescription).
+        // Skip audio getUserMedia if video succeeded — enumerateDevices
+        // will still list microphones, and this avoids holding the audio
+        // hardware (Android doesn't release it instantly after track.stop).
         let videoOk = false, audioOk = false;
 
         function tryVideo() {
@@ -82,7 +170,10 @@
             .catch(function() {});
         }
 
-        tryVideo().then(tryAudio).then(function() {
+        tryVideo().then(function() {
+            if (videoOk) { audioOk = true; return; }
+            return tryAudio();
+        }).then(function() {
             return navigator.mediaDevices.enumerateDevices();
         })
         .then(function(devices) {
@@ -203,6 +294,50 @@
     function logResult(result) {
         const resultElem = document.getElementById('result');
         resultElem.innerHTML = resultElem.innerHTML + result + "<br />\n";
+    }
+    function diagAudio() {
+        logResult('--- Audio diagnostics ---');
+        logResult('isSecureContext: ' + window.isSecureContext);
+        logResult('userAgent: ' + navigator.userAgent);
+        if (window.PassifloraBridge && window.PassifloraBridge.checkPermissions) {
+            logResult('Android permissions: ' + window.PassifloraBridge.checkPermissions());
+        }
+        navigator.mediaDevices.enumerateDevices().then(function(devs) {
+            const mics = devs.filter(function(d) { return d.kind === 'audioinput'; });
+            logResult('audioinput devices: ' + mics.length);
+            mics.forEach(function(d, i) {
+                logResult('  [' + i + '] id=' + d.deviceId + ' label=' + d.label + ' group=' + d.groupId);
+            });
+
+            logResult('Test 1: getUserMedia({audio: true}) ...');
+            return navigator.mediaDevices.getUserMedia({audio: true}).then(function(s) {
+                logResult('Test 1 SUCCESS');
+                s.getTracks().forEach(function(t) { logResult('  ' + t.kind + ' ' + t.label); t.stop(); });
+            }).catch(function(e) {
+                logResult('Test 1 FAIL: ' + e.name + ': ' + e.message);
+
+                logResult('Test 2: getUserMedia({audio: true, video: true}) ...');
+                return navigator.mediaDevices.getUserMedia({audio: true, video: true}).then(function(s) {
+                    logResult('Test 2 SUCCESS (audio+video together works!)');
+                    s.getTracks().forEach(function(t) { logResult('  ' + t.kind + ' ' + t.label); t.stop(); });
+                }).catch(function(e2) {
+                    logResult('Test 2 FAIL: ' + e2.name + ': ' + e2.message);
+
+                    logResult('Test 3: getUserMedia({video: true}) then getUserMedia({audio: true}) ...');
+                    return navigator.mediaDevices.getUserMedia({video: true}).then(function(vs) {
+                        logResult('  video stream got, now trying audio...');
+                        return navigator.mediaDevices.getUserMedia({audio: true}).then(function(as) {
+                            logResult('Test 3 SUCCESS (audio works after video opened!)');
+                            as.getTracks().forEach(function(t) { logResult('  ' + t.kind + ' ' + t.label); t.stop(); });
+                            vs.getTracks().forEach(function(t) { t.stop(); });
+                        }).catch(function(e3) {
+                            logResult('Test 3 FAIL: ' + e3.name + ': ' + e3.message);
+                            vs.getTracks().forEach(function(t) { t.stop(); });
+                        });
+                    });
+                });
+            });
+        });
     }
     function checkLocation(){
        if (!navigator.geolocation) {

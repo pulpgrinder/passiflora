@@ -28,7 +28,9 @@ import android.widget.EditText;
 public class MainActivity extends Activity {
 
     private static final int LOCATION_PERMISSION_REQUEST = 1;
+    private static final int MEDIA_PERMISSION_REQUEST = 2;
     private WebView webView;
+    private int serverPort;
     private GeolocationPermissions.Callback pendingGeoCallback;
     private String pendingGeoOrigin;
 
@@ -87,13 +89,43 @@ public class MainActivity extends Activity {
         getWindow().addFlags(
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
 
-        int port = startServer();
+        serverPort = startServer();
 
+        /* Request camera/mic runtime permissions before configuring WebView */
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !hasMediaPermissions()) {
+            requestMediaPermissions();
+            return; /* configureAndLoadWebView() called after grant */
+        }
+        configureAndLoadWebView();
+    }
+
+    private boolean hasMediaPermissions() {
+        boolean ok = true;
+        if (BuildConfig.PERM_CAMERA
+                && checkSelfPermission(android.Manifest.permission.CAMERA)
+                   != PackageManager.PERMISSION_GRANTED) ok = false;
+        if (BuildConfig.PERM_MICROPHONE
+                && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                   != PackageManager.PERMISSION_GRANTED) ok = false;
+        return ok;
+    }
+
+    private void requestMediaPermissions() {
+        java.util.List<String> perms = new java.util.ArrayList<>();
+        if (BuildConfig.PERM_CAMERA) perms.add(android.Manifest.permission.CAMERA);
+        if (BuildConfig.PERM_MICROPHONE) perms.add(android.Manifest.permission.RECORD_AUDIO);
+        if (!perms.isEmpty()) {
+            requestPermissions(perms.toArray(new String[0]), MEDIA_PERMISSION_REQUEST);
+        }
+    }
+
+    private void configureAndLoadWebView() {
         WebView webView = new WebView(this);
         this.webView = webView;
         WebSettings ws = webView.getSettings();
         ws.setJavaScriptEnabled(true);
         ws.setDomStorageEnabled(true);
+        ws.setMediaPlaybackRequiresUserGesture(false);
         ws.setGeolocationEnabled(BuildConfig.PERM_LOCATION);
 
         webView.addJavascriptInterface(new Bridge(), "PassifloraBridge");
@@ -208,12 +240,17 @@ public class MainActivity extends Activity {
         });
 
         setContentView(webView);
-        webView.loadUrl("http://127.0.0.1:" + port + "/");
+        webView.loadUrl("http://127.0.0.1:" + serverPort + "/");
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode,
             String[] permissions, int[] grantResults) {
+        if (requestCode == MEDIA_PERMISSION_REQUEST) {
+            /* Proceed regardless of grant/deny — WebView will just lack media */
+            configureAndLoadWebView();
+            return;
+        }
         if (requestCode == LOCATION_PERMISSION_REQUEST
                 && pendingGeoCallback != null) {
             boolean granted = grantResults.length > 0
