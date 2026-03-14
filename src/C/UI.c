@@ -395,6 +395,15 @@ void ui_open(int port)
     exit(0);
 }
 
+void passiflora_eval_js(const char *js)
+{
+    if (!g_ios_webView) return;
+    NSString *script = [NSString stringWithUTF8String:js];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [g_ios_webView evaluateJavaScript:script completionHandler:nil];
+    });
+}
+
 #else
 /* ------------------------------------------------------------------ */
 /*  macOS — Cocoa + WKWebView                                          */
@@ -870,6 +879,20 @@ void ui_open(int port)
     }
 
     exit(0);
+}
+
+void passiflora_eval_js(const char *js)
+{
+    if (!g_webView) { fprintf(stderr, "eval_js: g_webView is nil\n"); return; }
+    NSString *script = [NSString stringWithUTF8String:js];
+    fprintf(stderr, "eval_js: dispatching %zu chars: %s\n", strlen(js), js);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [g_webView evaluateJavaScript:script completionHandler:^(id _result, NSError *error) {
+            (void)_result;
+            if (error) NSLog(@"eval_js error: %@", error);
+            else NSLog(@"eval_js ok");
+        }];
+    });
 }
 #endif /* TARGET_OS_IPHONE */
 
@@ -1687,6 +1710,17 @@ void ui_open(int port)
     ExitProcess(0);
 }
 
+void passiflora_eval_js(const char *js)
+{
+    if (!g_wv2.webview || !g_wv2.hwnd) return;
+    /* Convert UTF-8 to wide string and post to UI thread */
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, js, -1, NULL, 0);
+    wchar_t *wjs = (wchar_t *)malloc(wlen * sizeof(wchar_t));
+    if (!wjs) return;
+    MultiByteToWideChar(CP_UTF8, 0, js, -1, wjs, wlen);
+    PostMessage(g_wv2.hwnd, WM_POSIX_RESULT, 0, (LPARAM)wjs);
+}
+
 /* ================================================================== */
 /*  Android                                                            */
 /* ================================================================== */
@@ -1694,9 +1728,42 @@ void ui_open(int port)
 
 /* On Android the UI is managed by Java (MainActivity + WebView).
    The native server is started via JNI in passiflora.c.             */
+
+#include <jni.h>
+static JavaVM *g_jvm = NULL;
+static jobject g_activity = NULL;
+static jmethodID g_evalJs = NULL;
+
+/* Called from Java: caches JVM and method ID for evaluateJavascript */
+JNIEXPORT void JNICALL
+Java_com_example_zipserve_MainActivity_nativeInitDebug(
+    JNIEnv *env, jobject activity)
+{
+    (*env)->GetJavaVM(env, &g_jvm);
+    g_activity = (*env)->NewGlobalRef(env, activity);
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    g_evalJs = (*env)->GetMethodID(env, cls, "evalJsFromNative",
+                                   "(Ljava/lang/String;)V");
+}
+
 void ui_open(int port)
 {
     (void)port;
+}
+
+void passiflora_eval_js(const char *js)
+{
+    if (!g_jvm || !g_activity || !g_evalJs) return;
+    JNIEnv *env = NULL;
+    int attached = 0;
+    if ((*g_jvm)->GetEnv(g_jvm, (void **)&env, JNI_VERSION_1_6) != JNI_OK) {
+        if ((*g_jvm)->AttachCurrentThread(g_jvm, &env, NULL) != 0) return;
+        attached = 1;
+    }
+    jstring jstr = (*env)->NewStringUTF(env, js);
+    (*env)->CallVoidMethod(env, g_activity, g_evalJs, jstr);
+    (*env)->DeleteLocalRef(env, jstr);
+    if (attached) (*g_jvm)->DetachCurrentThread(g_jvm);
 }
 
 
@@ -2166,6 +2233,23 @@ void ui_open(int port)
     exit(0);
 }
 
+static gboolean eval_js_idle(gpointer data)
+{
+    char *js = (char *)data;
+    if (g_linux_webview) {
+        webkit_web_view_evaluate_javascript(g_linux_webview, js, -1,
+                                            NULL, NULL, NULL, NULL, NULL);
+    }
+    free(js);
+    return G_SOURCE_REMOVE;
+}
+
+void passiflora_eval_js(const char *js)
+{
+    if (!js) return;
+    char *copy = g_strdup(js);
+    g_idle_add(eval_js_idle, copy);
+}
 
 
 /* ================================================================== */
@@ -2177,6 +2261,11 @@ void ui_open(int port)
 {
     (void)port;
     fprintf(stderr, "ui_open: unsupported platform\n");
+}
+
+void passiflora_eval_js(const char *js)
+{
+    (void)js;
 }
 
 #endif

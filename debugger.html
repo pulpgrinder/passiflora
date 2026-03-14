@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Passiflora Debugger</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 700px; margin: 2em auto; padding: 0 1em; }
+  label { display: block; margin-top: 1em; font-weight: bold; }
+  input, textarea { width: 100%; box-sizing: border-box; font-family: monospace; font-size: 14px; }
+  input { padding: 6px; }
+  textarea { padding: 8px; min-height: 120px; }
+  button { margin-top: 1em; padding: 8px 20px; font-size: 14px; cursor: pointer; }
+  #status { margin-top: 1em; padding: 10px; background: #f0f0f0; border-radius: 4px;
+            font-family: monospace; white-space: pre-wrap; min-height: 2em; }
+  .error { color: #c00; }
+  .ok { color: #060; }
+</style>
+</head>
+<body>
+<h1>Passiflora Debugger</h1>
+<p>Paste the JSON from the app's debug banner, then enter JavaScript to execute.</p>
+
+<label for="conn">Connection (JSON from app)</label>
+<input type="text" id="conn" placeholder='{"port":60593,"key":"xxxxxxxx-xxxx-4xxx-xxxx-xxxxxxxxxxxx"}'>
+
+<label for="code">JavaScript</label>
+<textarea id="code" placeholder="document.title"></textarea>
+
+<button onclick="sendDebug()">Execute</button>
+
+<div id="status"></div>
+
+<script>
+async function sendDebug() {
+    var statusEl = document.getElementById('status');
+    var connStr = document.getElementById('conn').value.trim();
+    var code = document.getElementById('code').value;
+
+    if (!connStr || !code) {
+        statusEl.innerHTML = '<span class="error">Connection JSON and code are required.</span>';
+        return;
+    }
+
+    var conn;
+    try {
+        conn = JSON.parse(connStr);
+    } catch (e) {
+        statusEl.innerHTML = '<span class="error">Invalid JSON: ' + escapeHtml(e.message) + '</span>';
+        return;
+    }
+    var port = conn.port;
+    var key = conn.key;
+    if (!port || !key) {
+        statusEl.innerHTML = '<span class="error">JSON must contain "port" and "key".</span>';
+        return;
+    }
+
+    statusEl.textContent = 'Signing...';
+
+    try {
+        /* Compute HMAC-SHA256(key, javascript) */
+        var enc = new TextEncoder();
+        var cryptoKey = await crypto.subtle.importKey(
+            'raw', enc.encode(key),
+            { name: 'HMAC', hash: 'SHA-256' },
+            false, ['sign']
+        );
+        var sigBuf = await crypto.subtle.sign('HMAC', cryptoKey, enc.encode(code));
+        var arr = new Uint8Array(sigBuf);
+        var hex = '';
+        for (var i = 0; i < arr.length; i++)
+            hex += ('0' + arr[i].toString(16)).slice(-2);
+
+        var payload = JSON.stringify({
+            javascript: code,
+            signature: hex
+        });
+
+        statusEl.textContent = 'Sending...';
+
+        var resp = await fetch('http://127.0.0.1:' + port + '/__passiflora/debug', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload
+        });
+
+        var body = await resp.text();
+        if (resp.ok) {
+            statusEl.innerHTML = '<span class="ok">Sent OK — waiting for result...</span>';
+            /* Poll for execution result */
+            var baseUrl = 'http://127.0.0.1:' + port;
+            var attempts = 0;
+            var maxAttempts = 20;
+            var pollInterval = 250;
+            var poll = setInterval(async function () {
+                attempts++;
+                try {
+                    var r = await fetch(baseUrl + '/__passiflora/debug_result');
+                    if (r.status === 200) {
+                        clearInterval(poll);
+                        var result = await r.json();
+                        var parts = [];
+                        if (result.output) parts.push(result.output);
+                        if (result.error) parts.push('ERROR: ' + result.error);
+                        statusEl.innerHTML = '<span class="ok">Result:</span>\n' + escapeHtml(parts.join('\n'));
+                    } else if (attempts >= maxAttempts) {
+                        clearInterval(poll);
+                        statusEl.innerHTML = '<span class="ok">Sent OK</span>\n(no result returned within timeout)';
+                    }
+                } catch (e) {
+                    if (attempts >= maxAttempts) {
+                        clearInterval(poll);
+                        statusEl.innerHTML = '<span class="ok">Sent OK</span>\n(could not retrieve result: ' + escapeHtml(e.message) + ')';
+                    }
+                }
+            }, pollInterval);
+        } else {
+            statusEl.innerHTML = '<span class="error">HTTP ' + resp.status + '</span>\n' + escapeHtml(body);
+        }
+    } catch (e) {
+        statusEl.innerHTML = '<span class="error">Error: ' + escapeHtml(e.message) + '</span>';
+    }
+}
+
+function escapeHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+</script>
+</body>
+</html>

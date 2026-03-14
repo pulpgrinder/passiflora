@@ -246,6 +246,121 @@ PassifloraIO = {
         return PassifloraIO._posixCall("getHomeFolder", {});
     },
 
+    /* ================================================================ */
+    /*  Debug bridge — remote JavaScript execution                      */
+    /* ================================================================ */
+
+    _debugKey: null,
+
+    debug: function (on) {
+        if (on) {
+            /* Generate a UUID v4 as the shared key */
+            var key = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(
+                /[xy]/g, function (c) {
+                    var r = (Math.random() * 16) | 0;
+                    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+                });
+            PassifloraIO._debugKey = key;
+            PassifloraIO._debugLog(JSON.stringify({port: parseInt(location.port), key: key}));
+        } else {
+            PassifloraIO._debugKey = null;
+            PassifloraIO._debugLog('Debug mode OFF');
+        }
+    },
+
+    _debugLog: function (msg) {
+        var el = document.getElementById('_dbg');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = '_dbg';
+            el.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#ff0;color:#000;font:12px monospace;padding:4px 4px 8px 4px;z-index:99999;white-space:pre-wrap;max-height:30vh;overflow-y:auto;';
+            document.body.appendChild(el);
+            document.body.style.marginTop = (el.offsetHeight + 4) + 'px';
+        }
+        el.textContent += msg + '\n';
+        document.body.style.marginTop = (el.offsetHeight + 4) + 'px';
+    },
+
+    _debugExec: function (payload) {
+        PassifloraIO._debugLog('entry, payload len=' + payload.length);
+        if (!PassifloraIO._debugKey) { PassifloraIO._debugLog('FAIL: no key'); return; }
+        try {
+            var msg = JSON.parse(payload);
+        } catch (e) { PassifloraIO._debugLog('FAIL: JSON parse: ' + e.message); return; }
+        if (!msg.javascript || typeof msg.javascript !== 'string') { PassifloraIO._debugLog('FAIL: no javascript field'); return; }
+        if (!msg.signature || typeof msg.signature !== 'string') { PassifloraIO._debugLog('FAIL: no signature field'); return; }
+
+        PassifloraIO._debugLog('validating sig...');
+
+        if (!crypto || !crypto.subtle) {
+            PassifloraIO._debugLog('FAIL: crypto.subtle not available');
+            return;
+        }
+
+        /* Validate HMAC-SHA256 signature */
+        var enc = new TextEncoder();
+        var keyData = enc.encode(PassifloraIO._debugKey);
+        var msgData = enc.encode(msg.javascript);
+        crypto.subtle.importKey(
+            'raw', keyData, { name: 'HMAC', hash: 'SHA-256' },
+            false, ['sign']
+        ).then(function (cryptoKey) {
+            return crypto.subtle.sign('HMAC', cryptoKey, msgData);
+        }).then(function (sigBuf) {
+            var arr = new Uint8Array(sigBuf);
+            var hex = '';
+            for (var i = 0; i < arr.length; i++)
+                hex += ('0' + arr[i].toString(16)).slice(-2);
+            PassifloraIO._debugLog('computed: ' + hex.substring(0, 16) + '...');
+            PassifloraIO._debugLog('received: ' + msg.signature.substring(0, 16) + '...');
+            if (hex !== msg.signature) {
+                PassifloraIO._debugLog('FAIL: signature mismatch');
+                return;
+            }
+            PassifloraIO._debugLog('sig OK, evaluating...');
+            /* Signature valid — execute via inline script with console capture */
+            var __out = [];
+            var __olog = console.log, __oerr = console.error, __owarn = console.warn;
+            console.log = function () {
+                __out.push(Array.prototype.slice.call(arguments).map(String).join(' '));
+                __olog.apply(console, arguments);
+            };
+            console.error = function () {
+                __out.push('ERROR: ' + Array.prototype.slice.call(arguments).map(String).join(' '));
+                __oerr.apply(console, arguments);
+            };
+            console.warn = function () {
+                __out.push('WARN: ' + Array.prototype.slice.call(arguments).map(String).join(' '));
+                __owarn.apply(console, arguments);
+            };
+            var __err = null;
+            try {
+                var s = document.createElement('script');
+                s.textContent = msg.javascript;
+                document.head.appendChild(s);
+                document.head.removeChild(s);
+            } catch (e) {
+                __err = e.message;
+            }
+            console.log = __olog;
+            console.error = __oerr;
+            console.warn = __owarn;
+            /* Send result back to server for debugger to retrieve */
+            var resultObj = {};
+            if (__err) resultObj.error = __err;
+            if (__out.length) resultObj.output = __out.join('\n');
+            if (!__err && !__out.length) resultObj.output = '(no output — use console.log() to see values)';
+            fetch('/__passiflora/debug_result', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(resultObj)
+            });
+            PassifloraIO._debugLog('eval done');
+        }).catch(function (e) {
+            PassifloraIO._debugLog('FAIL: crypto error: ' + e.message);
+        });
+    },
+
 };
 
 /* POSIX constants (global) */

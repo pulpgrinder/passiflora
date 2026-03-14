@@ -42,6 +42,9 @@ public class MainActivity extends Activity {
     /** Call native POSIX bridge; returns JSON result string. */
     private static native String nativePosixCall(String params);
 
+    /** Initialize the native debug bridge with a reference to this activity. */
+    private native void nativeInitDebug();
+
     /* Bridge exposed to JavaScript as window.PassifloraBridge */
     private class Bridge {
         @JavascriptInterface
@@ -240,7 +243,19 @@ public class MainActivity extends Activity {
         });
 
         setContentView(webView);
+        nativeInitDebug();
         webView.loadUrl("http://127.0.0.1:" + serverPort + "/");
+    }
+
+    /** Called from native code to evaluate JavaScript in the WebView. */
+    @SuppressWarnings("unused")
+    public void evalJsFromNative(final String js) {
+        if (webView == null || js == null) return;
+        runOnUiThread(new Runnable() {
+            @Override public void run() {
+                webView.evaluateJavascript(js, null);
+            }
+        });
     }
 
     @Override

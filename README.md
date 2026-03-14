@@ -391,6 +391,75 @@ Use absolute paths if you need predictable locations. Again, see the code in the
 * `fwrite` data is base64-encoded in transit; very large writes may be slow.
 * Path traversal (`..`) is rejected for `fopen`, `fremove`, and `frename`.
 
+## Remote Debugging
+
+Passiflora includes a built-in remote debugging facility that lets you execute JavaScript in a running app from an external browser. This is useful for inspecting app state, testing code snippets, and diagnosing issues on platforms where browser DevTools aren't available (iOS, Android, etc.).
+
+### Enabling Debug Mode
+
+Call `PassifloraIO.debug(true)` from your app's JavaScript (e.g. in `init.js`):
+
+```javascript
+PassifloraIO.debug(true);
+```
+
+A yellow debug banner appears at the top of the app window showing a JSON string like:
+
+```
+{"port":60810,"key":"a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"}
+```
+
+Copy this JSON string — you'll paste it into the debugger. The key is a one-time UUID generated each time debug mode is enabled.
+
+To disable debug mode:
+
+```javascript
+PassifloraIO.debug(false);
+```
+
+### Using the Debugger
+
+Open `debugger.html` (in the project root) in any web browser. It has two fields:
+
+1. **Connection** — paste the JSON from the app's debug banner
+2. **JavaScript** — enter the code you want to execute
+
+Click **Execute**. The debugger signs the code with HMAC-SHA256 using the shared key, sends it to the app's embedded server, and displays the result.
+
+### How It Works
+
+1. The external debugger computes an HMAC-SHA256 signature of the JavaScript text using the shared UUID key, then POSTs `{"javascript": "...", "signature": "..."}` to `http://127.0.0.1:<port>/__passiflora/debug`.
+2. The app's embedded HTTP server relays the payload to the webview via `passiflora_eval_js()`.
+3. Inside the webview, `PassifloraIO._debugExec()` validates the HMAC-SHA256 signature using the Web Crypto API. If the signature doesn't match, execution is refused.
+4. If valid, the code is executed via inline `<script>` injection (which works under the app's Content Security Policy without requiring `unsafe-eval`).
+5. `console.log()`, `console.error()`, and `console.warn()` output is captured during execution and POSTed back to `/__passiflora/debug_result`.
+6. The debugger polls `/__passiflora/debug_result` and displays the captured output.
+
+### Seeing Output
+
+Since code runs via `<script>` injection rather than `eval()`, bare expression values aren't returned. Use `console.log()` to see values:
+
+```javascript
+// This won't show a result:
+document.title
+
+// This will:
+console.log(document.title)
+```
+
+`alert()` and other side effects work normally but don't produce captured output.
+
+### Security Notes
+
+- The debug endpoint only listens on `127.0.0.1` (localhost) — it is not accessible from the network.
+- Every command must be signed with the correct HMAC-SHA256 key. The key is a random UUID generated fresh each time debug mode is enabled.
+- Debug mode must be explicitly enabled in code. It is not on by default.
+- For production releases, remove any `PassifloraIO.debug(true)` calls.
+
+### Debug Banner
+
+When debug mode is on, a yellow banner appears at the top of the app showing diagnostic messages: connection info, signature validation status, and execution results. The banner scrolls if it grows beyond 30% of the viewport height, and pushes page content down so nothing is hidden.
+
 ## About this project
 
 This code was developed through an iterative process involving human-guided prompting of a large language model (LLM), followed by review, editing, refinement, and original contributions by the author. To the extent the work contains copyrightable human-authored elements (including structure, modifications, arrangements, and additions), it is Copyright (c) 2026 by Anthony W. Hursh. The project is distributed under the terms of the MIT License (see LICENSE file for full text). Portions generated directly by AI may not be independently copyrightable under current U.S. law.

@@ -90,6 +90,14 @@
 
 /* Provided by UI.c */
 extern void ui_open(int port);
+extern void passiflora_eval_js(const char *js);
+
+/* Maximum POST body for debug endpoint */
+#define MAX_DEBUG_BODY  (256 * 1024)
+
+/* Debug result buffer — written by webview JS, read by external debugger */
+static char *debug_result_buf = NULL;
+static pthread_mutex_t debug_result_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /* ------------------------------------------------------------------ */
 /*  Configuration                                                      */
@@ -875,9 +883,219 @@ static void handle_request(int fd)
         LOGI("passiflora: %s %s\n", method, safe);
     }
 
-    /* Only GET and HEAD are supported */
-    if (strcasecmp(method, "GET") != 0 && strcasecmp(method, "HEAD") != 0) {
-        send_text(fd, 405, "Method Not Allowed", "Only GET is supported\n");
+    /* Only GET, HEAD, POST, and OPTIONS are supported */
+    int is_post = (strcasecmp(method, "POST") == 0);
+    int is_options = (strcasecmp(method, "OPTIONS") == 0);
+    if (strcasecmp(method, "GET") != 0 && strcasecmp(method, "HEAD") != 0
+        && !is_post && !is_options) {
+        send_text(fd, 405, "Method Not Allowed",
+                  "Method not supported\n");
+        free(hdr);
+        return;
+    }
+
+    /* ---- CORS preflight for debug endpoints ---- */
+    if (is_options && (strcmp(path, "/__passiflora/debug") == 0
+                       || strcmp(path, "/__passiflora/debug_result") == 0)) {
+        const char *resp =
+            "HTTP/1.1 204 No Content\r\n"
+            "Access-Control-Allow-Origin: *\r\n"
+            "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+            "Access-Control-Allow-Headers: Content-Type\r\n"
+            "Access-Control-Max-Age: 86400\r\n"
+            "Content-Length: 0\r\n"
+            "Connection: close\r\n"
+            "\r\n";
+        send_all(fd, resp, strlen(resp));
+        free(hdr);
+        return;
+    }
+
+    /* Reject OPTIONS on all other paths */
+    if (is_options) {
+        send_text(fd, 405, "Method Not Allowed", "OPTIONS not supported here\n");
+        free(hdr);
+        return;
+    }
+
+    /* ---- Internal API: debug — relay POST body to webview ---- */
+    if (strcmp(path, "/__passiflora/debug") == 0) {
+        if (!is_post) {
+            send_text(fd, 405, "Method Not Allowed", "POST required\n");
+            free(hdr);
+            return;
+        }
+        /* Find Content-Length */
+        size_t content_length = 0;
+        {
+            const char *cl = header_end; /* scan headers */
+            for (const char *p = hdr; p < header_end; ) {
+                (void)cl;
+                if (strncasecmp(p, "Content-Length:", 15) == 0) {
+                    content_length = (size_t)strtoul(p + 15, NULL, 10);
+                    break;
+                }
+                const char *nl = strstr(p, "\r\n");
+                if (!nl) break;
+                p = nl + 2;
+            }
+        }
+        if (content_length == 0 || content_length > MAX_DEBUG_BODY) {
+            send_text(fd, 400, "Bad Request", "Invalid Content-Length\n");
+            free(hdr);
+            return;
+        }
+        /* Read the POST body — some may already be in hdr past header_end */
+        char *body = malloc(content_length + 1);
+        if (!body) { free(hdr); return; }
+        size_t body_already = used - (size_t)(header_end + 4 - hdr);
+        if (body_already > content_length) body_already = content_length;
+        if (body_already > 0)
+            memcpy(body, header_end + 4, body_already);
+        size_t body_read = body_already;
+        while (body_read < content_length) {
+            ssize_t r = sock_read(fd, body + body_read,
+                                  content_length - body_read);
+            if (r <= 0) { free(body); free(hdr); return; }
+            body_read += r;
+        }
+        body[content_length] = '\0';
+
+        /* JSON-escape the body for safe embedding in JS string */
+        size_t esc_cap = content_length * 2 + 1;
+        char *escaped = malloc(esc_cap);
+        if (!escaped) { free(body); free(hdr); return; }
+        size_t j = 0;
+        for (size_t i = 0; i < content_length && j < esc_cap - 2; i++) {
+            unsigned char ch = (unsigned char)body[i];
+            if (ch == '\\')     { escaped[j++] = '\\'; escaped[j++] = '\\'; }
+            else if (ch == '\'') { escaped[j++] = '\\'; escaped[j++] = '\''; }
+            else if (ch == '\n') { escaped[j++] = '\\'; escaped[j++] = 'n'; }
+            else if (ch == '\r') { escaped[j++] = '\\'; escaped[j++] = 'r'; }
+            else if (ch == '\t') { escaped[j++] = '\\'; escaped[j++] = 't'; }
+            else if (ch < 0x20)  { /* skip control chars */ }
+            else                 { escaped[j++] = (char)ch; }
+        }
+        escaped[j] = '\0';
+        free(body);
+
+        /* Build JS call: PassifloraIO._debugExec('...escaped...') */
+        size_t js_len = j + 64;
+        char *js = malloc(js_len);
+        if (!js) { free(escaped); free(hdr); return; }
+        snprintf(js, js_len, "PassifloraIO._debugExec('%s')", escaped);
+        free(escaped);
+
+        passiflora_eval_js(js);
+        free(js);
+
+        /* Send CORS-friendly JSON response */
+        const char *resp_hdrs =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json; charset=utf-8\r\n"
+            "Access-Control-Allow-Origin: *\r\n"
+            "Access-Control-Allow-Methods: POST, OPTIONS\r\n"
+            "Access-Control-Allow-Headers: Content-Type\r\n"
+            "Connection: close\r\n";
+        const char *resp_body = "{\"ok\":true}\n";
+        char resp[512];
+        int rlen = snprintf(resp, sizeof resp,
+            "%sContent-Length: %zu\r\n\r\n%s",
+            resp_hdrs, strlen(resp_body), resp_body);
+        if (rlen > 0) send_all(fd, resp, (size_t)rlen);
+        free(hdr);
+        return;
+    }
+
+    /* ---- Internal API: debug_result — webview stores result, debugger retrieves ---- */
+    if (strcmp(path, "/__passiflora/debug_result") == 0) {
+        int is_get = (strcasecmp(method, "GET") == 0);
+        const char *cors =
+            "Access-Control-Allow-Origin: *\r\n"
+            "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+            "Access-Control-Allow-Headers: Content-Type\r\n";
+        if (is_post) {
+            /* Webview POSTs the execution result */
+            size_t cl2 = 0;
+            for (const char *p = hdr; p < header_end; ) {
+                if (strncasecmp(p, "Content-Length:", 15) == 0) {
+                    cl2 = (size_t)strtoul(p + 15, NULL, 10);
+                    break;
+                }
+                const char *nl = strstr(p, "\r\n");
+                if (!nl) break;
+                p = nl + 2;
+            }
+            if (cl2 == 0 || cl2 > MAX_DEBUG_BODY) {
+                send_text(fd, 400, "Bad Request", "Invalid Content-Length\n");
+                free(hdr); return;
+            }
+            char *body2 = malloc(cl2 + 1);
+            if (!body2) { free(hdr); return; }
+            size_t ba2 = used - (size_t)(header_end + 4 - hdr);
+            if (ba2 > cl2) ba2 = cl2;
+            if (ba2 > 0) memcpy(body2, header_end + 4, ba2);
+            size_t br2 = ba2;
+            while (br2 < cl2) {
+                ssize_t r = sock_read(fd, body2 + br2, cl2 - br2);
+                if (r <= 0) { free(body2); free(hdr); return; }
+                br2 += r;
+            }
+            body2[cl2] = '\0';
+            pthread_mutex_lock(&debug_result_lock);
+            free(debug_result_buf);
+            debug_result_buf = body2;
+            pthread_mutex_unlock(&debug_result_lock);
+            char resp[512];
+            const char *rb = "{\"ok\":true}\n";
+            int rlen = snprintf(resp, sizeof resp,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n%s"
+                "Connection: close\r\nContent-Length: %zu\r\n\r\n%s",
+                cors, strlen(rb), rb);
+            if (rlen > 0) send_all(fd, resp, (size_t)rlen);
+        } else if (is_get) {
+            /* Debugger polls for result */
+            pthread_mutex_lock(&debug_result_lock);
+            char *result = debug_result_buf;
+            debug_result_buf = NULL;
+            pthread_mutex_unlock(&debug_result_lock);
+            if (result) {
+                char resp[512];
+                int rlen = snprintf(resp, sizeof resp,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n%s"
+                    "Connection: close\r\nContent-Length: %zu\r\n\r\n",
+                    cors, strlen(result));
+                if (rlen > 0) {
+                    send_all(fd, resp, (size_t)rlen);
+                    send_all(fd, result, strlen(result));
+                }
+                free(result);
+            } else {
+                char resp[256];
+                int rlen = snprintf(resp, sizeof resp,
+                    "HTTP/1.1 204 No Content\r\n%s"
+                    "Connection: close\r\n\r\n", cors);
+                if (rlen > 0) send_all(fd, resp, (size_t)rlen);
+            }
+        } else {
+            send_text(fd, 405, "Method Not Allowed", "GET or POST required\n");
+        }
+        free(hdr);
+        return;
+    }
+
+    /* GET on /__passiflora/debug — not allowed */
+    if (strcmp(path, "/__passiflora/debug") == 0
+        && strcasecmp(method, "GET") == 0) {
+        send_text(fd, 405, "Method Not Allowed", "POST required\n");
+        free(hdr);
+        return;
+    }
+
+    /* POST is only valid for /__passiflora/debug endpoints (handled above) */
+    if (is_post) {
+        send_text(fd, 405, "Method Not Allowed",
+                  "POST not supported on this path\n");
         free(hdr);
         return;
     }
