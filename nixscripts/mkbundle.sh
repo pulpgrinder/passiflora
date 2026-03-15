@@ -29,7 +29,9 @@ _perm_camera=0
 _perm_microphone=0
 _permfile="$(dirname "$0")/../src/permissions"
 if [ -f "$_permfile" ]; then
-    while read -r _name _val; do
+    while IFS= read -r _line || [ -n "$_line" ]; do
+        _name="${_line%% *}"
+        _val="${_line##* }"
         case "$_name" in
             location)   _perm_location="$_val" ;;
             camera)     _perm_camera="$_val" ;;

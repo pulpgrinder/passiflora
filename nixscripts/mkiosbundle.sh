@@ -29,13 +29,17 @@ fi
 _perm_location=0
 _perm_camera=0
 _perm_microphone=0
+_perm_remotedebugging=0
 _permfile="$(dirname "$0")/../src/permissions"
 if [ -f "$_permfile" ]; then
-    while read -r _name _val; do
+    while IFS= read -r _line || [ -n "$_line" ]; do
+        _name="${_line%% *}"
+        _val="${_line##* }"
         case "$_name" in
-            location)   _perm_location="$_val" ;;
-            camera)     _perm_camera="$_val" ;;
-            microphone) _perm_microphone="$_val" ;;
+            location)         _perm_location="$_val" ;;
+            camera)           _perm_camera="$_val" ;;
+            microphone)       _perm_microphone="$_val" ;;
+            remotedebugging)  _perm_remotedebugging="$_val" ;;
         esac
     done < "$_permfile"
 fi
@@ -207,6 +211,18 @@ if [ "$_perm_microphone" = "1" ]; then
 
     <key>NSMicrophoneUsageDescription</key>
     <string>This app needs access to your microphone for audio and video recording.</string>
+PLIST
+fi
+if [ "$_perm_remotedebugging" = "1" ]; then
+    cat >> "$APP/Info.plist" << 'PLIST'
+
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>This app uses the local network for remote debugging.</string>
+
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_http._tcp</string>
+    </array>
 PLIST
 fi
 

@@ -44,6 +44,15 @@ add_library(passiflora SHARED
 
 target_include_directories(passiflora PRIVATE ${SRC_ROOT} ${SRC_ROOT}/src/C)
 
+# ── Compiler hardening ────────────────────────────────────────────
+target_compile_options(passiflora PRIVATE -Wall -Wextra -O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2)
+target_link_options(passiflora PRIVATE -Wl,-z,relro,-z,now)
+
+# ── Read PROGNAME from Makefile ────────────────────────────────────
+file(STRINGS ${SRC_ROOT}/Makefile _MAKEFILE_FIRST_LINE LIMIT_COUNT 1)
+string(REGEX REPLACE "^PROGNAME *= *" "" _PROGNAME "${_MAKEFILE_FIRST_LINE}")
+target_compile_definitions(passiflora PRIVATE PROGNAME_STR="${_PROGNAME}")
+
 # ── Read src/permissions and set -DPERM_* compile definitions ──────
 set(PERM_FILE ${SRC_ROOT}/src/permissions)
 if(EXISTS ${PERM_FILE})
@@ -53,11 +62,8 @@ if(EXISTS ${PERM_FILE})
         string(REGEX MATCH "^([a-z]+) +1" _m "${LINE}")
         if(_m)
             string(REGEX REPLACE "^([a-z]+) +1" "\\1" PNAME "${LINE}")
-            # androidexternalstorage is Android-only (manifest/Java), not a C define
-            if(NOT PNAME STREQUAL "androidexternalstorage")
-                string(TOUPPER ${PNAME} PUPPER)
-                target_compile_definitions(passiflora PRIVATE PERM_${PUPPER})
-            endif()
+            string(TOUPPER ${PNAME} PUPPER)
+            target_compile_definitions(passiflora PRIVATE PERM_${PUPPER})
         endif()
     endforeach()
 endif()

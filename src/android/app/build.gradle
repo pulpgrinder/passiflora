@@ -25,7 +25,8 @@ android {
         buildConfigField "boolean", "PERM_LOCATION",    (project.findProperty('PERM_LOCATION')    == '1') ? 'true' : 'false'
         buildConfigField "boolean", "PERM_CAMERA",       (project.findProperty('PERM_CAMERA')      == '1') ? 'true' : 'false'
         buildConfigField "boolean", "PERM_MICROPHONE",   (project.findProperty('PERM_MICROPHONE')  == '1') ? 'true' : 'false'
-        buildConfigField "boolean", "PERM_ANDROIDEXTERNALSTORAGE",   (project.findProperty('PERM_ANDROIDEXTERNALSTORAGE')  == '1') ? 'true' : 'false'
+        buildConfigField "boolean", "PERM_UNRESTRICTEDFILESYSTEMACCESS",   (project.findProperty('PERM_UNRESTRICTEDFILESYSTEMACCESS')  == '1') ? 'true' : 'false'
+        buildConfigField "boolean", "PERM_REMOTEDEBUGGING",   (project.findProperty('PERM_REMOTEDEBUGGING')  == '1') ? 'true' : 'false'
     }
 
     buildFeatures {
@@ -33,15 +34,28 @@ android {
     }
 
     signingConfigs {
-        // Test keystore shipped with the repo — NOT for production use.
         // Override with environment variables for a real keystore:
         //   RELEASE_KEYSTORE, RELEASE_KEYSTORE_PASSWORD,
         //   RELEASE_KEY_ALIAS, RELEASE_KEY_PASSWORD
+        // Falls back to a test keystore for local development only.
         release {
-            storeFile     file(System.getenv("RELEASE_KEYSTORE") ?: "../release.jks")
-            storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: "testtest"
-            keyAlias      System.getenv("RELEASE_KEY_ALIAS") ?: "mykey"
-            keyPassword   System.getenv("RELEASE_KEY_PASSWORD") ?: "testtest"
+            def ksFile = System.getenv("RELEASE_KEYSTORE")
+            def ksPass = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+            def ksAlias = System.getenv("RELEASE_KEY_ALIAS")
+            def ksKeyPass = System.getenv("RELEASE_KEY_PASSWORD")
+            if (ksFile && ksPass && ksAlias && ksKeyPass) {
+                storeFile     file(ksFile)
+                storePassword ksPass
+                keyAlias      ksAlias
+                keyPassword   ksKeyPass
+            } else {
+                // Local dev fallback — NOT for production distribution
+                storeFile     file("../release.jks")
+                storePassword "testtest"
+                keyAlias      "mykey"
+                keyPassword   "testtest"
+                logger.warn("WARNING: Using test keystore. Set RELEASE_KEYSTORE env vars for production builds.")
+            }
         }
     }
 
@@ -53,7 +67,9 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
         }
     }

@@ -115,9 +115,8 @@ The file `src/permissions` controls which platform capabilities are compiled int
 | `location` | All platforms | Enables GPS / geolocation. On iOS and macOS this links CoreLocation and adds the required `NSLocation*` plist keys. On Android it adds `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` to the manifest and enables the WebView geolocation prompt. |
 | `camera` | All platforms | Enables camera access (screenshots, image capture, video recording). On iOS / macOS this links AVFoundation and adds `NSCameraUsageDescription`. On Android it adds the `CAMERA` manifest permission. |
 | `microphone` | All platforms | Enables microphone access (audio recording, video with audio). On iOS / macOS this adds `NSMicrophoneUsageDescription`. On Android it adds `RECORD_AUDIO` to the manifest. |
-| `androidexternalstorage` | Android only | Grants the app access to the shared Documents folder via `MANAGE_EXTERNAL_STORAGE`. When off, the Android build omits the manifest permission and skips the all-files-access prompt. In that case, the app will only have access to files in the app's private storage.
-
-File I/O on all other platforms is always available and is not affected by this setting. |
+| `unrestrictedfilesystemaccess` | All platforms | Controls filesystem scope for the POSIX file I/O bridge. When **on** (`1`), JavaScript can read and write anywhere the OS permits. When **off** (`0`, recommended for production), all file operations (fopen, remove, rename, startRecording) are restricted to an app-specific documents folder — `~/Documents/PROGNAME` on macOS/Linux, the system Documents folder on Windows, the iOS documents directory, or `$HOME/PROGNAME` on Android. The `getHomeFolder()` bridge always returns this folder. On Android, this setting also controls whether the `MANAGE_EXTERNAL_STORAGE` manifest permission is included and whether the all-files-access prompt appears. |
+| `remotedebugging` | All platforms | When on, the embedded HTTP server listens on all network interfaces (`0.0.0.0`), allowing remote debugging connections from other devices on the same network. When off (default for production), the server binds to `127.0.0.1` (localhost only) and remote debugging is not possible. |
 
 
 ### Icons
@@ -397,19 +396,20 @@ Passiflora includes a built-in remote debugging facility that lets you execute J
 
 ### Enabling Debug Mode
 
-Call `PassifloraIO.debug(true)` from your app's JavaScript (e.g. in `init.js`):
+Call `PassifloraIO.debug(true)` from your app's JavaScript, or click the "Toggle Debugging" button in the sample app. You'll be prompted to enter a passphrase:
 
 ```javascript
 PassifloraIO.debug(true);
+// A prompt dialog asks for a passphrase
 ```
 
-A yellow debug banner appears at the top of the app window showing a JSON string like:
+A yellow debug banner appears at the top of the app window showing the port and passphrase as JSON:
 
 ```
-{"port":60810,"key":"a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"}
+{"port":60810,"key":"my secret passphrase"}
 ```
 
-Copy this JSON string — you'll paste it into the debugger. The key is a one-time UUID generated each time debug mode is enabled.
+Note the port number — you'll need it along with the device's IP address to connect from the debugger.
 
 To disable debug mode:
 
@@ -419,18 +419,22 @@ PassifloraIO.debug(false);
 
 ### Using the Debugger
 
-Open `debugger.html` (in the project root) in any web browser. It has two fields:
+Open `debugger.html` (in the project root) in any web browser. It has four fields:
 
-1. **Connection** — paste the JSON from the app's debug banner
-2. **JavaScript** — enter the code you want to execute
+1. **Host** — the IP address or hostname of the device running the app (defaults to `127.0.0.1` for local debugging)
+2. **Port** — the port number shown in the app's debug banner
+3. **Passphrase** — the passphrase you entered when enabling debug mode
+4. **JavaScript** — the code you want to execute
 
-Click **Execute**. The debugger signs the code with HMAC-SHA256 using the shared key, sends it to the app's embedded server, and displays the result.
+Click **Execute**. The debugger signs the code with HMAC-SHA256 using the passphrase, sends it to the app, and displays the result.
+
+For remote debugging (e.g. a mobile device on the same network), enter the device's local IP address in the Host field.
 
 ### How It Works
 
-1. The external debugger computes an HMAC-SHA256 signature of the JavaScript text using the shared UUID key, then POSTs `{"javascript": "...", "signature": "..."}` to `http://127.0.0.1:<port>/__passiflora/debug`.
+1. The external debugger computes an HMAC-SHA256 signature of the JavaScript text using the shared passphrase, then POSTs `{"javascript": "...", "signature": "..."}` to `http://<host>:<port>/__passiflora/debug`.
 2. The app's embedded HTTP server relays the payload to the webview via `passiflora_eval_js()`.
-3. Inside the webview, `PassifloraIO._debugExec()` validates the HMAC-SHA256 signature using the Web Crypto API. If the signature doesn't match, execution is refused.
+3. Inside the webview, `PassifloraIO._debugExec()` validates the HMAC-SHA256 signature using the Web Crypto API. If the signature doesn't match, execution is refused and an error is sent back to the debugger.
 4. If valid, the code is executed via inline `<script>` injection (which works under the app's Content Security Policy without requiring `unsafe-eval`).
 5. `console.log()`, `console.error()`, and `console.warn()` output is captured during execution and POSTed back to `/__passiflora/debug_result`.
 6. The debugger polls `/__passiflora/debug_result` and displays the captured output.
@@ -451,10 +455,11 @@ console.log(document.title)
 
 ### Security Notes
 
-- The debug endpoint only listens on `127.0.0.1` (localhost) — it is not accessible from the network.
-- Every command must be signed with the correct HMAC-SHA256 key. The key is a random UUID generated fresh each time debug mode is enabled.
-- Debug mode must be explicitly enabled in code. It is not on by default.
-- For production releases, remove any `PassifloraIO.debug(true)` calls.
+- By default, the embedded server listens only on `127.0.0.1` (localhost). Remote debugging connections are blocked unless `remotedebugging` is set to `1` in `src/permissions`, which makes the server listen on all network interfaces (`0.0.0.0`).
+- Every command must be signed with the correct HMAC-SHA256 passphrase. Without it, commands are rejected and an error is returned to the debugger.
+- Debug mode must be explicitly enabled by the user, who chooses the passphrase. It is not on by default.
+- Use a strong passphrase, especially when debugging over a network.
+- For production releases, set `remotedebugging 0` in `src/permissions` and remove the "Toggle Debugging" button and any `PassifloraIO.debug(true)` calls.
 
 ### Debug Banner
 

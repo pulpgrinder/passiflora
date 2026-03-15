@@ -20,6 +20,9 @@ import android.os.Build;
 import android.os.Environment;
 import android.provider.Settings;
 import android.widget.EditText;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 
 /**
  * Launches the embedded HTTP server (native C, via JNI) then shows a
@@ -35,6 +38,9 @@ public class MainActivity extends Activity {
     private String pendingGeoOrigin;
 
     static { System.loadLibrary("passiflora"); }
+
+    /** Pass the app-private files directory to native code. */
+    private static native void nativeSetFilesDir(String path);
 
     /** Start the native HTTP server; returns the assigned port. */
     private static native int startServer();
@@ -57,18 +63,6 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String posixCall(String params) {
-            /* Intercept getHomeFolder on Android — return shared Documents dir */
-            if (params != null && params.contains("func=getHomeFolder")) {
-                java.io.File docs = Environment
-                    .getExternalStoragePublicDirectory(
-                        Environment.DIRECTORY_DOCUMENTS);
-                String appName = getString(R.string.app_name);
-                java.io.File dir = new java.io.File(docs, appName);
-                dir.mkdirs();
-                String path = dir.getAbsolutePath()
-                    .replace("\\", "\\\\").replace("\"", "\\\"");
-                return "{\"ok\":true,\"result\":\"" + path + "\"}";
-            }
             return nativePosixCall(params);
         }
     }
@@ -79,7 +73,7 @@ public class MainActivity extends Activity {
 
         /* On Android 11+, request all-files access so the POSIX bridge
            can read/write the shared Documents folder directly. */
-        if (BuildConfig.PERM_ANDROIDEXTERNALSTORAGE
+        if (BuildConfig.PERM_UNRESTRICTEDFILESYSTEMACCESS
                 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
                 && !Environment.isExternalStorageManager()) {
             Intent intent = new Intent(
@@ -92,6 +86,7 @@ public class MainActivity extends Activity {
         getWindow().addFlags(
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
 
+        nativeSetFilesDir(getFilesDir().getAbsolutePath());
         serverPort = startServer();
 
         /* Request camera/mic runtime permissions before configuring WebView */
@@ -146,6 +141,16 @@ public class MainActivity extends Activity {
                     startActivity(new Intent(Intent.ACTION_VIEW,
                         request.getUrl()));
                 return true;
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                if (BuildConfig.PERM_REMOTEDEBUGGING) {
+                    String ip = getLocalIp().replaceAll("[^0-9a-fA-F.:]", "");
+                    view.evaluateJavascript(
+                        "PassifloraIO._autoDebug('" + ip + "'," + serverPort + ")",
+                        null);
+                }
             }
         });
 
@@ -256,6 +261,19 @@ public class MainActivity extends Activity {
                 webView.evaluateJavascript(js, null);
             }
         });
+    }
+
+    /** Get the local LAN IP address via UDP connect trick. */
+    private static String getLocalIp() {
+        try {
+            DatagramSocket sock = new DatagramSocket();
+            sock.connect(new InetSocketAddress("8.8.8.8", 53));
+            String ip = sock.getLocalAddress().getHostAddress();
+            sock.close();
+            return ip;
+        } catch (Exception e) {
+            return "127.0.0.1";
+        }
     }
 
     @Override

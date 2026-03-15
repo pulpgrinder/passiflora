@@ -19,10 +19,16 @@
 </head>
 <body>
 <h1>Passiflora Debugger</h1>
-<p>Paste the JSON from the app's debug banner, then enter JavaScript to execute.</p>
+<p>Enter the device's IP address/hostname, port, passphrase, and JavaScript to execute.</p>
 
-<label for="conn">Connection (JSON from app)</label>
-<input type="text" id="conn" placeholder='{"port":60593,"key":"xxxxxxxx-xxxx-4xxx-xxxx-xxxxxxxxxxxx"}'>
+<label for="host">Host (IP address or hostname of the device)</label>
+<input type="text" id="host" placeholder="e.g. 192.168.1.42 or 127.0.0.1" value="127.0.0.1">
+
+<label for="port">Port</label>
+<input type="text" id="port" placeholder="e.g. 60593" style="width:120px;">
+
+<label for="key">Passphrase</label>
+<input type="text" id="key" placeholder="Enter the passphrase you set in the app">
 
 <label for="code">JavaScript</label>
 <textarea id="code" placeholder="document.title"></textarea>
@@ -32,95 +38,76 @@
 <div id="status"></div>
 
 <script>
-async function sendDebug() {
+function dbgHash(str) {
+    var h1 = 5381, h2 = 0x811c9dc5;
+    for (var i = 0; i < str.length; i++) {
+        var c = str.charCodeAt(i);
+        h1 = ((h1 << 5) + h1 + c) >>> 0;
+        h2 = ((h2 ^ c) * 0x01000193) >>> 0;
+    }
+    return h1.toString(16) + h2.toString(16);
+}
+
+function sendDebug() {
     var statusEl = document.getElementById('status');
-    var connStr = document.getElementById('conn').value.trim();
+    var host = document.getElementById('host').value.trim();
+    var port = document.getElementById('port').value.trim();
+    var key = document.getElementById('key').value;
     var code = document.getElementById('code').value;
 
-    if (!connStr || !code) {
-        statusEl.innerHTML = '<span class="error">Connection JSON and code are required.</span>';
+    if (!host || !port || !key || !code) {
+        statusEl.innerHTML = '<span class="error">All fields are required.</span>';
         return;
     }
 
-    var conn;
-    try {
-        conn = JSON.parse(connStr);
-    } catch (e) {
-        statusEl.innerHTML = '<span class="error">Invalid JSON: ' + escapeHtml(e.message) + '</span>';
-        return;
-    }
-    var port = conn.port;
-    var key = conn.key;
-    if (!port || !key) {
-        statusEl.innerHTML = '<span class="error">JSON must contain "port" and "key".</span>';
-        return;
-    }
+    var sig = dbgHash(key + ':' + code);
+    var payload = JSON.stringify({
+        javascript: code,
+        signature: sig
+    });
 
-    statusEl.textContent = 'Signing...';
+    statusEl.textContent = 'Sending...';
+    var baseUrl = 'http://' + host + ':' + port;
 
-    try {
-        /* Compute HMAC-SHA256(key, javascript) */
-        var enc = new TextEncoder();
-        var cryptoKey = await crypto.subtle.importKey(
-            'raw', enc.encode(key),
-            { name: 'HMAC', hash: 'SHA-256' },
-            false, ['sign']
-        );
-        var sigBuf = await crypto.subtle.sign('HMAC', cryptoKey, enc.encode(code));
-        var arr = new Uint8Array(sigBuf);
-        var hex = '';
-        for (var i = 0; i < arr.length; i++)
-            hex += ('0' + arr[i].toString(16)).slice(-2);
-
-        var payload = JSON.stringify({
-            javascript: code,
-            signature: hex
-        });
-
-        statusEl.textContent = 'Sending...';
-
-        var resp = await fetch('http://127.0.0.1:' + port + '/__passiflora/debug', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: payload
-        });
-
-        var body = await resp.text();
+    fetch(baseUrl + '/__passiflora/debug', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload
+    }).then(function (resp) {
         if (resp.ok) {
             statusEl.innerHTML = '<span class="ok">Sent OK — waiting for result...</span>';
-            /* Poll for execution result */
-            var baseUrl = 'http://127.0.0.1:' + port;
             var attempts = 0;
             var maxAttempts = 20;
-            var pollInterval = 250;
-            var poll = setInterval(async function () {
+            var poll = setInterval(function () {
                 attempts++;
-                try {
-                    var r = await fetch(baseUrl + '/__passiflora/debug_result');
+                fetch(baseUrl + '/__passiflora/debug_result').then(function (r) {
                     if (r.status === 200) {
                         clearInterval(poll);
-                        var result = await r.json();
-                        var parts = [];
-                        if (result.output) parts.push(result.output);
-                        if (result.error) parts.push('ERROR: ' + result.error);
-                        statusEl.innerHTML = '<span class="ok">Result:</span>\n' + escapeHtml(parts.join('\n'));
+                        r.json().then(function (result) {
+                            var parts = [];
+                            if (result.output) parts.push(result.output);
+                            if (result.error) parts.push('ERROR: ' + result.error);
+                            statusEl.innerHTML = '<span class="ok">Result:</span>\n' + escapeHtml(parts.join('\n'));
+                        });
                     } else if (attempts >= maxAttempts) {
                         clearInterval(poll);
                         statusEl.innerHTML = '<span class="ok">Sent OK</span>\n(no result returned within timeout)';
                     }
-                } catch (e) {
+                }).catch(function (e) {
                     if (attempts >= maxAttempts) {
                         clearInterval(poll);
                         statusEl.innerHTML = '<span class="ok">Sent OK</span>\n(could not retrieve result: ' + escapeHtml(e.message) + ')';
                     }
-                }
-            }, pollInterval);
+                });
+            }, 250);
         } else {
-            statusEl.innerHTML = '<span class="error">HTTP ' + resp.status + '</span>\n' + escapeHtml(body);
+            resp.text().then(function (body) {
+                statusEl.innerHTML = '<span class="error">HTTP ' + resp.status + '</span>\n' + escapeHtml(body);
+            });
         }
-    } catch (e) {
+    }).catch(function (e) {
         statusEl.innerHTML = '<span class="error">Error: ' + escapeHtml(e.message) + '</span>';
-    }
+    });
 }
 
 function escapeHtml(s) {

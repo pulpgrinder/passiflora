@@ -34,6 +34,9 @@
 #ifdef PERM_LOCATION
 #import <CoreLocation/CoreLocation.h>
 #endif
+#ifdef PERM_REMOTEDEBUGGING
+#import <Network/Network.h>
+#endif
 #include "generated/menu.h"
 
 /* Port passed from main() to the app delegate via a global */
@@ -103,7 +106,47 @@ static WKWebView *g_ios_webView = nil;
         [NSString stringWithFormat:@"http://127.0.0.1:%d/", g_ios_port];
     NSURL *url = [NSURL URLWithString:urlStr];
     [webView loadRequest:[NSURLRequest requestWithURL:url]];
+
+#ifdef PERM_REMOTEDEBUGGING
+    /* Browse for a Bonjour service to trigger the local network
+       permission dialog.  iOS will not prompt until the app actually
+       touches the local network via a Bonjour or multicast API. */
+    {
+        nw_browse_descriptor_t desc =
+            nw_browse_descriptor_create_bonjour_service("_http._tcp", "local");
+        nw_parameters_t params = nw_parameters_create();
+        nw_browser_t browser = nw_browser_create(desc, params);
+        nw_browser_set_queue(browser, dispatch_get_main_queue());
+        nw_browser_set_browse_results_changed_handler(
+            browser,
+            ^(nw_browse_result_t result __unused,
+              nw_browse_result_t result2 __unused,
+              bool added __unused) { /* nothing needed */ });
+        nw_browser_start(browser);
+        /* Keep the browser alive for a few seconds, then stop. */
+        dispatch_after(
+            dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC),
+            dispatch_get_main_queue(),
+            ^{ nw_browser_cancel(browser); });
+    }
+#endif
 }
+
+#ifdef PERM_REMOTEDEBUGGING
+/* WKNavigationDelegate: auto-start debug after page loads */
+- (void)webView:(WKWebView *)wv
+    didFinishNavigation:(WKNavigation *)navigation
+{
+    (void)wv; (void)navigation;
+    extern void passiflora_auto_debug(int port);
+    extern int g_server_port;
+    static int debug_started = 0;
+    if (!debug_started) {
+        debug_started = 1;
+        passiflora_auto_debug(g_server_port);
+    }
+}
+#endif
 
 /* WKUIDelegate: JavaScript alert() */
 - (void)webView:(WKWebView *)wv
@@ -259,8 +302,14 @@ static WKWebView *g_ios_webView = nil;
     int code = 2; /* POSITION_UNAVAILABLE */
     if (error.code == kCLErrorDenied) code = 1; /* PERMISSION_DENIED */
     NSString *msg = [error localizedDescription];
+    msg = [msg stringByReplacingOccurrencesOfString:@"\\"
+                                         withString:@"\\\\"];
     msg = [msg stringByReplacingOccurrencesOfString:@"'"
                                          withString:@"\\'"];
+    msg = [msg stringByReplacingOccurrencesOfString:@"\n"
+                                         withString:@"\\n"];
+    msg = [msg stringByReplacingOccurrencesOfString:@"\r"
+                                         withString:@"\\r"];
     for (NSString *cbId in pending) {
         NSString *js = [NSString stringWithFormat:
             @"PassifloraIO._geoReject('%@',%d,'%@');",
@@ -600,6 +649,9 @@ static void build_menus(void)
 @interface ZSAppDelegate : NSObject
     <NSApplicationDelegate, NSWindowDelegate, WKUIDelegate,
      WKScriptMessageHandler
+#ifdef PERM_REMOTEDEBUGGING
+     , WKNavigationDelegate
+#endif
 #ifdef PERM_LOCATION
      , CLLocationManagerDelegate
 #endif
@@ -788,8 +840,14 @@ static void build_menus(void)
     int code = 2; /* POSITION_UNAVAILABLE */
     if (error.code == kCLErrorDenied) code = 1; /* PERMISSION_DENIED */
     NSString *msg = [error localizedDescription];
+    msg = [msg stringByReplacingOccurrencesOfString:@"\\"
+                                         withString:@"\\\\"];
     msg = [msg stringByReplacingOccurrencesOfString:@"'"
                                          withString:@"\\'"];
+    msg = [msg stringByReplacingOccurrencesOfString:@"\n"
+                                         withString:@"\\n"];
+    msg = [msg stringByReplacingOccurrencesOfString:@"\r"
+                                         withString:@"\\r"];
     for (NSString *cbId in pending) {
         NSString *js = [NSString stringWithFormat:
             @"PassifloraIO._geoReject('%@',%d,'%@');",
@@ -810,6 +868,22 @@ static void build_menus(void)
 {
     (void)wv; (void)origin; (void)frame; (void)type;
     decisionHandler(WKPermissionDecisionGrant);
+}
+#endif
+
+#ifdef PERM_REMOTEDEBUGGING
+/* WKNavigationDelegate: auto-start debug after page loads */
+- (void)webView:(WKWebView *)wv
+    didFinishNavigation:(WKNavigation *)navigation
+{
+    (void)wv; (void)navigation;
+    extern void passiflora_auto_debug(int port);
+    extern int g_server_port;
+    static int debug_started = 0;
+    if (!debug_started) {
+        debug_started = 1;
+        passiflora_auto_debug(g_server_port);
+    }
 }
 #endif
 
@@ -864,6 +938,9 @@ void ui_open(int port)
             [[WKWebView alloc] initWithFrame:[[window contentView] bounds]
                                configuration:config];
         [g_webView setUIDelegate:delegate];
+#ifdef PERM_REMOTEDEBUGGING
+        [g_webView setNavigationDelegate:delegate];
+#endif
         [g_webView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
         [window setContentView:g_webView];
 
@@ -1180,6 +1257,10 @@ static ULONG STDMETHODCALLTYPE Handler_Release(WV2Handler *self)
 /* ---- Forward declarations for Invoke callbacks ---- */
 static HRESULT STDMETHODCALLTYPE
 OnControllerCreated(WV2Handler*, HRESULT, void*);
+#ifdef PERM_REMOTEDEBUGGING
+static HRESULT STDMETHODCALLTYPE
+OnNavigationCompleted(WV2Handler*, HRESULT, void*);
+#endif
 
 /* GUIDs for handler interfaces */
 static const IID IID_EnvCompletedHandler = {
@@ -1194,6 +1275,11 @@ static const IID IID_PermissionRequestedHandler = {
 static const IID IID_WebMessageReceivedHandler = {
     0x57213f19,0x00a6,0x49f7,
     {0xa9,0x14,0x0d,0x4e,0x74,0xe7,0xa3,0xb0}};
+#ifdef PERM_REMOTEDEBUGGING
+static const IID IID_NavigationCompletedHandler = {
+    0xd33a35bf,0x1c49,0x4f98,
+    {0x93,0xab,0x00,0x6e,0x05,0x33,0xfe,0x1c}};
+#endif
 
 /* ---- Invoke: environment created ---- */
 static HRESULT STDMETHODCALLTYPE
@@ -1423,8 +1509,45 @@ OnControllerCreated(WV2Handler *self, HRESULT hr, void *ctrl)
     wchar_t url[256];
     _snwprintf(url, 256, L"http://127.0.0.1:%d/", st->port);
     st->webview->lpVtbl->Navigate(st->webview, url);
+
+#ifdef PERM_REMOTEDEBUGGING
+    /* Listen for NavigationCompleted to auto-start debug */
+    {
+        WV2Handler *nh = calloc(1, sizeof *nh);
+        static WV2HandlerVtbl navVtbl = {
+            Handler_QueryInterface, Handler_AddRef,
+            Handler_Release,
+            (WV2InvokeFn)OnNavigationCompleted
+        };
+        nh->lpVtbl   = &navVtbl;
+        nh->refCount = 1;
+        nh->iid      = IID_NavigationCompletedHandler;
+        nh->context  = st;
+        st->webview->lpVtbl->add_NavigationCompleted(
+            st->webview, (void *)nh, NULL);
+        nh->lpVtbl->Release(nh);
+    }
+#endif
+
     return S_OK;
 }
+
+#ifdef PERM_REMOTEDEBUGGING
+/* ---- Invoke: navigation completed — auto-start debug ---- */
+static HRESULT STDMETHODCALLTYPE
+OnNavigationCompleted(WV2Handler *self, HRESULT sender_unused, void *argsRaw)
+{
+    (void)sender_unused; (void)argsRaw;
+    WV2State *st = (WV2State *)self->context;
+    static int debug_started = 0;
+    if (!debug_started) {
+        debug_started = 1;
+        extern void passiflora_auto_debug(int port);
+        passiflora_auto_debug(st->port);
+    }
+    return S_OK;
+}
+#endif
 
 /* ---- Build Win32 menu bar from menu_template[] ---- */
 static HMENU build_win32_menus(WV2State *st)
@@ -1498,7 +1621,8 @@ static void win_call_handlemenu(WV2State *st, const char *title)
     int j = 0;
     for (int i = 0; title[i] && j < (int)sizeof(escaped) - 2; i++) {
         if (title[i] == '\\' || title[i] == '\'') {
-            if (j < (int)sizeof(escaped) - 3) escaped[j++] = '\\';
+            if (j >= (int)sizeof(escaped) - 3) break;
+            escaped[j++] = '\\';
         }
         escaped[j++] = title[i];
     }
@@ -1584,7 +1708,8 @@ static LRESULT CALLBACK ZSWndProc(HWND hwnd, UINT msg,
         }
         return 0;
     case WM_POSIX_RESULT: {
-        /* ExecuteScript callback from worker thread */
+        /* ExecuteScript copies the script string before returning
+         * (standard COM LPCWSTR semantics), so freeing after call is safe. */
         wchar_t *wjs = (wchar_t *)lp;
         if (wjs) {
             if (g_wv2.webview)
@@ -1653,7 +1778,8 @@ void ui_open(int port)
         DWORD tlen = GetTempPathA(MAX_PATH, tmpDir);
         if (tlen > 0 && tlen < MAX_PATH)
             snprintf(dllPath, sizeof dllPath,
-                     "%sWebView2Loader.dll", tmpDir);
+                     "%sWebView2Loader_%lu.dll", tmpDir,
+                     (unsigned long)GetCurrentProcessId());
         HANDLE hf = CreateFileA(dllPath, GENERIC_WRITE, 0, NULL,
                                 CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
         if (hf != INVALID_HANDLE_VALUE) {
@@ -1787,6 +1913,108 @@ void passiflora_eval_js(const char *js)
 
 static WebKitWebView *g_linux_webview = NULL;
 
+/* ================================================================== */
+/*  GStreamer-based native recording                                   */
+/* ================================================================== */
+#if defined(PERM_CAMERA) || defined(PERM_MICROPHONE)
+#include <gst/gst.h>
+
+static GstElement *g_recording_pipeline = NULL;
+static pthread_mutex_t g_rec_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* Start recording to a file using GStreamer.
+ * Returns NULL on success, or a malloc'd error string on failure.  */
+char *gst_start_recording(const char *path, int has_video, int has_audio)
+{
+    pthread_mutex_lock(&g_rec_lock);
+    if (g_recording_pipeline) {
+        pthread_mutex_unlock(&g_rec_lock);
+        return strdup("Already recording");
+    }
+
+    static int gst_inited = 0;
+    if (!gst_inited) { gst_init(NULL, NULL); gst_inited = 1; }
+
+    /* Build pipeline description — filesink location is set via g_object_set
+     * below to avoid shell-style injection through crafted file paths. */
+    const char *desc;
+    if (has_video && has_audio) {
+        desc = "v4l2src ! videoconvert ! vp8enc deadline=1 cpu-used=4 ! queue ! "
+               "webmmux name=mux ! filesink name=sink "
+               "pulsesrc ! audioconvert ! audioresample ! opusenc ! queue ! mux.";
+    } else if (has_video) {
+        desc = "v4l2src ! videoconvert ! vp8enc deadline=1 cpu-used=4 ! "
+               "webmmux ! filesink name=sink";
+    } else {
+        desc = "pulsesrc ! audioconvert ! audioresample ! opusenc ! "
+               "webmmux ! filesink name=sink";
+    }
+
+    GError *err = NULL;
+    g_recording_pipeline = gst_parse_launch(desc, &err);
+    if (!g_recording_pipeline) {
+        char *msg = strdup(err ? err->message : "Pipeline creation failed");
+        if (err) g_error_free(err);
+        pthread_mutex_unlock(&g_rec_lock);
+        return msg;
+    }
+    if (err) g_error_free(err);
+
+    /* Set the file path via the GObject property API — no string escaping
+     * needed, so paths with quotes or special chars are handled safely. */
+    GstElement *sink = gst_bin_get_by_name(GST_BIN(g_recording_pipeline), "sink");
+    if (!sink) {
+        gst_object_unref(g_recording_pipeline);
+        g_recording_pipeline = NULL;
+        pthread_mutex_unlock(&g_rec_lock);
+        return strdup("filesink element not found in pipeline");
+    }
+    g_object_set(sink, "location", path, NULL);
+    gst_object_unref(sink);
+
+    GstStateChangeReturn ret = gst_element_set_state(
+        g_recording_pipeline, GST_STATE_PLAYING);
+    if (ret == GST_STATE_CHANGE_FAILURE) {
+        gst_object_unref(g_recording_pipeline);
+        g_recording_pipeline = NULL;
+        pthread_mutex_unlock(&g_rec_lock);
+        return strdup("Failed to start recording pipeline");
+    }
+
+    pthread_mutex_unlock(&g_rec_lock);
+    return NULL;
+}
+
+/* Stop recording.
+ * Returns NULL on success, or a malloc'd error string on failure.  */
+char *gst_stop_recording(void)
+{
+    pthread_mutex_lock(&g_rec_lock);
+    if (!g_recording_pipeline) {
+        pthread_mutex_unlock(&g_rec_lock);
+        return strdup("Not recording");
+    }
+
+    /* Send EOS and wait for it to propagate (ensures file is flushed) */
+    gst_element_send_event(g_recording_pipeline, gst_event_new_eos());
+
+    GstBus *bus = gst_element_get_bus(g_recording_pipeline);
+    if (bus) {
+        /* Wait up to 5 seconds for EOS */
+        gst_bus_timed_pop_filtered(bus, 5 * GST_SECOND,
+            GST_MESSAGE_EOS | GST_MESSAGE_ERROR);
+        gst_object_unref(bus);
+    }
+
+    gst_element_set_state(g_recording_pipeline, GST_STATE_NULL);
+    gst_object_unref(g_recording_pipeline);
+    g_recording_pipeline = NULL;
+
+    pthread_mutex_unlock(&g_rec_lock);
+    return NULL;
+}
+#endif /* PERM_CAMERA || PERM_MICROPHONE */
+
 /* ---- Call PassifloraConfig.handleMenu() in the WebView ---- */
 static void linux_call_handlemenu(const char *title)
 {
@@ -1796,8 +2024,10 @@ static void linux_call_handlemenu(const char *title)
     char escaped[512];
     int j = 0;
     for (int i = 0; title[i] && j < (int)sizeof(escaped) - 2; i++) {
-        if (title[i] == '\\' || title[i] == '\'')
-            if (j < (int)sizeof(escaped) - 3) escaped[j++] = '\\';
+        if (title[i] == '\\' || title[i] == '\'') {
+            if (j >= (int)sizeof(escaped) - 3) break;
+            escaped[j++] = '\\';
+        }
         escaped[j++] = title[i];
     }
     escaped[j] = '\0';
@@ -1952,11 +2182,14 @@ static void linux_ensure_desktop_integration(void)
                             (const gchar *)linux_icon_png,
                             (gssize)linux_icon_png_len, NULL);
         /* Ask GTK to refresh the icon cache (best-effort) */
-        char *cache_cmd = g_strdup_printf(
-            "gtk-update-icon-cache -f -t '%s/.local/share/icons/hicolor'",
-            home);
-        g_spawn_command_line_async(cache_cmd, NULL);
-        g_free(cache_cmd);
+        char *cache_dir = g_build_filename(home, ".local", "share",
+                                           "icons", "hicolor", NULL);
+        const gchar *argv[] = {
+            "gtk-update-icon-cache", "-f", "-t", cache_dir, NULL
+        };
+        g_spawn_async(NULL, (gchar **)argv, NULL,
+                      G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, NULL);
+        g_free(cache_dir);
         g_installed_icon = TRUE;
     }
     g_free(icon_path);
@@ -2050,7 +2283,9 @@ static gboolean on_permission_request(WebKitWebView *wv,
     return FALSE;      /* let WebKit deny other types */
 }
 
-/* ---- POSIX bridge via native message handler ---- */\n\n/* Validate callback ID format (posix_N) to prevent JS injection */
+/* ---- POSIX bridge via native message handler ---- */
+
+/* Validate callback ID format (posix_N) to prevent JS injection */
 static int is_valid_posix_id(const char *id)
 {
     if (!id || strncmp(id, "posix_", 6) != 0) return 0;
@@ -2133,6 +2368,61 @@ static void on_posix_message(WebKitUserContentManager *manager,
     g_thread_new("posix", posix_thread_func, task);
 }
 
+/* ---- Handle JavaScript alert/confirm/prompt dialogs ---- */
+static gboolean on_script_dialog(WebKitWebView *wv,
+                                 WebKitScriptDialog *dialog,
+                                 gpointer data)
+{
+    (void)wv; (void)data;
+    WebKitScriptDialogType type = webkit_script_dialog_get_dialog_type(dialog);
+
+    if (type == WEBKIT_SCRIPT_DIALOG_ALERT) {
+        GtkWidget *dlg = gtk_message_dialog_new(
+            NULL, GTK_DIALOG_MODAL, GTK_MESSAGE_INFO, GTK_BUTTONS_OK,
+            "%s", webkit_script_dialog_get_message(dialog));
+        gtk_dialog_run(GTK_DIALOG(dlg));
+        gtk_widget_destroy(dlg);
+        return TRUE;
+    }
+
+    if (type == WEBKIT_SCRIPT_DIALOG_CONFIRM) {
+        GtkWidget *dlg = gtk_message_dialog_new(
+            NULL, GTK_DIALOG_MODAL, GTK_MESSAGE_QUESTION, GTK_BUTTONS_YES_NO,
+            "%s", webkit_script_dialog_get_message(dialog));
+        gint resp = gtk_dialog_run(GTK_DIALOG(dlg));
+        gtk_widget_destroy(dlg);
+        webkit_script_dialog_confirm_set_confirmed(dialog,
+            resp == GTK_RESPONSE_YES);
+        return TRUE;
+    }
+
+    if (type == WEBKIT_SCRIPT_DIALOG_PROMPT) {
+        GtkWidget *dlg = gtk_dialog_new_with_buttons(
+            "Input", NULL, GTK_DIALOG_MODAL,
+            "_Cancel", GTK_RESPONSE_CANCEL,
+            "_OK", GTK_RESPONSE_OK, NULL);
+        GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(dlg));
+        GtkWidget *label = gtk_label_new(
+            webkit_script_dialog_get_message(dialog));
+        gtk_label_set_line_wrap(GTK_LABEL(label), TRUE);
+        gtk_container_add(GTK_CONTAINER(content), label);
+        GtkWidget *entry = gtk_entry_new();
+        const char *def = webkit_script_dialog_prompt_get_default_text(dialog);
+        if (def) gtk_entry_set_text(GTK_ENTRY(entry), def);
+        gtk_container_add(GTK_CONTAINER(content), entry);
+        gtk_widget_show_all(content);
+        gint resp = gtk_dialog_run(GTK_DIALOG(dlg));
+        if (resp == GTK_RESPONSE_OK) {
+            webkit_script_dialog_prompt_set_text(dialog,
+                gtk_entry_get_text(GTK_ENTRY(entry)));
+        }
+        gtk_widget_destroy(dlg);
+        return TRUE;
+    }
+
+    return FALSE;   /* let WebKit handle other types */
+}
+
 /* ---- Notify user about desktop setup once the page has loaded ---- */
 static void on_page_loaded(WebKitWebView *wv, WebKitLoadEvent event,
                            gpointer data)
@@ -2154,6 +2444,18 @@ static void on_page_loaded(WebKitWebView *wv, WebKitLoadEvent event,
         g_installed_desktop = FALSE;
         g_installed_icon = FALSE;
     }
+
+#ifdef PERM_REMOTEDEBUGGING
+    {
+        static int debug_started = 0;
+        if (!debug_started) {
+            debug_started = 1;
+            extern void passiflora_auto_debug(int port);
+            extern int g_server_port;
+            passiflora_auto_debug(g_server_port);
+        }
+    }
+#endif
 }
 
 /* ---- Entry point ---- */
@@ -2218,6 +2520,8 @@ void ui_open(int port)
                      G_CALLBACK(on_page_loaded), NULL);
     g_signal_connect(g_linux_webview, "permission-request",
                      G_CALLBACK(on_permission_request), NULL);
+    g_signal_connect(g_linux_webview, "script-dialog",
+                     G_CALLBACK(on_script_dialog), NULL);
     gtk_box_pack_start(GTK_BOX(vbox), GTK_WIDGET(g_linux_webview),
                        TRUE, TRUE, 0);
 

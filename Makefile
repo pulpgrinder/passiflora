@@ -1,6 +1,6 @@
 PROGNAME = HeckinChonker
 CC      ?= cc
-CFLAGS  ?= -Wall -Wextra -O2
+CFLAGS  ?= -Wall -Wextra -O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2
 LDFLAGS ?= -lpthread
 CONTENT ?= src/www
 
@@ -8,7 +8,9 @@ CONTENT ?= src/www
 PERM_LOCATION   := $(shell awk '/^location /   {print $$2}' src/permissions 2>/dev/null)
 PERM_CAMERA     := $(shell awk '/^camera /     {print $$2}' src/permissions 2>/dev/null)
 PERM_MICROPHONE := $(shell awk '/^microphone / {print $$2}' src/permissions 2>/dev/null)
-PERM_DEFS :=
+PERM_REMOTEDEBUGGING := $(shell awk '/^remotedebugging / {print $$2}' src/permissions 2>/dev/null)
+PERM_UNRESTRICTEDFILESYSTEMACCESS := $(shell awk '/^unrestrictedfilesystemaccess / {print $$2}' src/permissions 2>/dev/null)
+PERM_DEFS := -DPROGNAME_STR=\"$(PROGNAME)\"
 ifeq ($(PERM_LOCATION),1)
   PERM_DEFS += -DPERM_LOCATION
 endif
@@ -17,6 +19,12 @@ ifeq ($(PERM_CAMERA),1)
 endif
 ifeq ($(PERM_MICROPHONE),1)
   PERM_DEFS += -DPERM_MICROPHONE
+endif
+ifeq ($(PERM_REMOTEDEBUGGING),1)
+  PERM_DEFS += -DPERM_REMOTEDEBUGGING
+endif
+ifeq ($(PERM_UNRESTRICTEDFILESYSTEMACCESS),1)
+  PERM_DEFS += -DPERM_UNRESTRICTEDFILESYSTEMACCESS
 endif
 
 # Platform detection
@@ -43,12 +51,15 @@ ifeq ($(UNAME_S),Darwin)
   IOS_MIN       ?= 15.0
   IOS_CFLAGS     = -x objective-c -fobjc-arc -arch $(IOS_ARCH) \
                    -isysroot $(IOS_SDK) -miphoneos-version-min=$(IOS_MIN) \
-                   $(PERM_DEFS) -Wall -Wextra -O2
+                   $(PERM_DEFS) -Wall -Wextra -O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2
   IOS_LDFLAGS    = -arch $(IOS_ARCH) -isysroot $(IOS_SDK) \
                    -miphoneos-version-min=$(IOS_MIN) \
                    -framework UIKit -framework WebKit -framework CoreGraphics -lpthread
   ifeq ($(PERM_LOCATION),1)
     IOS_LDFLAGS += -framework CoreLocation
+  endif
+  ifeq ($(PERM_REMOTEDEBUGGING),1)
+    IOS_LDFLAGS += -framework Network
   endif
   IOS_BINDIR     = bin/iOS
   IOS_BINARY     = $(IOS_BINDIR)/$(PROGNAME)
@@ -60,12 +71,15 @@ ifeq ($(UNAME_S),Darwin)
   SIMOS_ARCH    ?= arm64
   SIMOS_CFLAGS   = -x objective-c -fobjc-arc -arch $(SIMOS_ARCH) \
                    -isysroot $(SIMOS_SDK) -mios-simulator-version-min=$(IOS_MIN) \
-                   $(PERM_DEFS) -Wall -Wextra -O2
+                   $(PERM_DEFS) -Wall -Wextra -O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2
   SIMOS_LDFLAGS  = -arch $(SIMOS_ARCH) -isysroot $(SIMOS_SDK) \
                    -mios-simulator-version-min=$(IOS_MIN) \
                    -framework UIKit -framework WebKit -framework CoreGraphics -lpthread
   ifeq ($(PERM_LOCATION),1)
     SIMOS_LDFLAGS += -framework CoreLocation
+  endif
+  ifeq ($(PERM_REMOTEDEBUGGING),1)
+    SIMOS_LDFLAGS += -framework Network
   endif
   SIMOS_BINDIR   = bin/iOS-sim
   SIMOS_BINARY   = $(SIMOS_BINDIR)/$(PROGNAME)
@@ -73,8 +87,13 @@ ifeq ($(UNAME_S),Darwin)
 else ifeq ($(UNAME_S),Linux)
   OS_NAME        = Linux
   WEBKIT_PKG    := $(shell pkg-config --exists webkit2gtk-4.1 2>/dev/null && echo webkit2gtk-4.1 || echo webkit2gtk-4.0)
-  UI_CFLAGS      = $(shell pkg-config --cflags gtk+-3.0 $(WEBKIT_PKG) 2>/dev/null)
+  UI_CFLAGS      = $(shell pkg-config --cflags gtk+-3.0 $(WEBKIT_PKG) 2>/dev/null) $(PERM_DEFS)
   UI_LDFLAGS     = $(shell pkg-config --libs gtk+-3.0 $(WEBKIT_PKG) 2>/dev/null)
+  # GStreamer for native recording (when camera or microphone enabled)
+  ifneq (,$(filter 1,$(PERM_CAMERA) $(PERM_MICROPHONE)))
+    UI_CFLAGS   += $(shell pkg-config --cflags gstreamer-1.0 2>/dev/null)
+    UI_LDFLAGS  += $(shell pkg-config --libs gstreamer-1.0 2>/dev/null)
+  endif
   MENU_TEMPLATE  = src/Linux/menus/menu.txt
 else
   OS_NAME        = $(UNAME_S)
@@ -83,7 +102,7 @@ endif
 # Windows cross-compilation (mingw-w64)
 WIN_CC        ?= x86_64-w64-mingw32-gcc
 WIN_WINDRES   ?= x86_64-w64-mingw32-windres
-WIN_CFLAGS     = -Wall -Wextra -O2 $(PERM_DEFS)
+WIN_CFLAGS     = -Wall -Wextra -O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2 $(PERM_DEFS)
 WIN_LDFLAGS    = -lws2_32 -lshell32 -lgdi32 -lole32 -luuid -lshlwapi -mwindows -static -lpthread
 WIN_BINDIR     = bin/Windows
 WIN_BINARY     = $(WIN_BINDIR)/$(PROGNAME).exe
@@ -114,16 +133,16 @@ $(GENDIR)/zipdata.h: $(CONTENT)
 
 $(GENDIR)/menu.h: $(MENU_TEMPLATE) nixscripts/mkmenu.sh
 	@mkdir -p $(GENDIR)
-	sh nixscripts/mkmenu.sh $(MENU_TEMPLATE) $(PROGNAME) $(GENDIR)/menu.h
+	sh nixscripts/mkmenu.sh "$(MENU_TEMPLATE)" "$(PROGNAME)" "$(GENDIR)/menu.h"
 
 $(GENDIR)/win_menu.h: src/Windows/menus/menu.txt nixscripts/mkmenu.sh
 	@mkdir -p $(GENDIR)
-	sh nixscripts/mkmenu.sh src/Windows/menus/menu.txt $(PROGNAME) $(GENDIR)/win_menu.h
+	sh nixscripts/mkmenu.sh src/Windows/menus/menu.txt "$(PROGNAME)" "$(GENDIR)/win_menu.h"
 
 $(BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/menu.h
 	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh $(MENU_TEMPLATE) $(PROGNAME) $(OS_NAME) $(CONFIG_JS)
-	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
+	sh nixscripts/mkmenu_json.sh "$(MENU_TEMPLATE)" "$(PROGNAME)" "$(OS_NAME)" "$(CONFIG_JS)"
+	sh nixscripts/mkzipfile.sh "$(CONTENT)" "$(GENDIR)/zipdata.h"
 ifeq ($(UNAME_S),Linux)
 	@# Generate linux_icon.h with embedded icon (or stub if no icon available)
 	@mkdir -p $(GENDIR)
@@ -149,7 +168,7 @@ icons:
 
 bundle: $(BINARY)
 ifeq ($(UNAME_S),Darwin)
-	sh nixscripts/mkbundle.sh $(PROGNAME) $(BINARY) $(ICNS) $(BUNDLE_ID) $(VERSION)
+	sh nixscripts/mkbundle.sh "$(PROGNAME)" "$(BINARY)" "$(ICNS)" "$(BUNDLE_ID)" "$(VERSION)"
 endif
 
 sign: bundle
@@ -166,8 +185,8 @@ ios: $(IOS_BINARY) ios-bundle
 $(IOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/menu.h
 ifeq ($(UNAME_S),Darwin)
 	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt $(PROGNAME) iOS $(CONFIG_JS)
-	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
+	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt "$(PROGNAME)" iOS "$(CONFIG_JS)"
+	sh nixscripts/mkzipfile.sh "$(CONTENT)" "$(GENDIR)/zipdata.h"
 	mkdir -p $(IOS_BINDIR)
 	$(IOS_CC) $(IOS_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(IOS_LDFLAGS)
 else
@@ -176,7 +195,7 @@ endif
 
 ios-bundle: $(IOS_BINARY)
 ifeq ($(UNAME_S),Darwin)
-	sh nixscripts/mkiosbundle.sh $(PROGNAME) $(IOS_BINARY) src/icons/builticons/ios/AppIcon-1024.png $(BUNDLE_ID) $(VERSION)
+	sh nixscripts/mkiosbundle.sh "$(PROGNAME)" "$(IOS_BINARY)" src/icons/builticons/ios/AppIcon-1024.png "$(BUNDLE_ID)" "$(VERSION)"
 endif
 
 sign-ios: ios-bundle
@@ -285,8 +304,8 @@ iossim: $(SIMOS_BINARY) iossim-bundle iossim-run
 $(SIMOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/menu.h
 ifeq ($(UNAME_S),Darwin)
 	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt $(PROGNAME) iOS $(CONFIG_JS)
-	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
+	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt "$(PROGNAME)" iOS "$(CONFIG_JS)"
+	sh nixscripts/mkzipfile.sh "$(CONTENT)" "$(GENDIR)/zipdata.h"
 	mkdir -p $(SIMOS_BINDIR)
 	$(SIMOS_CC) $(SIMOS_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(SIMOS_LDFLAGS)
 else
@@ -295,7 +314,7 @@ endif
 
 iossim-bundle: $(SIMOS_BINARY)
 ifeq ($(UNAME_S),Darwin)
-	sh nixscripts/mkiosbundle.sh $(PROGNAME) $(SIMOS_BINARY) src/icons/builticons/ios/AppIcon-1024.png $(BUNDLE_ID) $(VERSION) $(SIMOS_BINDIR)
+	sh nixscripts/mkiosbundle.sh "$(PROGNAME)" "$(SIMOS_BINARY)" src/icons/builticons/ios/AppIcon-1024.png "$(BUNDLE_ID)" "$(VERSION)" "$(SIMOS_BINDIR)"
 endif
 
 sign-iossim: iossim-bundle

@@ -23,11 +23,10 @@ if [ ! -d "$SRCDIR" ]; then
     exit 1
 fi
 
-# Create a unique temp path for the zip archive.
-TMPZIP=$(mktemp /tmp/mkzipfile.XXXXXX)
-rm -f "$TMPZIP"              # zip needs to create the file itself
-TMPZIP="$TMPZIP.zip"
-trap 'rm -f "$TMPZIP"' EXIT
+# Create a unique temp directory and place the zip archive inside it.
+TMPDIR_MZ=$(mktemp -d /tmp/mkzipfile.XXXXXX)
+TMPZIP="$TMPDIR_MZ/archive.zip"
+trap 'rm -rf "$TMPDIR_MZ"' EXIT
 
 # Zip all non-hidden files from inside the directory (no path prefix).
 (cd "$SRCDIR" && find . -type f ! -name '.*' -print | sed 's|^\./||' | zip -@ "$TMPZIP") > /dev/null

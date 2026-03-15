@@ -37,6 +37,7 @@
   #include <ws2tcpip.h>
   #include <windows.h>
   #include <shellapi.h>
+  #include <shlobj.h>
   #define sock_read(fd,buf,len)       recv((fd),(char*)(buf),(int)(len),0)
   #define sock_write(fd,buf,len)      send((fd),(const char*)(buf),(int)(len),0)
   #define sock_close(fd)              closesocket(fd)
@@ -49,6 +50,7 @@
   #include <unistd.h>
   #include <pwd.h>
   #include <sys/types.h>
+  #include <sys/stat.h>
   #include <sys/socket.h>
   #include <sys/time.h>
   #include <netinet/in.h>
@@ -92,12 +94,82 @@
 extern void ui_open(int port);
 extern void passiflora_eval_js(const char *js);
 
+/* Global server port — readable from UI.c for auto-debug */
+int g_server_port = 0;
+
+#ifdef PERM_REMOTEDEBUGGING
 /* Maximum POST body for debug endpoint */
 #define MAX_DEBUG_BODY  (256 * 1024)
 
 /* Debug result buffer — written by webview JS, read by external debugger */
 static char *debug_result_buf = NULL;
 static pthread_mutex_t debug_result_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* Return the local LAN IPv4 address (or "127.0.0.1" as fallback).
+ * Uses the UDP-connect trick: connect a UDP socket to an external
+ * address (no data sent), then read back the local address.          */
+static char g_ip_buf[64];
+#ifndef _WIN32
+static pthread_once_t g_ip_once = PTHREAD_ONCE_INIT;
+#endif
+
+static void get_local_ip_init(void)
+{
+#ifdef _WIN32
+    SOCKET s = socket(AF_INET, SOCK_DGRAM, 0);
+    if (s == INVALID_SOCKET) { snprintf(g_ip_buf, sizeof g_ip_buf, "127.0.0.1"); return; }
+#else
+    int s = socket(AF_INET, SOCK_DGRAM, 0);
+    if (s < 0) { snprintf(g_ip_buf, sizeof g_ip_buf, "127.0.0.1"); return; }
+#endif
+
+    struct sockaddr_in dst;
+    memset(&dst, 0, sizeof dst);
+    dst.sin_family = AF_INET;
+    dst.sin_port = htons(53);
+    /* 8.8.8.8 — used only for routing lookup, no data is sent */
+    dst.sin_addr.s_addr = htonl(0x08080808u);
+
+    if (connect(s, (struct sockaddr *)&dst, sizeof dst) < 0) {
+        sock_close(s);
+        snprintf(g_ip_buf, sizeof g_ip_buf, "127.0.0.1");
+        return;
+    }
+
+    struct sockaddr_in local;
+    socklen_t len = sizeof local;
+    if (getsockname(s, (struct sockaddr *)&local, &len) < 0) {
+        sock_close(s);
+        snprintf(g_ip_buf, sizeof g_ip_buf, "127.0.0.1");
+        return;
+    }
+    sock_close(s);
+
+    inet_ntop(AF_INET, &local.sin_addr, g_ip_buf, sizeof g_ip_buf);
+}
+
+const char *get_local_ip(void)
+{
+#ifdef _WIN32
+    static INIT_ONCE win_once = INIT_ONCE_STATIC_INIT;
+    InitOnceExecuteOnce(&win_once,
+        (PINIT_ONCE_FN)(void *)get_local_ip_init, NULL, NULL);
+#else
+    pthread_once(&g_ip_once, get_local_ip_init);
+#endif
+    return g_ip_buf;
+}
+
+/* Called from UI.c after page finishes loading to auto-start debug */
+void passiflora_auto_debug(int port)
+{
+    const char *ip = get_local_ip();
+    char js[256];
+    snprintf(js, sizeof js,
+        "PassifloraIO._autoDebug('%s',%d)", ip, port);
+    passiflora_eval_js(js);
+}
+#endif /* PERM_REMOTEDEBUGGING */
 
 /* ------------------------------------------------------------------ */
 /*  Configuration                                                      */
@@ -192,14 +264,18 @@ static void send_response(int fd, int code, const char *status,
                            const char *content_type,
                            const unsigned char *body, size_t body_len)
 {
-    char hdr[1024];
+    char hdr[2048];
     int hlen = snprintf(hdr, sizeof hdr,
         "HTTP/1.1 %d %s\r\n"
         "Content-Type: %s\r\n"
         "Content-Length: %zu\r\n"
         "X-Content-Type-Options: nosniff\r\n"
         "X-Frame-Options: DENY\r\n"
+#ifdef PERM_REMOTEDEBUGGING
+        "Content-Security-Policy: default-src 'self' 'unsafe-inline' 'unsafe-eval'; media-src 'self' mediastream: blob:\r\n"
+#else
         "Content-Security-Policy: default-src 'self' 'unsafe-inline'; media-src 'self' mediastream: blob:\r\n"
+#endif
         "Permissions-Policy: camera=(self), microphone=(self), geolocation=(self)\r\n"
         "Referrer-Policy: no-referrer\r\n"
         "Connection: close\r\n"
@@ -265,6 +341,22 @@ static FILE *fh_take(int h)
     file_handles[h] = NULL;
     pthread_mutex_unlock(&fh_lock);
     return f;
+}
+
+/* Close all open file handles (cleanup on page navigation/reload) */
+static int fh_close_all(void)
+{
+    int closed = 0;
+    pthread_mutex_lock(&fh_lock);
+    for (int i = 1; i < MAX_FILE_HANDLES; i++) {
+        if (file_handles[i]) {
+            fclose(file_handles[i]);
+            file_handles[i] = NULL;
+            closed++;
+        }
+    }
+    pthread_mutex_unlock(&fh_lock);
+    return closed;
 }
 
 /* ---- Base64 encode/decode ---- */
@@ -481,7 +573,8 @@ char *json_ok_b64(const unsigned char *data, size_t len)
     return buf;
 }
 
-/* Return a pre-formed JSON value (array, object, etc.) as the result. */
+/* Return a pre-formed JSON value (array, object, etc.) as the result.
+ * WARNING: json_val is embedded without escaping — only pass trusted data. */
 char *json_ok_raw(const char *json_val)
 {
     if (!json_val) return json_ok_null();
@@ -496,6 +589,129 @@ char *json_ok_raw(const char *json_val)
 /* ---- POSIX dispatcher (called from native UI bridge) ---- */
 /*  params: URL-encoded string "func=fopen&path=...&mode=..."          */
 /*  Returns malloc'd JSON string. Caller must free().                  */
+
+/* ------------------------------------------------------------------ */
+/*  App documents directory — platform-specific                        */
+/*  Returns a static path to "~/Documents/PROGNAME" or equivalent.     */
+/*  Creates the directory on first call if it does not exist.          */
+/* ------------------------------------------------------------------ */
+static const char *getDocumentsDirectory(void)
+{
+    static char doc_dir[2048] = "";
+    if (doc_dir[0]) return doc_dir;
+
+#ifdef _WIN32
+    char my_docs[MAX_PATH];
+    if (SUCCEEDED(SHGetFolderPathA(NULL, CSIDL_MYDOCUMENTS, NULL, 0, my_docs))) {
+        snprintf(doc_dir, sizeof doc_dir, "%s\\%s", my_docs, PROGNAME_STR);
+    } else {
+        const char *profile = getenv("USERPROFILE");
+        if (profile)
+            snprintf(doc_dir, sizeof doc_dir, "%s\\Documents\\%s",
+                     profile, PROGNAME_STR);
+    }
+    if (doc_dir[0]) CreateDirectoryA(doc_dir, NULL);
+#elif defined(__APPLE__) && defined(__MACH__) && TARGET_OS_IPHONE
+    @autoreleasepool {
+        NSString *docs = [NSSearchPathForDirectoriesInDomains(
+            NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+        if (docs)
+            snprintf(doc_dir, sizeof doc_dir, "%s/%s",
+                     [docs UTF8String], PROGNAME_STR);
+    }
+    if (doc_dir[0]) mkdir(doc_dir, 0755);
+#elif defined(__ANDROID__)
+    extern const char *android_files_dir;
+    const char *base = android_files_dir;
+    if (!base) base = getenv("HOME");
+    if (base)
+        snprintf(doc_dir, sizeof doc_dir, "%s/%s", base, PROGNAME_STR);
+    if (doc_dir[0]) mkdir(doc_dir, 0755);
+#else
+    /* macOS, Linux — use ~/Documents/ */
+    const char *dd_home = getenv("HOME");
+    if (!dd_home) {
+        struct passwd *pw = getpwuid(getuid());
+        if (pw) dd_home = pw->pw_dir;
+    }
+    if (dd_home) {
+        char parent[1024];
+        snprintf(parent, sizeof parent, "%s/Documents", dd_home);
+        mkdir(parent, 0755);
+        snprintf(doc_dir, sizeof doc_dir, "%s/%s", parent, PROGNAME_STR);
+    }
+    if (doc_dir[0]) mkdir(doc_dir, 0755);
+#endif
+
+    /* Canonicalize the stored path so symlink comparisons work */
+#ifndef _WIN32
+    if (doc_dir[0]) {
+        char *rp = realpath(doc_dir, NULL);
+        if (rp) {
+            snprintf(doc_dir, sizeof doc_dir, "%s", rp);
+            free(rp);
+        }
+    }
+#endif
+
+    return doc_dir[0] ? doc_dir : NULL;
+}
+
+#ifndef PERM_UNRESTRICTEDFILESYSTEMACCESS
+/* ------------------------------------------------------------------ */
+/*  Sandbox check — ensure a path resolves inside the documents dir    */
+/* ------------------------------------------------------------------ */
+static int path_in_sandbox(const char *path)
+{
+    const char *sandbox = getDocumentsDirectory();
+    if (!sandbox) return 0;
+
+#ifdef _WIN32
+    char resolved[2048], resolved_sb[2048];
+    if (!_fullpath(resolved, path, sizeof resolved))
+        return 0;
+    if (!_fullpath(resolved_sb, sandbox, sizeof resolved_sb))
+        return 0;
+    size_t slen = strlen(resolved_sb);
+    return (_strnicmp(resolved, resolved_sb, slen) == 0 &&
+            (resolved[slen] == '\\' || resolved[slen] == '/' ||
+             resolved[slen] == '\0'));
+#else
+    /* Canonicalize the sandbox path to resolve symlinks */
+    char *real_sandbox = realpath(sandbox, NULL);
+    if (!real_sandbox) return 0;
+    size_t slen = strlen(real_sandbox);
+
+    /* Try realpath for existing paths */
+    char *resolved = realpath(path, NULL);
+    if (resolved) {
+        int ok = (strncmp(resolved, real_sandbox, slen) == 0 &&
+                  (resolved[slen] == '/' || resolved[slen] == '\0'));
+        free(resolved);
+        free(real_sandbox);
+        return ok;
+    }
+    /* For new files, resolve the parent directory */
+    char pathcopy[2048];
+    snprintf(pathcopy, sizeof pathcopy, "%s", path);
+    char *last_slash = strrchr(pathcopy, '/');
+    if (last_slash && last_slash != pathcopy) {
+        *last_slash = '\0';
+        resolved = realpath(pathcopy, NULL);
+        if (resolved) {
+            int ok = (strncmp(resolved, real_sandbox, slen) == 0 &&
+                      (resolved[slen] == '/' || resolved[slen] == '\0'));
+            free(resolved);
+            free(real_sandbox);
+            return ok;
+        }
+    }
+    free(real_sandbox);
+    return 0;
+#endif
+}
+#endif
+
 char *passiflora_posix_call(const char *params)
 {
     /* Make a mutable copy so form_get_str can url_decode in place */
@@ -525,11 +741,25 @@ char *passiflora_posix_call(const char *params)
         }
         if (form_get_str(body, "mode", mode_buf, sizeof mode_buf) < 0)
             snprintf(mode_buf, sizeof mode_buf, "r");
-        if (strstr(path_buf, "..")) {
-            free(body); return json_error("Path traversal not allowed");
+        /* Whitelist valid fopen modes */
+        {
+            static const char *valid_modes[] = {
+                "r","w","a","rb","wb","ab","r+","w+","a+",
+                "rb+","wb+","ab+","r+b","w+b","a+b", NULL
+            };
+            int mode_ok = 0;
+            for (int i = 0; valid_modes[i]; i++) {
+                if (strcmp(mode_buf, valid_modes[i]) == 0) { mode_ok = 1; break; }
+            }
+            if (!mode_ok) { free(body); return json_error("Invalid file mode"); }
         }
+#ifndef PERM_UNRESTRICTEDFILESYSTEMACCESS
+        if (strstr(path_buf, "..") || !path_in_sandbox(path_buf)) {
+            free(body); return json_error("Access denied: path outside app folder");
+        }
+#endif
         FILE *f = fopen(path_buf, mode_buf);
-        if (!f) { result = json_error(strerror(errno)); free(body); return result; }
+        if (!f) { result = json_error("File open failed"); free(body); return result; }
         int h = fh_alloc(f);
         if (h < 0) { fclose(f); free(body); return json_error("Too many open files"); }
         free(body); return json_ok_int(h);
@@ -625,7 +855,7 @@ char *passiflora_posix_call(const char *params)
         FILE *f = fh_get(handle);
         if (!f) { free(body); return json_error("Invalid handle"); }
         if (fseek(f, lval, whence) != 0) {
-            result = json_error(strerror(errno)); free(body); return result;
+            result = json_error("Seek failed"); free(body); return result;
         }
         free(body); return json_ok_void();
     }
@@ -639,7 +869,7 @@ char *passiflora_posix_call(const char *params)
         if (!f) { free(body); return json_error("Invalid handle"); }
         long pos = ftell(f);
         free(body);
-        return pos < 0 ? json_error(strerror(errno)) : json_ok_int(pos);
+        return pos < 0 ? json_error("Tell failed") : json_ok_int(pos);
     }
 
     /* ---- feof ---- */
@@ -661,7 +891,7 @@ char *passiflora_posix_call(const char *params)
         FILE *f = fh_get(handle);
         if (!f) { free(body); return json_error("Invalid handle"); }
         if (fflush(f) != 0) {
-            result = json_error(strerror(errno)); free(body); return result;
+            result = json_error("Flush failed"); free(body); return result;
         }
         free(body); return json_ok_void();
     }
@@ -671,11 +901,13 @@ char *passiflora_posix_call(const char *params)
         if (form_get_str(body, "path", path_buf, sizeof path_buf) < 0) {
             free(body); return json_error("Missing 'path' parameter");
         }
-        if (strstr(path_buf, "..")) {
-            free(body); return json_error("Path traversal not allowed");
+#ifndef PERM_UNRESTRICTEDFILESYSTEMACCESS
+        if (strstr(path_buf, "..") || !path_in_sandbox(path_buf)) {
+            free(body); return json_error("Access denied: path outside app folder");
         }
+#endif
         if (remove(path_buf) != 0) {
-            result = json_error(strerror(errno)); free(body); return result;
+            result = json_error("Remove failed"); free(body); return result;
         }
         free(body); return json_ok_void();
     }
@@ -686,11 +918,14 @@ char *passiflora_posix_call(const char *params)
             form_get_str(body, "newpath", path_buf2, sizeof path_buf2) < 0) {
             free(body); return json_error("Missing 'oldpath' or 'newpath' parameter");
         }
-        if (strstr(path_buf, "..") || strstr(path_buf2, "..")) {
-            free(body); return json_error("Path traversal not allowed");
+#ifndef PERM_UNRESTRICTEDFILESYSTEMACCESS
+        if (strstr(path_buf, "..") || strstr(path_buf2, "..") ||
+            !path_in_sandbox(path_buf) || !path_in_sandbox(path_buf2)) {
+            free(body); return json_error("Access denied: path outside app folder");
         }
+#endif
         if (rename(path_buf, path_buf2) != 0) {
-            result = json_error(strerror(errno)); free(body); return result;
+            result = json_error("Rename failed"); free(body); return result;
         }
         free(body); return json_ok_void();
     }
@@ -712,28 +947,56 @@ char *passiflora_posix_call(const char *params)
 
     /* ---- getHomeFolder ---- */
     if (strcmp(func, "getHomeFolder") == 0) {
-        const char *home = NULL;
-#ifdef _WIN32
-        home = getenv("USERPROFILE");
-#elif defined(__APPLE__) && defined(__MACH__) && TARGET_OS_IPHONE
-        @autoreleasepool {
-            NSString *docs = [NSSearchPathForDirectoriesInDomains(
-                NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-            if (docs) {
-                char *cdir = strdup([docs UTF8String]);
-                free(body);
-                result = json_ok_str(cdir);
-                free(cdir);
-                return result;
-            }
-        }
-#else
-        struct passwd *pw = getpwuid(getuid());
-        if (pw) home = pw->pw_dir;
-#endif
-        if (!home) home = getenv("HOME");
+        const char *dir = getDocumentsDirectory();
         free(body);
-        return home ? json_ok_str(home) : json_ok_null();
+        return dir ? json_ok_str(dir) : json_ok_null();
+    }
+
+    /* ---- startRecording (Linux GStreamer) ---- */
+#if defined(__linux__) && !defined(__ANDROID__)
+    if (strcmp(func, "startRecording") == 0) {
+        extern char *gst_start_recording(const char *path, int has_video, int has_audio);
+        char rec_path[2048], rec_video[8], rec_audio[8];
+        if (form_get_str(body, "path", rec_path, sizeof rec_path) < 0) {
+            free(body); return json_error("path required");
+        }
+#ifndef PERM_UNRESTRICTEDFILESYSTEMACCESS
+        if (strstr(rec_path, "..") || !path_in_sandbox(rec_path)) {
+            free(body); return json_error("Access denied: path outside app folder");
+        }
+#endif
+        if (form_get_str(body, "video", rec_video, sizeof rec_video) < 0)
+            rec_video[0] = '0', rec_video[1] = '\0';
+        if (form_get_str(body, "audio", rec_audio, sizeof rec_audio) < 0)
+            rec_audio[0] = '0', rec_audio[1] = '\0';
+        int has_video = strcmp(rec_video, "1") == 0;
+        int has_audio = strcmp(rec_audio, "1") == 0;
+        if (!has_video && !has_audio) { free(body); return json_error("video or audio required"); }
+        char *err = gst_start_recording(rec_path, has_video, has_audio);
+        free(body);
+        if (err) { char *r = json_error(err); free(err); return r; }
+        return json_ok_str("recording");
+    }
+
+    if (strcmp(func, "stopRecording") == 0) {
+        extern char *gst_stop_recording(void);
+        char *err = gst_stop_recording();
+        free(body);
+        if (err) { char *r = json_error(err); free(err); return r; }
+        return json_ok_str("stopped");
+    }
+
+    if (strcmp(func, "hasNativeRecording") == 0) {
+        free(body);
+        return json_ok_str("true");
+    }
+#endif
+
+    /* ---- closeAllFileHandles ---- */
+    if (strcmp(func, "closeAllFileHandles") == 0) {
+        int closed = fh_close_all();
+        free(body);
+        return json_ok_int(closed);
     }
 
     free(body);
@@ -895,6 +1158,7 @@ static void handle_request(int fd)
     }
 
     /* ---- CORS preflight for debug endpoints ---- */
+#ifdef PERM_REMOTEDEBUGGING
     if (is_options && (strcmp(path, "/__passiflora/debug") == 0
                        || strcmp(path, "/__passiflora/debug_result") == 0)) {
         const char *resp =
@@ -910,6 +1174,7 @@ static void handle_request(int fd)
         free(hdr);
         return;
     }
+#endif /* PERM_REMOTEDEBUGGING */
 
     /* Reject OPTIONS on all other paths */
     if (is_options) {
@@ -918,6 +1183,7 @@ static void handle_request(int fd)
         return;
     }
 
+#ifdef PERM_REMOTEDEBUGGING
     /* ---- Internal API: debug — relay POST body to webview ---- */
     if (strcmp(path, "/__passiflora/debug") == 0) {
         if (!is_post) {
@@ -1043,7 +1309,14 @@ static void handle_request(int fd)
             }
             body2[cl2] = '\0';
             pthread_mutex_lock(&debug_result_lock);
-            free(debug_result_buf);
+            /* Reject if a result is already pending (not yet retrieved) */
+            if (debug_result_buf) {
+                pthread_mutex_unlock(&debug_result_lock);
+                free(body2);
+                send_text(fd, 429, "Too Many Requests",
+                          "Previous result not yet retrieved\n");
+                free(hdr); return;
+            }
             debug_result_buf = body2;
             pthread_mutex_unlock(&debug_result_lock);
             char resp[512];
@@ -1091,6 +1364,7 @@ static void handle_request(int fd)
         free(hdr);
         return;
     }
+#endif /* PERM_REMOTEDEBUGGING */
 
     /* POST is only valid for /__passiflora/debug endpoints (handled above) */
     if (is_post) {
@@ -1099,6 +1373,108 @@ static void handle_request(int fd)
         free(hdr);
         return;
     }
+
+#ifdef PERM_REMOTEDEBUGGING
+    /* ---- Internal API: embedded debugger page ---- */
+    if (strcmp(path, "/debug") == 0 || strcmp(path, "/debug/") == 0) {
+        static const char debugger_html[] =
+            "<!DOCTYPE html>\n"
+            "<html lang=\"en\"><head><meta charset=\"UTF-8\">\n"
+            "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n"
+            "<title>Passiflora Debugger</title>\n"
+            "<style>\n"
+            "body{font-family:system-ui,sans-serif;max-width:700px;margin:2em auto;padding:0 1em}\n"
+            "label{display:block;margin-top:1em;font-weight:bold}\n"
+            "input,textarea{width:100%;box-sizing:border-box;font:14px monospace;padding:6px}\n"
+            "textarea{min-height:120px}\n"
+            "button{margin-top:1em;padding:8px 20px;font-size:14px;cursor:pointer}\n"
+            "#status{margin-top:1em;padding:10px;background:#f0f0f0;border-radius:4px;"
+            "font:monospace;white-space:pre-wrap;min-height:2em}\n"
+            ".error{color:#c00}.ok{color:#060}\n"
+            "</style></head><body>\n"
+            "<h1>Passiflora Debugger</h1>\n"
+            "<p>Enter the passphrase and JavaScript to execute on this device.</p>\n"
+            "<label for=\"key\">Passphrase</label>\n"
+            "<input type=\"password\" id=\"key\" placeholder=\"Enter the passphrase you set in the app\">\n"
+            "<label for=\"code\">JavaScript</label>\n"
+            "<textarea id=\"code\" placeholder=\"document.title\"></textarea>\n"
+            "<button onclick=\"sendDebug()\">Execute</button>\n"
+            "<div id=\"status\"></div>\n"
+            "<script>\n"
+            "var _nonce=0;\n"
+            "function s2b(s){var b=[];for(var i=0;i<s.length;i++){var c=s.charCodeAt(i);\n"
+            "  if(c<128)b.push(c);else if(c<2048){b.push(192|(c>>6),128|(c&63));}\n"
+            "  else{b.push(224|(c>>12),128|((c>>6)&63),128|(c&63));}}return b;}\n"
+            "function sha256(b){\n"
+            "  var K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,\n"
+            "    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,\n"
+            "    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,\n"
+            "    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,\n"
+            "    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,\n"
+            "    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,\n"
+            "    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,\n"
+            "    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];\n"
+            "  function rr(x,n){return(x>>>n)|(x<<(32-n));}\n"
+            "  b=b.slice();var bl=b.length*8;b.push(128);\n"
+            "  while(b.length%64!==56)b.push(0);\n"
+            "  for(var s=56;s>=0;s-=8)b.push((bl/Math.pow(2,s))&255);\n"
+            "  var H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];\n"
+            "  for(var o=0;o<b.length;o+=64){var W=[];\n"
+            "    for(var t=0;t<16;t++)W[t]=(b[o+t*4]<<24)|(b[o+t*4+1]<<16)|(b[o+t*4+2]<<8)|b[o+t*4+3];\n"
+            "    for(var t=16;t<64;t++){var s0=rr(W[t-15],7)^rr(W[t-15],18)^(W[t-15]>>>3);\n"
+            "      var s1=rr(W[t-2],17)^rr(W[t-2],19)^(W[t-2]>>>10);W[t]=(W[t-16]+s0+W[t-7]+s1)|0;}\n"
+            "    var a=H[0],B=H[1],c=H[2],d=H[3],e=H[4],f=H[5],g=H[6],h=H[7];\n"
+            "    for(var t=0;t<64;t++){var S1=rr(e,6)^rr(e,11)^rr(e,25),ch=(e&f)^(~e&g),t1=(h+S1+ch+K[t]+W[t])|0;\n"
+            "      var S0=rr(a,2)^rr(a,13)^rr(a,22),mj=(a&B)^(a&c)^(B&c),t2=(S0+mj)|0;\n"
+            "      h=g;g=f;f=e;e=(d+t1)|0;d=c;c=B;B=a;a=(t1+t2)|0;}\n"
+            "    H[0]=(H[0]+a)|0;H[1]=(H[1]+B)|0;H[2]=(H[2]+c)|0;H[3]=(H[3]+d)|0;\n"
+            "    H[4]=(H[4]+e)|0;H[5]=(H[5]+f)|0;H[6]=(H[6]+g)|0;H[7]=(H[7]+h)|0;}\n"
+            "  var out=[];for(var i=0;i<8;i++){var v=H[i]>>>0;out.push((v>>24)&255,(v>>16)&255,(v>>8)&255,v&255);}\n"
+            "  return out;}\n"
+            "function hmac(key,msg){\n"
+            "  var kb=s2b(key);if(kb.length>64)kb=sha256(kb);\n"
+            "  while(kb.length<64)kb.push(0);\n"
+            "  var ip=[],op=[];for(var i=0;i<64;i++){ip.push(kb[i]^0x36);op.push(kb[i]^0x5c);}\n"
+            "  var inner=sha256(ip.concat(s2b(msg)));\n"
+            "  var outer=sha256(op.concat(inner));\n"
+            "  var hex='';for(var i=0;i<outer.length;i++)hex+=('0'+outer[i].toString(16)).slice(-2);\n"
+            "  return hex;}\n"
+            "function sendDebug(){\n"
+            "  var s=document.getElementById('status'),k=document.getElementById('key').value,\n"
+            "      c=document.getElementById('code').value;\n"
+            "  if(!k||!c){s.innerHTML='<span class=\"error\">Passphrase and code required.</span>';return;}\n"
+            "  _nonce=Date.now()*1000+Math.floor(Math.random()*1000);\n"
+            "  var h=hmac(k,_nonce+':'+c);\n"
+            "  s.textContent='Sending...';\n"
+            "  fetch('/__passiflora/debug',{method:'POST',\n"
+            "    headers:{'Content-Type':'application/json'},\n"
+            "    body:JSON.stringify({javascript:c,signature:h,nonce:_nonce})})\n"
+            "  .then(function(r){\n"
+            "    if(r.ok){\n"
+            "      s.innerHTML='<span class=\"ok\">Sent — waiting for result...</span>';\n"
+            "      var att=0,mx=20,iv=setInterval(function(){\n"
+            "        att++;fetch('/__passiflora/debug_result').then(function(rr){\n"
+            "          if(rr.status===200){clearInterval(iv);rr.json().then(function(j){var p=[];\n"
+            "            if(j.output)p.push(j.output);if(j.error)p.push('ERROR: '+j.error);\n"
+            "            s.innerHTML='<span class=\"ok\">Result:</span>\\n'+esc(p.join('\\n'));});}\n"
+            "          else if(att>=mx){clearInterval(iv);\n"
+            "            s.innerHTML='<span class=\"ok\">Sent OK</span>\\n(no result within timeout)';}\n"
+            "        }).catch(function(e){if(att>=mx){clearInterval(iv);\n"
+            "          s.innerHTML='<span class=\"ok\">Sent OK</span>\\n('+esc(e.message)+')';}});\n"
+            "      },250);\n"
+            "    }else{r.text().then(function(b){\n"
+            "      s.innerHTML='<span class=\"error\">HTTP '+r.status+'</span>\\n'+esc(b);});}\n"
+            "  }).catch(function(e){s.innerHTML='<span class=\"error\">Error: '+esc(e.message)+'</span>';});\n"
+            "}\n"
+            "function esc(t){var d=document.createElement('div');d.textContent=t;return d.innerHTML;}\n"
+            "</script></body></html>\n";
+        send_response(fd, 200, "OK", "text/html; charset=utf-8",
+                      (const unsigned char *)debugger_html,
+                      strlen(debugger_html));
+        free(hdr);
+        return;
+    }
+#endif /* PERM_REMOTEDEBUGGING */
 
     /* ---- Internal API: open URL in external browser ---- */
     if (strncmp(path, "/__passiflora/openexternal?", 27) == 0) {
@@ -1280,7 +1656,11 @@ int main(int argc, char **argv)
 
     struct sockaddr_in addr = {
         .sin_family      = AF_INET,
+#ifdef PERM_REMOTEDEBUGGING
+        .sin_addr.s_addr = htonl(INADDR_ANY),
+#else
         .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
+#endif
         .sin_port        = htons(port),
     };
 
@@ -1302,7 +1682,13 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    g_server_port = port;
+
+#ifdef PERM_REMOTEDEBUGGING
+    LOGI("passiflora: listening on http://0.0.0.0:%d/\n", port);
+#else
     LOGI("passiflora: listening on http://127.0.0.1:%d/\n", port);
+#endif
 
     if (headless) {
         /* No UI — run server loop on the main thread */
@@ -1329,6 +1715,19 @@ int main(int argc, char **argv)
 /* ------------------------------------------------------------------ */
 #include <jni.h>
 
+/* App-private files directory, set from Java before startServer() */
+const char *android_files_dir = NULL;
+
+JNIEXPORT void JNICALL
+Java_com_example_zipserve_MainActivity_nativeSetFilesDir(
+    JNIEnv *env, jclass cls, jstring path)
+{
+    (void)cls;
+    const char *p = (*env)->GetStringUTFChars(env, path, NULL);
+    android_files_dir = strdup(p);
+    (*env)->ReleaseStringUTFChars(env, path, p);
+}
+
 JNIEXPORT jint JNICALL
 Java_com_example_zipserve_MainActivity_startServer(JNIEnv *env, jclass cls)
 {
@@ -1354,7 +1753,11 @@ Java_com_example_zipserve_MainActivity_startServer(JNIEnv *env, jclass cls)
 
     struct sockaddr_in addr = {
         .sin_family      = AF_INET,
+#ifdef PERM_REMOTEDEBUGGING
+        .sin_addr.s_addr = htonl(INADDR_ANY),
+#else
         .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
+#endif
         .sin_port        = htons(0),
     };
 
@@ -1376,7 +1779,13 @@ Java_com_example_zipserve_MainActivity_startServer(JNIEnv *env, jclass cls)
         return -1;
     }
 
+    g_server_port = port;
+
+#ifdef PERM_REMOTEDEBUGGING
+    LOGI("passiflora: listening on http://0.0.0.0:%d/\n", port);
+#else
     LOGI("passiflora: listening on http://127.0.0.1:%d/\n", port);
+#endif
 
     pthread_t tid;
     pthread_attr_t attr;

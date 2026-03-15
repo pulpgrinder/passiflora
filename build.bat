@@ -29,8 +29,19 @@ set WIN_BINDIR=%SCRIPT_DIR%\bin\Windows
 if "%WIN_CC%"=="" set WIN_CC=gcc
 if "%WIN_WINDRES%"=="" set WIN_WINDRES=windres
 
-set WIN_CFLAGS=-Wall -Wextra -O2
+set WIN_CFLAGS=-Wall -Wextra -O2 -DPROGNAME_STR=\"%PROGNAME%\"
 set WIN_LDFLAGS=-lws2_32 -lshell32 -lgdi32 -lole32 -luuid -mwindows -static -lpthread
+
+REM ── Read src\permissions ──
+if exist "%SCRIPT_DIR%\src\permissions" (
+    for /F "tokens=1,2" %%A in (%SCRIPT_DIR%\src\permissions) do (
+        if /I "%%A"=="location"          if "%%B"=="1" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_LOCATION
+        if /I "%%A"=="camera"            if "%%B"=="1" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_CAMERA
+        if /I "%%A"=="microphone"        if "%%B"=="1" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_MICROPHONE
+        if /I "%%A"=="remotedebugging"   if "%%B"=="1" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_REMOTEDEBUGGING
+        if /I "%%A"=="unrestrictedfilesystemaccess" if "%%B"=="1" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_UNRESTRICTEDFILESYSTEMACCESS
+    )
+)
 
 set WV2_NUGET_VER=1.0.2903.40
 set WV2_NUGET_URL=https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/%WV2_NUGET_VER%
