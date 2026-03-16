@@ -29,7 +29,7 @@ PERM_UNRESTRICTEDFILESYSTEMACCESS=0
 PERM_REMOTEDEBUGGING=0
 PERM_FILE="$PROJECT_ROOT/src/permissions"
 if [ -f "$PERM_FILE" ]; then
-    while IFS=' ' read -r name val rest; do
+    while IFS=' ' read -r name val rest || [ -n "$name" ]; do
         case "$name" in
             location)    PERM_LOCATION="$val" ;;
             camera)      PERM_CAMERA="$val" ;;

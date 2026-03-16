@@ -110,24 +110,23 @@ static WKWebView *g_ios_webView = nil;
 #ifdef PERM_REMOTEDEBUGGING
     /* Browse for a Bonjour service to trigger the local network
        permission dialog.  iOS will not prompt until the app actually
-       touches the local network via a Bonjour or multicast API. */
+       touches the local network via a Bonjour or multicast API.
+       The browser is kept alive for the app's lifetime so that iOS
+       maintains the local-network permission grant — without it,
+       incoming TCP connections from other devices are silently dropped. */
     {
+        static nw_browser_t s_browser;
         nw_browse_descriptor_t desc =
             nw_browse_descriptor_create_bonjour_service("_http._tcp", "local");
         nw_parameters_t params = nw_parameters_create();
-        nw_browser_t browser = nw_browser_create(desc, params);
-        nw_browser_set_queue(browser, dispatch_get_main_queue());
+        s_browser = nw_browser_create(desc, params);
+        nw_browser_set_queue(s_browser, dispatch_get_main_queue());
         nw_browser_set_browse_results_changed_handler(
-            browser,
+            s_browser,
             ^(nw_browse_result_t result __unused,
               nw_browse_result_t result2 __unused,
               bool added __unused) { /* nothing needed */ });
-        nw_browser_start(browser);
-        /* Keep the browser alive for a few seconds, then stop. */
-        dispatch_after(
-            dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC),
-            dispatch_get_main_queue(),
-            ^{ nw_browser_cancel(browser); });
+        nw_browser_start(s_browser);
     }
 #endif
 }
@@ -1918,6 +1917,8 @@ static WebKitWebView *g_linux_webview = NULL;
 /* ================================================================== */
 #if defined(PERM_CAMERA) || defined(PERM_MICROPHONE)
 #include <gst/gst.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 static GstElement *g_recording_pipeline = NULL;
 static pthread_mutex_t g_rec_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -1939,14 +1940,14 @@ char *gst_start_recording(const char *path, int has_video, int has_audio)
      * below to avoid shell-style injection through crafted file paths. */
     const char *desc;
     if (has_video && has_audio) {
-        desc = "v4l2src ! videoconvert ! vp8enc deadline=1 cpu-used=4 ! queue ! "
+        desc = "autovideosrc ! videoconvert ! vp8enc deadline=1 cpu-used=4 ! queue ! "
                "webmmux name=mux ! filesink name=sink "
-               "pulsesrc ! audioconvert ! audioresample ! opusenc ! queue ! mux.";
+               "autoaudiosrc ! volume volume=3.0 ! audioconvert ! audioresample ! vorbisenc ! queue ! mux.";
     } else if (has_video) {
-        desc = "v4l2src ! videoconvert ! vp8enc deadline=1 cpu-used=4 ! "
+        desc = "autovideosrc ! videoconvert ! vp8enc deadline=1 cpu-used=4 ! "
                "webmmux ! filesink name=sink";
     } else {
-        desc = "pulsesrc ! audioconvert ! audioresample ! opusenc ! "
+        desc = "autoaudiosrc ! volume volume=3.0 ! audioconvert ! audioresample ! vorbisenc ! "
                "webmmux ! filesink name=sink";
     }
 
@@ -1975,11 +1976,85 @@ char *gst_start_recording(const char *path, int has_video, int has_audio)
     GstStateChangeReturn ret = gst_element_set_state(
         g_recording_pipeline, GST_STATE_PLAYING);
     if (ret == GST_STATE_CHANGE_FAILURE) {
+        GstBus *bus = gst_element_get_bus(g_recording_pipeline);
+        char *errmsg = NULL;
+        if (bus) {
+            GstMessage *msg = gst_bus_pop_filtered(bus, GST_MESSAGE_ERROR);
+            if (msg) {
+                GError *gerr = NULL;
+                gst_message_parse_error(msg, &gerr, NULL);
+                if (gerr) {
+                    errmsg = strdup(gerr->message);
+                    g_error_free(gerr);
+                }
+                gst_message_unref(msg);
+            }
+            gst_object_unref(bus);
+        }
+        gst_element_set_state(g_recording_pipeline, GST_STATE_NULL);
         gst_object_unref(g_recording_pipeline);
         g_recording_pipeline = NULL;
         pthread_mutex_unlock(&g_rec_lock);
-        return strdup("Failed to start recording pipeline");
+        return errmsg ? errmsg : strdup("Failed to start recording pipeline");
     }
+
+    /* Wait for async state change to complete (e.g. device negotiation) */
+    if (ret == GST_STATE_CHANGE_ASYNC) {
+        GstState state;
+        ret = gst_element_get_state(g_recording_pipeline, &state, NULL,
+                                    5 * GST_SECOND);
+        if (ret == GST_STATE_CHANGE_FAILURE || state != GST_STATE_PLAYING) {
+            GstBus *bus = gst_element_get_bus(g_recording_pipeline);
+            char *errmsg = NULL;
+            if (bus) {
+                GstMessage *msg = gst_bus_pop_filtered(bus, GST_MESSAGE_ERROR);
+                if (msg) {
+                    GError *gerr = NULL;
+                    gst_message_parse_error(msg, &gerr, NULL);
+                    if (gerr) {
+                        errmsg = strdup(gerr->message);
+                        g_error_free(gerr);
+                    }
+                    gst_message_unref(msg);
+                }
+                gst_object_unref(bus);
+            }
+            gst_element_set_state(g_recording_pipeline, GST_STATE_NULL);
+            gst_object_unref(g_recording_pipeline);
+            g_recording_pipeline = NULL;
+            pthread_mutex_unlock(&g_rec_lock);
+            return errmsg ? errmsg
+                          : strdup("Pipeline failed to reach PLAYING state");
+        }
+    }
+
+    /* One more check: pop any error that arrived during state change */
+    {
+        GstBus *bus = gst_element_get_bus(g_recording_pipeline);
+        if (bus) {
+            GstMessage *msg = gst_bus_pop_filtered(bus, GST_MESSAGE_ERROR);
+            if (msg) {
+                GError *gerr = NULL;
+                char *errmsg = NULL;
+                gst_message_parse_error(msg, &gerr, NULL);
+                if (gerr) {
+                    errmsg = strdup(gerr->message);
+                    g_error_free(gerr);
+                }
+                gst_message_unref(msg);
+                gst_object_unref(bus);
+                gst_element_set_state(g_recording_pipeline, GST_STATE_NULL);
+                gst_object_unref(g_recording_pipeline);
+                g_recording_pipeline = NULL;
+                pthread_mutex_unlock(&g_rec_lock);
+                return errmsg ? errmsg : strdup("Pipeline error after start");
+            }
+            gst_object_unref(bus);
+        }
+    }
+
+    fprintf(stderr, "[passiflora] GStreamer recording pipeline PLAYING "
+                    "(video=%d audio=%d path=%s)\n", has_video, has_audio, path);
 
     pthread_mutex_unlock(&g_rec_lock);
     return NULL;
@@ -2012,6 +2087,231 @@ char *gst_stop_recording(void)
 
     pthread_mutex_unlock(&g_rec_lock);
     return NULL;
+}
+
+/* Comprehensive GStreamer audio diagnostics.
+ * Returns a malloc'd string with device info.  Caller must free. */
+char *gst_diagnose_audio(void)
+{
+    static int gst_inited = 0;
+    if (!gst_inited) { gst_init(NULL, NULL); gst_inited = 1; }
+
+    char buf[8192];
+    int pos = 0;
+
+    /* 1. Check key element availability */
+    const char *elements[] = {
+        "autoaudiosrc", "pulsesrc", "pipewiresrc", "alsasrc",
+        "audioconvert", "audioresample", "opusenc", "vorbisenc",
+        "webmmux", "autovideosrc", NULL
+    };
+    pos += snprintf(buf + pos, sizeof buf - pos, "=== Element availability ===\n");
+    for (int i = 0; elements[i]; i++) {
+        GstElementFactory *f = gst_element_factory_find(elements[i]);
+        pos += snprintf(buf + pos, sizeof buf - pos, "  %s: %s\n",
+                        elements[i], f ? "YES" : "NO");
+        if (f) gst_object_unref(f);
+    }
+
+    /* 2. Enumerate audio capture devices */
+    pos += snprintf(buf + pos, sizeof buf - pos, "=== Audio capture devices ===\n");
+    GstDeviceMonitor *mon = gst_device_monitor_new();
+    GstCaps *caps = gst_caps_new_empty_simple("audio/x-raw");
+    gst_device_monitor_add_filter(mon, "Audio/Source", caps);
+    gst_caps_unref(caps);
+
+    if (!gst_device_monitor_start(mon)) {
+        pos += snprintf(buf + pos, sizeof buf - pos,
+                        "  GstDeviceMonitor failed to start.\n");
+    } else {
+        GList *devices = gst_device_monitor_get_devices(mon);
+        if (!devices) {
+            pos += snprintf(buf + pos, sizeof buf - pos,
+                            "  No audio capture devices found.\n");
+        } else {
+            int n = 0;
+            for (GList *l = devices; l; l = l->next) {
+                GstDevice *dev = GST_DEVICE(l->data);
+                gchar *name = gst_device_get_display_name(dev);
+                gchar *cls  = gst_device_get_device_class(dev);
+                pos += snprintf(buf + pos, sizeof buf - pos,
+                                "  [%d] %s  class=%s\n",
+                                n++, name ? name : "(null)",
+                                cls ? cls : "(null)");
+                g_free(name);
+                g_free(cls);
+                gst_object_unref(dev);
+            }
+            g_list_free(devices);
+        }
+        gst_device_monitor_stop(mon);
+    }
+    gst_object_unref(mon);
+
+    /* 3. Test autoaudiosrc -> PAUSED */
+    pos += snprintf(buf + pos, sizeof buf - pos, "=== autoaudiosrc test ===\n");
+    GstElement *test = gst_element_factory_make("autoaudiosrc", NULL);
+    if (!test) {
+        pos += snprintf(buf + pos, sizeof buf - pos,
+                        "  autoaudiosrc element not available!\n");
+    } else {
+        GstStateChangeReturn r = gst_element_set_state(test, GST_STATE_PAUSED);
+        if (r == GST_STATE_CHANGE_ASYNC)
+            r = gst_element_get_state(test, NULL, NULL, 3 * GST_SECOND);
+        if (r == GST_STATE_CHANGE_FAILURE) {
+            GstBus *bus = gst_element_get_bus(test);
+            GstMessage *msg = bus ? gst_bus_pop_filtered(bus, GST_MESSAGE_ERROR)
+                                  : NULL;
+            if (msg) {
+                GError *gerr = NULL;
+                gst_message_parse_error(msg, &gerr, NULL);
+                pos += snprintf(buf + pos, sizeof buf - pos,
+                                "  FAILED: %s\n",
+                                gerr ? gerr->message : "unknown error");
+                if (gerr) g_error_free(gerr);
+                gst_message_unref(msg);
+            } else {
+                pos += snprintf(buf + pos, sizeof buf - pos,
+                                "  FAILED (no error details)\n");
+            }
+            if (bus) gst_object_unref(bus);
+        } else {
+            pos += snprintf(buf + pos, sizeof buf - pos,
+                            "  OK (reached PAUSED)\n");
+        }
+        gst_element_set_state(test, GST_STATE_NULL);
+        gst_object_unref(test);
+    }
+
+    /* 4. Test a short audio-only recording pipeline (2 seconds) */
+    pos += snprintf(buf + pos, sizeof buf - pos,
+                    "=== Audio recording test (2s) ===\n");
+    const char *tmp_path = "/tmp/passiflora_audio_test.webm";
+    const char *audio_desc =
+        "autoaudiosrc ! audioconvert ! audioresample ! vorbisenc ! "
+        "webmmux ! filesink name=sink";
+    GError *err = NULL;
+    GstElement *pipe = gst_parse_launch(audio_desc, &err);
+    if (!pipe) {
+        pos += snprintf(buf + pos, sizeof buf - pos,
+                        "  Pipeline creation failed: %s\n",
+                        err ? err->message : "unknown");
+        if (err) g_error_free(err);
+    } else {
+        if (err) g_error_free(err);
+        GstElement *sink = gst_bin_get_by_name(GST_BIN(pipe), "sink");
+        if (sink) {
+            g_object_set(sink, "location", tmp_path, NULL);
+            gst_object_unref(sink);
+        }
+        GstStateChangeReturn ret = gst_element_set_state(pipe, GST_STATE_PLAYING);
+        if (ret == GST_STATE_CHANGE_FAILURE) {
+            /* Get error details from bus */
+            GstBus *bus = gst_element_get_bus(pipe);
+            if (bus) {
+                GstMessage *msg = gst_bus_pop_filtered(bus, GST_MESSAGE_ERROR);
+                if (msg) {
+                    GError *gerr = NULL;
+                    gst_message_parse_error(msg, &gerr, NULL);
+                    pos += snprintf(buf + pos, sizeof buf - pos,
+                                    "  Pipeline FAILED to start: %s\n",
+                                    gerr ? gerr->message : "unknown");
+                    if (gerr) g_error_free(gerr);
+                    gst_message_unref(msg);
+                } else {
+                    pos += snprintf(buf + pos, sizeof buf - pos,
+                                    "  Pipeline FAILED to start (no details)\n");
+                }
+                gst_object_unref(bus);
+            }
+        } else {
+            /* Let it record for 2 seconds */
+            if (ret == GST_STATE_CHANGE_ASYNC) {
+                GstState state;
+                gst_element_get_state(pipe, &state, NULL, 5 * GST_SECOND);
+            }
+            g_usleep(2000000);
+            /* Send EOS and wait */
+            gst_element_send_event(pipe, gst_event_new_eos());
+            GstBus *bus = gst_element_get_bus(pipe);
+            if (bus) {
+                GstMessage *msg = gst_bus_timed_pop_filtered(
+                    bus, 5 * GST_SECOND,
+                    GST_MESSAGE_EOS | GST_MESSAGE_ERROR);
+                if (msg) {
+                    if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_ERROR) {
+                        GError *gerr = NULL;
+                        gst_message_parse_error(msg, &gerr, NULL);
+                        pos += snprintf(buf + pos, sizeof buf - pos,
+                                        "  Recording error: %s\n",
+                                        gerr ? gerr->message : "unknown");
+                        if (gerr) g_error_free(gerr);
+                    }
+                    gst_message_unref(msg);
+                }
+                gst_object_unref(bus);
+            }
+        }
+        gst_element_set_state(pipe, GST_STATE_NULL);
+        gst_object_unref(pipe);
+        /* Check the output file */
+        struct stat st;
+        if (stat(tmp_path, &st) == 0) {
+            pos += snprintf(buf + pos, sizeof buf - pos,
+                            "  Output file: %lld bytes\n",
+                            (long long)st.st_size);
+            if (st.st_size > 0)
+                pos += snprintf(buf + pos, sizeof buf - pos,
+                                "  Audio recording: SUCCESS\n");
+            else
+                pos += snprintf(buf + pos, sizeof buf - pos,
+                                "  Audio recording: EMPTY FILE\n");
+            unlink(tmp_path);
+        } else {
+            pos += snprintf(buf + pos, sizeof buf - pos,
+                            "  Output file not created!\n");
+        }
+    }
+
+    /* 5. Test the full video+audio pipeline parse (don't start, just parse) */
+    pos += snprintf(buf + pos, sizeof buf - pos,
+                    "=== Full pipeline parse test ===\n");
+    const char *full_desc =
+        "autovideosrc ! videoconvert ! vp8enc deadline=1 cpu-used=4 ! queue ! "
+        "webmmux name=mux ! filesink name=sink "
+        "autoaudiosrc ! audioconvert ! audioresample ! vorbisenc ! queue ! mux.";
+    err = NULL;
+    GstElement *full_pipe = gst_parse_launch(full_desc, &err);
+    if (!full_pipe) {
+        pos += snprintf(buf + pos, sizeof buf - pos,
+                        "  Parse FAILED: %s\n",
+                        err ? err->message : "unknown");
+    } else {
+        pos += snprintf(buf + pos, sizeof buf - pos,
+                        "  Parse OK\n");
+        /* Check that key elements can be found in the bin */
+        GstIterator *it = gst_bin_iterate_elements(GST_BIN(full_pipe));
+        GValue item = G_VALUE_INIT;
+        int elem_count = 0;
+        while (gst_iterator_next(it, &item) == GST_ITERATOR_OK) {
+            GstElement *el = g_value_get_object(&item);
+            const gchar *factory_name = "(null)";
+            GstElementFactory *ef = gst_element_get_factory(el);
+            if (ef) factory_name = gst_plugin_feature_get_name(GST_PLUGIN_FEATURE(ef));
+            pos += snprintf(buf + pos, sizeof buf - pos,
+                            "  element: %s\n", factory_name);
+            g_value_reset(&item);
+            elem_count++;
+        }
+        g_value_unset(&item);
+        gst_iterator_free(it);
+        pos += snprintf(buf + pos, sizeof buf - pos,
+                        "  Total elements: %d\n", elem_count);
+        gst_object_unref(full_pipe);
+    }
+    if (err) g_error_free(err);
+
+    return strdup(buf);
 }
 #endif /* PERM_CAMERA || PERM_MICROPHONE */
 

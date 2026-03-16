@@ -54,6 +54,9 @@
     let recordedBlob = null;
     let nativeRecording = false;  // true when using GStreamer fallback
     let nativeRecordPath = '';
+    let recordingAudioCtx = null; // AudioContext used during recording
+    let recordingCanvas = null;   // canvas used for frame-rate normalization
+    let recordingFrameId = null;  // requestAnimationFrame handle
 
     function toggleRecording() {
         // Stop if already recording (either native or MediaRecorder)
@@ -65,14 +68,11 @@
                 // Load the file as a blob for playback
                 return PassifloraIO.fopen(nativeRecordPath, 'rb');
             }).then(function(fd) {
-                // Read in chunks
+                // Read in chunks — fread returns Uint8Array directly
                 var chunks = [];
                 function readChunk() {
-                    return PassifloraIO.fread(fd, 65536).then(function(b64) {
-                        if (!b64) { return PassifloraIO.fclose(fd).then(function() { return chunks; }); }
-                        var binary = atob(b64);
-                        var bytes = new Uint8Array(binary.length);
-                        for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                    return PassifloraIO.fread(fd, 65536).then(function(bytes) {
+                        if (!bytes || bytes.length === 0) { return PassifloraIO.fclose(fd).then(function() { return chunks; }); }
                         chunks.push(bytes);
                         if (bytes.length < 65536) return PassifloraIO.fclose(fd).then(function() { return chunks; });
                         return readChunk();
@@ -95,12 +95,29 @@
             return;
         }
 
-        // Check if MediaRecorder is available
-        if (typeof MediaRecorder !== 'undefined') {
+        // Check if MediaRecorder is available and functional.
+        // WebKitGTK defines MediaRecorder but throws at construction,
+        // so also check for native GStreamer recording first on Linux.
+        if (typeof PassifloraIO !== 'undefined' && PassifloraIO.hasNativeRecording) {
+            PassifloraIO.hasNativeRecording().then(function(has) {
+                if (has) {
+                    startNativeRecording();
+                } else if (typeof MediaRecorder !== 'undefined') {
+                    startWebRecording();
+                } else {
+                    alert('Recording is not available on this platform.');
+                }
+            }).catch(function() {
+                if (typeof MediaRecorder !== 'undefined') {
+                    startWebRecording();
+                } else {
+                    alert('Recording is not available on this platform.');
+                }
+            });
+        } else if (typeof MediaRecorder !== 'undefined') {
             startWebRecording();
         } else {
-            // Fall back to native GStreamer recording
-            startNativeRecording();
+            alert('Recording is not available on this platform.');
         }
     }
 
@@ -131,6 +148,51 @@
             preview.srcObject = stream;
             container.appendChild(preview);
 
+            // Build a normalized recording stream.  Under VMs like
+            // Parallels the virtual camera and audio devices have
+            // independent, drifting clocks.  We fix this by:
+            //  1) Drawing camera frames onto a canvas at a steady
+            //     rate and capturing it with captureStream(FPS).
+            //  2) Running audio through an AudioContext so its
+            //     timestamps are sample-counted, not wall-clock.
+            // Both tracks then share a single stable timing base.
+            var FPS = 30;
+            var recStream = new MediaStream();
+            var videoTracks = stream.getVideoTracks();
+            var audioTracks = stream.getAudioTracks();
+
+            if (videoTracks.length > 0) {
+                var canvas = document.createElement('canvas');
+                var vSettings = videoTracks[0].getSettings();
+                canvas.width  = vSettings.width  || 640;
+                canvas.height = vSettings.height || 480;
+                var ctx2d = canvas.getContext('2d');
+                recordingCanvas = canvas;
+
+                // Draw camera frames onto the canvas at a steady rate
+                function drawFrame() {
+                    if (!preview.paused && !preview.ended) {
+                        ctx2d.drawImage(preview, 0, 0, canvas.width, canvas.height);
+                    }
+                    recordingFrameId = requestAnimationFrame(drawFrame);
+                }
+                recordingFrameId = requestAnimationFrame(drawFrame);
+
+                var canvasStream = canvas.captureStream(FPS);
+                canvasStream.getVideoTracks().forEach(function(t) { recStream.addTrack(t); });
+            }
+
+            if (audioTracks.length > 0 && typeof AudioContext !== 'undefined') {
+                var actx = new AudioContext();
+                recordingAudioCtx = actx;
+                var src = actx.createMediaStreamSource(stream);
+                var dest = actx.createMediaStreamDestination();
+                src.connect(dest);
+                dest.stream.getAudioTracks().forEach(function(t) { recStream.addTrack(t); });
+            } else {
+                audioTracks.forEach(function(t) { recStream.addTrack(t); });
+            }
+
             // Pick a supported MIME type
             let mimeType = '';
             var types = ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus',
@@ -139,7 +201,7 @@
                 if (MediaRecorder.isTypeSupported(types[i])) { mimeType = types[i]; break; }
             }
             var options = mimeType ? { mimeType: mimeType } : {};
-            mediaRecorder = new MediaRecorder(stream, options);
+            mediaRecorder = new MediaRecorder(recStream, options);
             mediaRecorder.ondataavailable = function(e) {
                 if (e.data && e.data.size > 0) recordedChunks.push(e.data);
             };
@@ -152,7 +214,7 @@
                 logResult('Recording saved (' + (recordedBlob.size / 1024).toFixed(1) + ' KB, ' + type + ')');
                 stopMedia();
             };
-            mediaRecorder.start();
+            mediaRecorder.start(200);
             document.getElementById('recordBtn').textContent = 'Stop Recording';
             logResult('Recording started...');
         })
@@ -162,6 +224,16 @@
     }
 
     function startNativeRecording() {
+        // No getUserMedia preview here — GStreamer needs exclusive access
+        // to the camera and microphone devices on Linux.
+        stopMedia();
+        var container = document.getElementById('mediaContainer');
+        container.innerHTML = '';
+        var indicator = document.createElement('div');
+        indicator.style.cssText = 'padding:2em;text-align:center;font-size:1.2em;color:#c00';
+        indicator.textContent = '\u25CF Recording (native)...';
+        container.appendChild(indicator);
+
         PassifloraIO.getHomeFolder().then(function(home) {
             nativeRecordPath = home + '/.passiflora_recording.webm';
             return PassifloraIO.startRecording(nativeRecordPath, true, true);
@@ -181,17 +253,48 @@
         stopMedia();
         var container = document.getElementById('mediaContainer');
         container.innerHTML = '';
+
+        // Log codec support for debugging
+        var testVid = document.createElement('video');
+        var types = [
+            'video/webm', 'video/webm;codecs=vp8', 'video/webm;codecs=vp8,opus',
+            'video/webm;codecs=vp8,vorbis', 'audio/webm;codecs=opus',
+            'audio/webm;codecs=vorbis', 'audio/ogg;codecs=opus'
+        ];
+        types.forEach(function(t) {
+            logResult('canPlayType("' + t + '"): ' + (testVid.canPlayType(t) || '(empty)'));
+        });
+
+        logResult('Blob size: ' + recordedBlob.size + ' bytes, type: ' + recordedBlob.type);
+
         var video = document.createElement('video');
         video.controls = true;
-        video.autoplay = true;
         video.playsInline = true;
+        video.muted = false;
+        video.volume = 1.0;
         video.style.maxWidth = '100%';
         video.src = URL.createObjectURL(recordedBlob);
+        video.onerror = function() {
+            var e = video.error;
+            logResult('Video error: code=' + (e ? e.code : '?') + ' msg=' + (e ? e.message : '?'));
+        };
         container.appendChild(video);
+        video.play().catch(function(e) {
+            logResult('Play failed: ' + e.name + ': ' + e.message);
+        });
         logResult('Playing recording...');
     }
 
     function stopMedia() {
+        if (recordingFrameId != null) {
+            cancelAnimationFrame(recordingFrameId);
+            recordingFrameId = null;
+        }
+        recordingCanvas = null;
+        if (recordingAudioCtx) {
+            recordingAudioCtx.close();
+            recordingAudioCtx = null;
+        }
         if (activeStream) {
             activeStream.getTracks().forEach(function(t) { t.stop(); });
             activeStream = null;
@@ -204,7 +307,10 @@
         const sel = document.getElementById(selectId);
         const prev = sel.value;
         sel.innerHTML = '<option value="">-- default --</option>';
+        var seen = {};
         devices.forEach(function(d, i) {
+            if (!d.deviceId || seen[d.deviceId]) return;
+            seen[d.deviceId] = true;
             const opt = document.createElement('option');
             opt.value = d.deviceId;
             opt.textContent = d.label || (selectId === 'cameraSelect' ? 'Camera ' : 'Mic ') + (i + 1);
@@ -307,6 +413,10 @@
             let fh = await fopen(checkPath, "r");
             await fclose(fh);
             logResult("Persisted file " + checkPath + " from previous run present: yes");
+            fh = await fopen(checkPath, "r");
+            let contents = await fgets(fh);
+            await fclose(fh);
+            logResult("Contents of persisted file: " + contents);
         } catch(e) {
             logResult("Persisted file " + homeFolder + "/frompassiflora.txt from previous run present: no");
         }
@@ -419,6 +529,18 @@
                 });
             });
         });
+
+        // Also run GStreamer native audio diagnostics if available
+        if (typeof PassifloraIO !== 'undefined' && PassifloraIO.diagnoseNativeAudio) {
+            logResult('--- GStreamer native audio diagnostics ---');
+            PassifloraIO.diagnoseNativeAudio().then(function(info) {
+                info.split('\n').forEach(function(line) {
+                    if (line.trim()) logResult('  ' + line);
+                });
+            }).catch(function(e) {
+                logResult('  (native audio diag not available: ' + e.message + ')');
+            });
+        }
     }
     function checkLocation(){
        if (!navigator.geolocation) {

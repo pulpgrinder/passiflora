@@ -268,6 +268,10 @@ PassifloraIO = {
         return PassifloraIO._posixCall("stopRecording", {});
     },
 
+    diagnoseNativeAudio: function () {
+        return PassifloraIO._posixCall("diagnoseNativeAudio", {});
+    },
+
     /* ================================================================ */
     /*  Debug bridge — remote JavaScript execution                      */
     /* ================================================================ */
@@ -294,6 +298,10 @@ PassifloraIO = {
             'Do <strong>not</strong> ship an app with remote debugging turned on. ' +
             'It allows anyone on your network to execute arbitrary code in the webview. ' +
             'Remove <code>remotedebugging 1</code> from <code>src/permissions</code> before release.</p>' +
+            '<p style="margin:0 0 8px;font-size:13px;color:#666">' +
+            '<strong>iOS:</strong> The device and your computer must be on the same Wi-Fi network. ' +
+            'If the debugger page won\u2019t load, check Settings \u2192 Privacy &amp; Security \u2192 ' +
+            'Local Network and make sure this app is allowed.</p>' +
             '<label style="display:block;margin:12px 0 4px;font-weight:bold;font-size:14px">' +
             'Debugger URL (open in a browser on your computer):</label>' +
             '<input id="_pf_dbg_url" type="text" readonly value="http://' + url + '" ' +

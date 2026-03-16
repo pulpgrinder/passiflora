@@ -990,6 +990,15 @@ char *passiflora_posix_call(const char *params)
         free(body);
         return json_ok_str("true");
     }
+
+    if (strcmp(func, "diagnoseNativeAudio") == 0) {
+        extern char *gst_diagnose_audio(void);
+        char *info = gst_diagnose_audio();
+        free(body);
+        char *r = json_ok_str(info);
+        free(info);
+        return r;
+    }
 #endif
 
     /* ---- closeAllFileHandles ---- */

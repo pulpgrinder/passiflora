@@ -20,9 +20,10 @@ import android.os.Build;
 import android.os.Environment;
 import android.provider.Settings;
 import android.widget.EditText;
-import java.net.DatagramSocket;
+import java.net.Inet4Address;
 import java.net.InetAddress;
-import java.net.InetSocketAddress;
+import java.net.NetworkInterface;
+import java.util.Enumeration;
 
 /**
  * Launches the embedded HTTP server (native C, via JNI) then shows a
@@ -148,7 +149,11 @@ public class MainActivity extends Activity {
                 if (BuildConfig.PERM_REMOTEDEBUGGING) {
                     String ip = getLocalIp().replaceAll("[^0-9a-fA-F.:]", "");
                     view.evaluateJavascript(
-                        "PassifloraIO._autoDebug('" + ip + "'," + serverPort + ")",
+                        "(function _pf_wait(){"
+                        + "if(typeof PassifloraIO!=='undefined'){"
+                        +   "PassifloraIO._autoDebug('" + ip + "'," + serverPort + ");"
+                        + "}else{setTimeout(_pf_wait,50);}"
+                        + "})()",
                         null);
                 }
             }
@@ -263,17 +268,25 @@ public class MainActivity extends Activity {
         });
     }
 
-    /** Get the local LAN IP address via UDP connect trick. */
+    /** Get the local LAN IPv4 address by enumerating network interfaces. */
     private static String getLocalIp() {
         try {
-            DatagramSocket sock = new DatagramSocket();
-            sock.connect(new InetSocketAddress("8.8.8.8", 53));
-            String ip = sock.getLocalAddress().getHostAddress();
-            sock.close();
-            return ip;
+            Enumeration<NetworkInterface> ifaces = NetworkInterface.getNetworkInterfaces();
+            while (ifaces.hasMoreElements()) {
+                NetworkInterface iface = ifaces.nextElement();
+                if (iface.isLoopback() || !iface.isUp()) continue;
+                Enumeration<InetAddress> addrs = iface.getInetAddresses();
+                while (addrs.hasMoreElements()) {
+                    InetAddress addr = addrs.nextElement();
+                    if (addr instanceof Inet4Address && !addr.isLoopbackAddress()) {
+                        return addr.getHostAddress();
+                    }
+                }
+            }
         } catch (Exception e) {
-            return "127.0.0.1";
+            /* fall through */
         }
+        return "127.0.0.1";
     }
 
     @Override
