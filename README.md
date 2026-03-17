@@ -402,23 +402,11 @@ Remote debugging is compile-gated. It is only available when `remotedebugging` i
 When the `remotedebugging` permission is enabled, debug mode activates automatically at app startup. A full-screen overlay appears with:
 
 - A red **⚠️ Remote Debugging Enabled** warning banner and a reminder not to ship apps with remote debugging turned on.
-- A read-only **Debugger URL** field (e.g. `http://192.168.1.42:60810/debug`) with a copy button.
+- A read-only **Debugger URL** field (e.g. `http://192.168.1.42:60810/debug`) with a copy button. Open this URL in a web browser on another machine to use the debugger.Do this before entering your passphrase and clicking OK, as the dialog will disappear after that.
 - A **Passphrase** input (masked) where you enter a shared secret used to authenticate debug commands.
 
 After entering a passphrase and clicking **OK**, the overlay closes and the app is ready to accept debug commands.
 
-### Using the Debugger
-
-Open `debugger.html` (in the project root) in any web browser. It has four fields:
-
-1. **Host** — the IP address or hostname of the device running the app (defaults to `127.0.0.1` for local debugging)
-2. **Port** — the port number from the debugger URL shown in the overlay
-3. **Passphrase** — the passphrase you entered in the app's overlay
-4. **JavaScript** — the code you want to execute
-
-Click **Execute**. The debugger signs the code with HMAC-SHA256 (using a nonce and the passphrase), sends it to the app, and displays the result.
-
-For remote debugging (e.g. a mobile device on the same network), enter the device's local IP address in the Host field.
 
 ### How It Works
 
