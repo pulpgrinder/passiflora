@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Test Page</title>
     <link rel="stylesheet" href="passiflora/menu.css">
 </head>
@@ -21,6 +21,8 @@
         <button onclick="PassifloraIO.openExternal('https://google.com')">Open Google in new browser window</button>
         <button onclick="checkLocation()">Check Location</button>
         <button onclick="testFileSystem()">Test File System</button>
+        <button onclick="testMenuOpen()">Test Menu Open</button>
+        <button onclick="testMenuSaveAs()">Test Save As</button>
     </p>
     <h2>Media Tests</h2>
     <p>
@@ -542,6 +544,36 @@
             });
         }
     }
+    async function testMenuOpen() {
+        logResult('Opening file picker for frompassiflora.txt...');
+        try {
+            var result = await PassifloraIO.menuopen(
+                ['.txt'], '');
+            if (result) {
+                logResult('menuopen returned: ' + result);
+            } else {
+                logResult('menuopen cancelled (returned null)');
+            }
+        } catch(e) {
+            logResult('menuopen error: ' + e.message);
+        }
+    }
+
+    async function testMenuSaveAs() {
+        logResult('Opening Save As for .txt files...');
+        try {
+            var result = await PassifloraIO.menusavas(
+                ['.txt'], 'untitled.txt');
+            if (result) {
+                logResult('menusavas returned: ' + result);
+            } else {
+                logResult('menusavas cancelled (returned null)');
+            }
+        } catch(e) {
+            logResult('menusavas error: ' + e.message);
+        }
+    }
+
     function checkLocation(){
        if (!navigator.geolocation) {
            logResult('Geolocation API not supported');

@@ -49,6 +49,7 @@
 #else
   #include <unistd.h>
   #include <pwd.h>
+  #include <dirent.h>
   #include <sys/types.h>
   #include <sys/stat.h>
   #include <sys/socket.h>
@@ -1000,6 +1001,115 @@ char *passiflora_posix_call(const char *params)
         return r;
     }
 #endif
+
+    /* ---- listDirectory ---- */
+    if (strcmp(func, "listDirectory") == 0) {
+        char path_buf[2048];
+        if (form_get_str(body, "path", path_buf, sizeof path_buf) < 0) {
+            free(body); return json_error("Missing 'path' parameter");
+        }
+#ifndef PERM_UNRESTRICTEDFILESYSTEMACCESS
+        if (strstr(path_buf, "..") || !path_in_sandbox(path_buf)) {
+            free(body); return json_error("Access denied: path outside app folder");
+        }
+#endif
+#ifdef _WIN32
+        {
+            /* Use FindFirstFile / FindNextFile on Windows */
+            char search[2060];
+            snprintf(search, sizeof search, "%s\\*", path_buf);
+            WIN32_FIND_DATAA ffd;
+            HANDLE hFind = FindFirstFileA(search, &ffd);
+            if (hFind == INVALID_HANDLE_VALUE) {
+                free(body); return json_error("Cannot open directory");
+            }
+            /* Build a JSON array of {name, isDir} objects */
+            size_t cap = 4096, pos = 0;
+            char *arr = malloc(cap);
+            if (!arr) { FindClose(hFind); free(body); return json_error("Out of memory"); }
+            arr[pos++] = '[';
+            int first = 1;
+            do {
+                if (strcmp(ffd.cFileName, ".") == 0) continue;
+                int isDir = (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? 1 : 0;
+                size_t nlen = strlen(ffd.cFileName);
+                size_t need = nlen * 6 + 64;
+                while (pos + need >= cap) { cap *= 2; arr = realloc(arr, cap); }
+                if (!first) arr[pos++] = ',';
+                first = 0;
+                pos += snprintf(arr + pos, cap - pos,
+                    "{\"name\":\"");
+                for (size_t k = 0; k < nlen && pos < cap - 10; k++) {
+                    unsigned char ch = (unsigned char)ffd.cFileName[k];
+                    if (ch == '"')       { arr[pos++] = '\\'; arr[pos++] = '"'; }
+                    else if (ch == '\\') { arr[pos++] = '\\'; arr[pos++] = '\\'; }
+                    else                 { arr[pos++] = ch; }
+                }
+                pos += snprintf(arr + pos, cap - pos,
+                    "\",\"isDir\":%s}", isDir ? "true" : "false");
+            } while (FindNextFileA(hFind, &ffd) != 0);
+            FindClose(hFind);
+            while (pos + 2 >= cap) { cap *= 2; arr = realloc(arr, cap); }
+            arr[pos++] = ']';
+            arr[pos] = '\0';
+            result = json_ok_raw(arr);
+            free(arr);
+            free(body);
+            return result;
+        }
+#else
+        {
+            DIR *d = opendir(path_buf);
+            if (!d) { free(body); return json_error("Cannot open directory"); }
+            size_t cap = 4096, pos = 0;
+            char *arr = malloc(cap);
+            if (!arr) { closedir(d); free(body); return json_error("Out of memory"); }
+            arr[pos++] = '[';
+            int first = 1;
+            struct dirent *ent;
+            while ((ent = readdir(d)) != NULL) {
+                if (strcmp(ent->d_name, ".") == 0) continue;
+                /* Determine if directory */
+                int isDir = 0;
+#ifdef DT_DIR
+                if (ent->d_type == DT_DIR) isDir = 1;
+                else if (ent->d_type == DT_UNKNOWN) {
+#endif
+                    char full[2200];
+                    snprintf(full, sizeof full, "%s/%s", path_buf, ent->d_name);
+                    struct stat st;
+                    if (stat(full, &st) == 0 && S_ISDIR(st.st_mode)) isDir = 1;
+#ifdef DT_DIR
+                }
+#endif
+                size_t nlen = strlen(ent->d_name);
+                size_t need = nlen * 6 + 64;
+                while (pos + need >= cap) { cap *= 2; arr = realloc(arr, cap); }
+                if (!first) arr[pos++] = ',';
+                first = 0;
+                pos += snprintf(arr + pos, cap - pos,
+                    "{\"name\":\"");
+                for (size_t k = 0; k < nlen && pos < cap - 10; k++) {
+                    unsigned char ch = (unsigned char)ent->d_name[k];
+                    if (ch == '"')       { arr[pos++] = '\\'; arr[pos++] = '"'; }
+                    else if (ch == '\\') { arr[pos++] = '\\'; arr[pos++] = '\\'; }
+                    else if (ch < 0x20)  { pos += snprintf(arr + pos, cap - pos, "\\u%04x", ch); }
+                    else                 { arr[pos++] = ch; }
+                }
+                pos += snprintf(arr + pos, cap - pos,
+                    "\",\"isDir\":%s}", isDir ? "true" : "false");
+            }
+            closedir(d);
+            while (pos + 2 >= cap) { cap *= 2; arr = realloc(arr, cap); }
+            arr[pos++] = ']';
+            arr[pos] = '\0';
+            result = json_ok_raw(arr);
+            free(arr);
+            free(body);
+            return result;
+        }
+#endif
+    }
 
     /* ---- closeAllFileHandles ---- */
     if (strcmp(func, "closeAllFileHandles") == 0) {

@@ -246,6 +246,10 @@ PassifloraIO = {
         return PassifloraIO._posixCall("getHomeFolder", {});
     },
 
+    listDirectory: function (path) {
+        return PassifloraIO._posixCall("listDirectory", {path: path});
+    },
+
     /* ================================================================ */
     /*  Native recording bridge (Linux GStreamer fallback)              */
     /* ================================================================ */
@@ -496,6 +500,774 @@ PassifloraIO = {
         var hex = '';
         for (var i = 0; i < outer.length; i++) hex += ('0' + outer[i].toString(16)).slice(-2);
         return hex;
+    },
+
+    /* ================================================================ */
+    /*  File-open sliding menu                                          */
+    /* ================================================================ */
+
+    menuopen: function (extensions, defaultFolder) {
+        /* Normalise arguments */
+        if (!extensions) extensions = [];
+        if (!defaultFolder) defaultFolder = "";
+
+        /* Lowercase copy of extensions for matching */
+        var extsLower = [];
+        for (var i = 0; i < extensions.length; i++)
+            extsLower.push(extensions[i].toLowerCase().replace(/^\./, ""));
+
+        /* Build the label for the extension filter */
+        var extLabel = "";
+        if (extensions.length > 0) {
+            var parts = [];
+            for (var i = 0; i < extensions.length; i++)
+                parts.push("*." + extsLower[i]);
+            extLabel = parts.join(", ");
+        } else {
+            extLabel = "All files (*.*)";
+        }
+
+        /* ---- helpers ---- */
+        function fileMatches(name, filterAll, exts) {
+            if (filterAll) return true;
+            if (exts.length === 0) return true;
+            var dot = name.lastIndexOf(".");
+            if (dot < 0) return false;
+            var ext = name.substring(dot + 1).toLowerCase();
+            for (var i = 0; i < exts.length; i++)
+                if (ext === exts[i]) return true;
+            return false;
+        }
+
+        var SEP = "/";                       /* path separator */
+        if (navigator.platform && navigator.platform.indexOf("Win") >= 0)
+            SEP = "\\";
+
+        function joinPath(dir, name) {
+            if (dir.charAt(dir.length - 1) === SEP) return dir + name;
+            return dir + SEP + name;
+        }
+
+        function parentPath(dir) {
+            var idx = dir.lastIndexOf(SEP);
+            if (idx <= 0) return null;
+            /* Windows drive root like C:\ */
+            if (SEP === "\\" && idx <= 2) return dir.substring(0, idx + 1);
+            return dir.substring(0, idx);
+        }
+
+        /* ---- DOM builder ---- */
+        return (defaultFolder
+            ? Promise.resolve(defaultFolder)
+            : PassifloraIO.getHomeFolder()
+        ).then(function (startDir) {
+
+            return new Promise(function (resolve) {
+
+                var overlay = null;
+                var wrapper = null;
+                var screens = [];
+                var depth = 0;
+                var initialDepth = 0;   /* depth of the very first screen */
+                var filterAll = false;   /* true when "All files" selected */
+                var resolved = false;
+
+                function finish(value) {
+                    if (resolved) return;
+                    resolved = true;
+                    teardown();
+                    resolve(value);
+                }
+
+                /* -- slide helpers (mirror PassifloraMenu) -- */
+                function positionScreens() {
+                    for (var i = 0; i < screens.length; i++) {
+                        var off = (i - depth) * 100;
+                        screens[i].style.transform = "translateX(" + off + "%)";
+                    }
+                }
+
+                function slideForward(screen) {
+                    while (screens.length > depth + 1) {
+                        var old = screens.pop();
+                        if (old.parentNode) old.parentNode.removeChild(old);
+                    }
+                    screen.style.transform = "translateX(100%)";
+                    wrapper.querySelector(".passiflora_fo_track").appendChild(screen);
+                    screens.push(screen);
+                    screen.offsetWidth; /* reflow */
+                    depth++;
+                    positionScreens();
+                }
+
+                function slideBack() {
+                    if (depth <= initialDepth) {
+                        /* navigated back past first level — cancel */
+                        finish(null);
+                        return;
+                    }
+                    depth--;
+                    positionScreens();
+                    var removed = screens.pop();
+                    setTimeout(function () {
+                        if (removed.parentNode) removed.parentNode.removeChild(removed);
+                    }, 300);
+                }
+
+                /* -- build a screen for a directory -- */
+                function shortPath(p) {
+                    return p.length > 20 ? "\u2026" + p.slice(-20) : p;
+                }
+
+                function buildDirScreen(dirPath, title) {
+                    var screen = document.createElement("div");
+                    screen.className = "passiflora_fo_screen";
+
+                    /* Back header */
+                    var back = document.createElement("div");
+                    back.className = "passiflora_fo_back";
+                    back.textContent = title || shortPath(dirPath);
+                    back.addEventListener("click", function () { slideBack(); });
+                    screen.appendChild(back);
+
+                    /* File list (placeholder while loading) */
+                    var listWrap = document.createElement("div");
+                    listWrap.className = "passiflora_fo_list";
+                    var loadingMsg = document.createElement("div");
+                    loadingMsg.className = "passiflora_fo_loading";
+                    loadingMsg.textContent = "Loading\u2026";
+                    listWrap.appendChild(loadingMsg);
+                    screen.appendChild(listWrap);
+
+                    /* Extension filter select */
+                    var filterRow = document.createElement("div");
+                    filterRow.className = "passiflora_fo_filterbar";
+                    var sel = document.createElement("select");
+                    sel.className = "passiflora_fo_select";
+                    if (extensions.length > 0) {
+                        var opt1 = document.createElement("option");
+                        opt1.value = "ext";
+                        opt1.textContent = extLabel;
+                        sel.appendChild(opt1);
+                    }
+                    var opt2 = document.createElement("option");
+                    opt2.value = "all";
+                    opt2.textContent = "All files (*.*)";
+                    sel.appendChild(opt2);
+                    if (extensions.length === 0) sel.value = "all";
+                    else sel.value = filterAll ? "all" : "ext";
+                    sel.addEventListener("change", function () {
+                        filterAll = (sel.value === "all");
+                        populateList();
+                    });
+                    filterRow.appendChild(sel);
+                    screen.appendChild(filterRow);
+
+                    /* Fetch directory listing and populate */
+                    var entries = null;
+
+                    function populateList() {
+                        if (!entries) return;
+                        listWrap.innerHTML = "";
+                        var ul = document.createElement("ul");
+                        ul.className = "passiflora_fo_ul";
+
+                        /* ".." entry — go up a folder */
+                        var upLi = document.createElement("li");
+                        upLi.className = "passiflora_fo_item passiflora_fo_dir";
+                        upLi.textContent = "\uD83D\uDCC1 ..";
+                        var upArrow = document.createElement("span");
+                        upArrow.className = "passiflora_fo_arrow";
+                        upArrow.textContent = "\u276E";
+                        upLi.appendChild(upArrow);
+                        upLi.addEventListener("click", function () { slideBack(); });
+                        ul.appendChild(upLi);
+
+                        /* Sort: directories first, then alphabetical */
+                        var dirs = [], files = [];
+                        for (var i = 0; i < entries.length; i++) {
+                            if (entries[i].name === "..") continue;
+                            if (entries[i].isDir) dirs.push(entries[i]);
+                            else files.push(entries[i]);
+                        }
+                        dirs.sort(function (a, b) { return a.name.localeCompare(b.name); });
+                        files.sort(function (a, b) { return a.name.localeCompare(b.name); });
+
+                        for (var i = 0; i < dirs.length; i++) {
+                            (function (ent) {
+                                var li = document.createElement("li");
+                                li.className = "passiflora_fo_item passiflora_fo_dir";
+                                var nameSpan = document.createElement("span");
+                                nameSpan.textContent = "\uD83D\uDCC1 " + ent.name;
+                                li.appendChild(nameSpan);
+                                var arrow = document.createElement("span");
+                                arrow.className = "passiflora_fo_arrow";
+                                arrow.textContent = "\u276F";
+                                li.appendChild(arrow);
+                                li.addEventListener("click", function () {
+                                    var sub = joinPath(dirPath, ent.name);
+                                    var newScreen = buildDirScreen(sub, ent.name);
+                                    slideForward(newScreen);
+                                });
+                                ul.appendChild(li);
+                            })(dirs[i]);
+                        }
+
+                        for (var i = 0; i < files.length; i++) {
+                            (function (ent) {
+                                var li = document.createElement("li");
+                                var matches = fileMatches(
+                                    ent.name, filterAll, extsLower);
+                                li.className = "passiflora_fo_item passiflora_fo_file" +
+                                    (matches ? " passiflora_fo_match" : " passiflora_fo_dim");
+                                li.textContent = ent.name;
+                                if (matches) {
+                                    li.addEventListener("click", function () {
+                                        finish(joinPath(dirPath, ent.name));
+                                    });
+                                }
+                                ul.appendChild(li);
+                            })(files[i]);
+                        }
+
+                        listWrap.appendChild(ul);
+                    }
+
+                    PassifloraIO.listDirectory(dirPath).then(function (list) {
+                        entries = list;
+                        populateList();
+                    }).catch(function () {
+                        listWrap.innerHTML = "";
+                        var err = document.createElement("div");
+                        err.className = "passiflora_fo_loading";
+                        err.textContent = "Cannot read directory.";
+                        listWrap.appendChild(err);
+                    });
+
+                    return screen;
+                }
+
+                /* -- teardown -- */
+                function teardown() {
+                    if (overlay && overlay.parentNode) {
+                        overlay.classList.remove("active");
+                        setTimeout(function () {
+                            if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                        }, 300);
+                    }
+                    if (wrapper && wrapper.parentNode) {
+                        wrapper.classList.remove("active");
+                        setTimeout(function () {
+                            if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
+                        }, 300);
+                    }
+                    document.removeEventListener("keydown", onKey);
+                    document.documentElement.style.overflowY = prevOverflow;
+                }
+
+                function onKey(e) {
+                    if (e.key === "Escape" || e.keyCode === 27) {
+                        finish(null);
+                    }
+                }
+
+                /* -- create overlay & wrapper -- */
+                /* Remove any leftover elements from a previous call */
+                var stale = document.querySelectorAll(
+                    ".passiflora_fo_overlay, .passiflora_fo_wrapper");
+                for (var si = 0; si < stale.length; si++)
+                    stale[si].parentNode.removeChild(stale[si]);
+
+                /* Force vertical scrollbar so its width doesn't shift layout */
+                var prevOverflow = document.documentElement.style.overflowY;
+                document.documentElement.style.overflowY = "scroll";
+
+                overlay = document.createElement("div");
+                overlay.className = "passiflora_fo_overlay";
+                overlay.addEventListener("click", function () { finish(null); });
+                document.body.appendChild(overlay);
+
+                wrapper = document.createElement("div");
+                wrapper.className = "passiflora_fo_wrapper";
+                var track = document.createElement("div");
+                track.className = "passiflora_fo_track";
+                wrapper.appendChild(track);
+                document.body.appendChild(wrapper);
+
+                /* Build and show the root screen */
+                var rootScreen = buildDirScreen(startDir, null);
+                rootScreen.style.transform = "translateX(0)";
+                track.appendChild(rootScreen);
+                screens.push(rootScreen);
+                initialDepth = 0;
+
+                /* Trigger transitions */
+                wrapper.offsetWidth; /* reflow */
+                overlay.classList.add("active");
+                wrapper.classList.add("active");
+                document.addEventListener("keydown", onKey);
+            });
+        });
+    },
+
+    /* ================================================================ */
+    /*  Save-As sliding menu                                            */
+    /* ================================================================ */
+
+    menusavas: function (extensions, defaultName) {
+        /* Normalise arguments */
+        if (!extensions) extensions = [];
+        if (!defaultName) defaultName = "";
+
+        /* Lowercase copy of extensions for matching */
+        var extsLower = [];
+        for (var i = 0; i < extensions.length; i++)
+            extsLower.push(extensions[i].toLowerCase().replace(/^\./, ""));
+
+        /* Build the label for the extension filter */
+        var extLabel = "";
+        if (extensions.length > 0) {
+            var parts = [];
+            for (var i = 0; i < extensions.length; i++)
+                parts.push("*." + extsLower[i]);
+            extLabel = parts.join(", ");
+        } else {
+            extLabel = "All files (*.*)";
+        }
+
+        /* ---- helpers ---- */
+        function fileMatches(name, showAll, exts) {
+            if (showAll) return true;
+            if (exts.length === 0) return true;
+            var dot = name.lastIndexOf(".");
+            if (dot < 0) return false;
+            var ext = name.substring(dot + 1).toLowerCase();
+            for (var i = 0; i < exts.length; i++)
+                if (ext === exts[i]) return true;
+            return false;
+        }
+
+        function nameHasMatchingExt(name, exts) {
+            if (exts.length === 0) return true;
+            var dot = name.lastIndexOf(".");
+            if (dot < 0) return false;
+            var ext = name.substring(dot + 1).toLowerCase();
+            for (var i = 0; i < exts.length; i++)
+                if (ext === exts[i]) return true;
+            return false;
+        }
+
+        var SEP = "/";
+        if (navigator.platform && navigator.platform.indexOf("Win") >= 0)
+            SEP = "\\";
+
+        function joinPath(dir, name) {
+            if (dir.charAt(dir.length - 1) === SEP) return dir + name;
+            return dir + SEP + name;
+        }
+
+        function parentPath(dir) {
+            var idx = dir.lastIndexOf(SEP);
+            if (idx <= 0) return null;
+            if (SEP === "\\" && idx <= 2) return dir.substring(0, idx + 1);
+            return dir.substring(0, idx);
+        }
+
+        /* ---- DOM builder ---- */
+        return PassifloraIO.getHomeFolder().then(function (startDir) {
+
+            return new Promise(function (resolve) {
+
+                var overlay = null;
+                var wrapper = null;
+                var screens = [];
+                var depth = 0;
+                var initialDepth = 0;
+                var filterAll = false;
+                var resolved = false;
+                var currentDir = startDir;
+                var currentFiles = [];       /* file names in the visible directory */
+                var nameInput = null;        /* the filename text field */
+
+                function finish(value) {
+                    if (resolved) return;
+                    resolved = true;
+                    teardown();
+                    resolve(value);
+                }
+
+                /* -- confirm dialog -- */
+                function showConfirm(message) {
+                    return new Promise(function (yes) {
+                        var box = document.createElement("div");
+                        box.className = "passiflora_fo_confirm_overlay";
+
+                        var card = document.createElement("div");
+                        card.className = "passiflora_fo_confirm_card";
+
+                        var msg = document.createElement("div");
+                        msg.className = "passiflora_fo_confirm_msg";
+                        msg.textContent = message;
+                        card.appendChild(msg);
+
+                        var btns = document.createElement("div");
+                        btns.className = "passiflora_fo_confirm_btns";
+
+                        var cancelBtn = document.createElement("button");
+                        cancelBtn.className = "passiflora_fo_confirm_btn";
+                        cancelBtn.textContent = "Cancel";
+                        cancelBtn.addEventListener("click", function () {
+                            box.parentNode.removeChild(box);
+                            yes(false);
+                        });
+                        btns.appendChild(cancelBtn);
+
+                        var okBtn = document.createElement("button");
+                        okBtn.className = "passiflora_fo_confirm_btn passiflora_fo_confirm_ok";
+                        okBtn.textContent = "OK";
+                        okBtn.addEventListener("click", function () {
+                            box.parentNode.removeChild(box);
+                            yes(true);
+                        });
+                        btns.appendChild(okBtn);
+
+                        card.appendChild(btns);
+                        box.appendChild(card);
+                        wrapper.appendChild(box);
+                    });
+                }
+
+                /* -- attempt to save -- */
+                function trySave() {
+                    var name = (nameInput.value || "").trim();
+                    if (!name) return;
+                    var fullPath = joinPath(currentDir, name);
+
+                    /* Does the file already exist in the current listing? */
+                    var exists = false;
+                    for (var ei = 0; ei < currentFiles.length; ei++) {
+                        if (currentFiles[ei] === name) { exists = true; break; }
+                    }
+                    var badExt = !nameHasMatchingExt(name, extsLower);
+
+                    if (badExt && exists) {
+                        showConfirm(
+                            "\"" + name + "\" does not have one of the expected extensions (" +
+                            extLabel + "). Save anyway?"
+                        ).then(function (ok) {
+                            if (!ok) return;
+                            return showConfirm(
+                                "\"" + name + "\" already exists. Overwrite?"
+                            );
+                        }).then(function (ok) {
+                            if (ok) finish(fullPath);
+                        });
+                        return;
+                    }
+                    if (badExt) {
+                        showConfirm(
+                            "\"" + name + "\" does not have one of the expected extensions (" +
+                            extLabel + "). Save anyway?"
+                        ).then(function (ok) {
+                            if (ok) finish(fullPath);
+                        });
+                        return;
+                    }
+                    if (exists) {
+                        showConfirm(
+                            "\"" + name + "\" already exists. Overwrite?"
+                        ).then(function (ok) {
+                            if (ok) finish(fullPath);
+                        });
+                        return;
+                    }
+
+                    finish(fullPath);
+                }
+
+                /* -- slide helpers -- */
+                function positionScreens() {
+                    for (var i = 0; i < screens.length; i++) {
+                        var off = (i - depth) * 100;
+                        screens[i].style.transform = "translateX(" + off + "%)";
+                    }
+                }
+
+                function slideForward(screen) {
+                    while (screens.length > depth + 1) {
+                        var old = screens.pop();
+                        if (old.parentNode) old.parentNode.removeChild(old);
+                    }
+                    screen.style.transform = "translateX(100%)";
+                    wrapper.querySelector(".passiflora_fo_track").appendChild(screen);
+                    screens.push(screen);
+                    screen.offsetWidth;
+                    depth++;
+                    positionScreens();
+                }
+
+                function slideBack() {
+                    if (depth <= initialDepth) {
+                        finish(null);
+                        return;
+                    }
+                    depth--;
+                    positionScreens();
+                    var removed = screens.pop();
+                    setTimeout(function () {
+                        if (removed.parentNode) removed.parentNode.removeChild(removed);
+                    }, 300);
+                }
+
+                function shortPath(p) {
+                    return p.length > 20 ? "\u2026" + p.slice(-20) : p;
+                }
+
+                /* -- build a screen for a directory -- */
+                function buildDirScreen(dirPath, title) {
+                    var screen = document.createElement("div");
+                    screen.className = "passiflora_fo_screen";
+
+                    /* Back header */
+                    var back = document.createElement("div");
+                    back.className = "passiflora_fo_back";
+                    back.textContent = title || shortPath(dirPath);
+                    back.addEventListener("click", function () { slideBack(); });
+                    screen.appendChild(back);
+
+                    /* File list */
+                    var listWrap = document.createElement("div");
+                    listWrap.className = "passiflora_fo_list";
+                    var loadingMsg = document.createElement("div");
+                    loadingMsg.className = "passiflora_fo_loading";
+                    loadingMsg.textContent = "Loading\u2026";
+                    listWrap.appendChild(loadingMsg);
+                    screen.appendChild(listWrap);
+
+                    /* Extension filter select */
+                    var filterRow = document.createElement("div");
+                    filterRow.className = "passiflora_fo_filterbar";
+                    var sel = document.createElement("select");
+                    sel.className = "passiflora_fo_select";
+                    if (extensions.length > 0) {
+                        var opt1 = document.createElement("option");
+                        opt1.value = "ext";
+                        opt1.textContent = extLabel;
+                        sel.appendChild(opt1);
+                    }
+                    var opt2 = document.createElement("option");
+                    opt2.value = "all";
+                    opt2.textContent = "All files (*.*)";
+                    sel.appendChild(opt2);
+                    if (extensions.length === 0) sel.value = "all";
+                    else sel.value = filterAll ? "all" : "ext";
+                    sel.addEventListener("change", function () {
+                        filterAll = (sel.value === "all");
+                        populateList();
+                    });
+                    filterRow.appendChild(sel);
+                    screen.appendChild(filterRow);
+
+                    /* Fetch directory listing and populate */
+                    var entries = null;
+
+                    function populateList() {
+                        if (!entries) return;
+                        listWrap.innerHTML = "";
+                        var ul = document.createElement("ul");
+                        ul.className = "passiflora_fo_ul";
+
+                        /* ".." entry */
+                        var upLi = document.createElement("li");
+                        upLi.className = "passiflora_fo_item passiflora_fo_dir";
+                        upLi.textContent = "\uD83D\uDCC1 ..";
+                        var upArrow = document.createElement("span");
+                        upArrow.className = "passiflora_fo_arrow";
+                        upArrow.textContent = "\u276E";
+                        upLi.appendChild(upArrow);
+                        upLi.addEventListener("click", function () { slideBack(); });
+                        ul.appendChild(upLi);
+
+                        /* Sort: directories first, then alphabetical */
+                        var dirs = [], files = [];
+                        for (var i = 0; i < entries.length; i++) {
+                            if (entries[i].name === "..") continue;
+                            if (entries[i].isDir) dirs.push(entries[i]);
+                            else files.push(entries[i]);
+                        }
+                        dirs.sort(function (a, b) { return a.name.localeCompare(b.name); });
+                        files.sort(function (a, b) { return a.name.localeCompare(b.name); });
+
+                        for (var i = 0; i < dirs.length; i++) {
+                            (function (ent) {
+                                var li = document.createElement("li");
+                                li.className = "passiflora_fo_item passiflora_fo_dir";
+                                var nameSpan = document.createElement("span");
+                                nameSpan.textContent = "\uD83D\uDCC1 " + ent.name;
+                                li.appendChild(nameSpan);
+                                var arrow = document.createElement("span");
+                                arrow.className = "passiflora_fo_arrow";
+                                arrow.textContent = "\u276F";
+                                li.appendChild(arrow);
+                                li.addEventListener("click", function () {
+                                    var sub = joinPath(dirPath, ent.name);
+                                    currentDir = sub;
+                                    var newScreen = buildDirScreen(sub, ent.name);
+                                    slideForward(newScreen);
+                                });
+                                ul.appendChild(li);
+                            })(dirs[i]);
+                        }
+
+                        for (var i = 0; i < files.length; i++) {
+                            (function (ent) {
+                                var li = document.createElement("li");
+                                var matches = fileMatches(
+                                    ent.name, filterAll, extsLower);
+                                li.className = "passiflora_fo_item passiflora_fo_file" +
+                                    (matches ? " passiflora_fo_match" : " passiflora_fo_dim");
+                                li.textContent = ent.name;
+                                /* Clicking an existing file = overwrite + extension confirm */
+                                li.addEventListener("click", function () {
+                                    nameInput.value = ent.name;
+                                    var badExt = !nameHasMatchingExt(ent.name, extsLower);
+                                    var p = Promise.resolve(true);
+                                    if (badExt) {
+                                        p = showConfirm(
+                                            "\"" + ent.name + "\" does not have one of the expected extensions (" +
+                                            extLabel + "). Save anyway?"
+                                        );
+                                    }
+                                    p.then(function (ok) {
+                                        if (!ok) return;
+                                        return showConfirm(
+                                            "\"" + ent.name + "\" already exists. Overwrite?"
+                                        );
+                                    }).then(function (ok) {
+                                        if (ok) finish(joinPath(dirPath, ent.name));
+                                    });
+                                });
+                                ul.appendChild(li);
+                            })(files[i]);
+                        }
+
+                        listWrap.appendChild(ul);
+                    }
+
+                    /* Track the current directory when this screen becomes active */
+                    screen.addEventListener("transitionend", function () {
+                        var r = screen.getBoundingClientRect();
+                        if (r.left >= 0 && r.left < 5) currentDir = dirPath;
+                    });
+
+                    PassifloraIO.listDirectory(dirPath).then(function (list) {
+                        currentDir = dirPath;
+                        entries = list;
+                        /* Update shared file-name list for trySave's overwrite check */
+                        currentFiles = [];
+                        for (var fi = 0; fi < list.length; fi++) {
+                            if (!list[fi].isDir) currentFiles.push(list[fi].name);
+                        }
+                        populateList();
+                    }).catch(function () {
+                        listWrap.innerHTML = "";
+                        var err = document.createElement("div");
+                        err.className = "passiflora_fo_loading";
+                        err.textContent = "Cannot read directory.";
+                        listWrap.appendChild(err);
+                    });
+
+                    return screen;
+                }
+
+                /* -- teardown -- */
+                function teardown() {
+                    if (overlay && overlay.parentNode) {
+                        overlay.classList.remove("active");
+                        setTimeout(function () {
+                            if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                        }, 300);
+                    }
+                    if (wrapper && wrapper.parentNode) {
+                        wrapper.classList.remove("active");
+                        setTimeout(function () {
+                            if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
+                        }, 300);
+                    }
+                    document.removeEventListener("keydown", onKey);
+                    document.documentElement.style.overflowY = prevOverflow;
+                }
+
+                function onKey(e) {
+                    if (e.key === "Escape" || e.keyCode === 27) {
+                        finish(null);
+                    }
+                }
+
+                /* -- create overlay & wrapper -- */
+                var stale = document.querySelectorAll(
+                    ".passiflora_fo_overlay, .passiflora_fo_wrapper");
+                for (var si = 0; si < stale.length; si++)
+                    stale[si].parentNode.removeChild(stale[si]);
+
+                var prevOverflow = document.documentElement.style.overflowY;
+                document.documentElement.style.overflowY = "scroll";
+
+                overlay = document.createElement("div");
+                overlay.className = "passiflora_fo_overlay";
+                overlay.addEventListener("click", function () { finish(null); });
+                document.body.appendChild(overlay);
+
+                wrapper = document.createElement("div");
+                wrapper.className = "passiflora_fo_wrapper";
+
+                /* Filename input bar at the top */
+                var nameBar = document.createElement("div");
+                nameBar.className = "passiflora_fo_namebar";
+
+                nameInput = document.createElement("input");
+                nameInput.type = "text";
+                nameInput.className = "passiflora_fo_nameinput";
+                nameInput.placeholder = "Filename";
+                nameInput.value = defaultName;
+                nameBar.appendChild(nameInput);
+
+                var saveBtn = document.createElement("button");
+                saveBtn.className = "passiflora_fo_savebtn";
+                saveBtn.textContent = "Save";
+                saveBtn.addEventListener("click", function () { trySave(); });
+                nameBar.appendChild(saveBtn);
+
+                wrapper.appendChild(nameBar);
+
+                var track = document.createElement("div");
+                track.className = "passiflora_fo_track";
+                wrapper.appendChild(track);
+                document.body.appendChild(wrapper);
+
+                /* Build and show the root screen */
+                var rootScreen = buildDirScreen(startDir, null);
+                rootScreen.style.transform = "translateX(0)";
+                track.appendChild(rootScreen);
+                screens.push(rootScreen);
+                initialDepth = 0;
+
+                /* Trigger transitions */
+                wrapper.offsetWidth;
+                overlay.classList.add("active");
+                wrapper.classList.add("active");
+                document.addEventListener("keydown", onKey);
+
+                /* Enter key in the filename field triggers Save */
+                nameInput.addEventListener("keydown", function (e) {
+                    if (e.key === "Enter" || e.keyCode === 13) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        trySave();
+                    }
+                });
+            });
+        });
     },
 
 };
