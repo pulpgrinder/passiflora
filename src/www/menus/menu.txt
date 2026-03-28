@@ -1,0 +1,9 @@
+{{progname}}
+	About
+File
+	Open
+Misc
+	More stuff
+	-
+	Still more stuff
+		Stuff at an even lower level

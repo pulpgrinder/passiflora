@@ -473,6 +473,22 @@ sign-android: android
 	$$APKSIGNER verify "$(ANDROID_APK)"; \
 	echo "sign-android: $(ANDROID_APK) signed successfully."
 
+# ── WWW (plain browser — no native build) ──────────────────────────
+WWW_BINDIR = bin/WWW
+
+www:
+	@mkdir -p $(dir $(CONFIG_JS))
+	sh nixscripts/mkmenu_json.sh src/WWW/menus/menu.txt $(PROGNAME) WWW $(CONFIG_JS)
+	@rm -rf $(WWW_BINDIR)
+	@mkdir -p $(WWW_BINDIR)
+	cp -R $(CONTENT)/* $(WWW_BINDIR)/
+	@echo ""
+	@echo "=== WWW target ready (bin/WWW/) ==="
+	@echo "Run the development server with:"
+	@echo "  python3 webserver.py"
+	@echo "Then open http://localhost:8000 in your browser."
+	@echo ""
+
 clean:
 	rm -f $(BINARY)
 	rm -rf $(GENDIR)
@@ -487,6 +503,7 @@ clean:
 	rm -f $(WIN_BINDIR)/app.rc $(WIN_BINDIR)/app_res.o
 	rm -f wv2loader.h
 	rm -rf src/www/generated
+	rm -rf $(WWW_BINDIR)
 	rm -rf bin/Android/gradle-build bin/Android/gradle-cache src/android/.gradle src/android/app/.cxx
 	rm -f bin/Android/*.apk
 ifeq ($(UNAME_S),Linux)
@@ -495,4 +512,4 @@ ifeq ($(UNAME_S),Linux)
 	-gtk-update-icon-cache -f -t $(HOME)/.local/share/icons/hicolor 2>/dev/null || true
 endif
 
-.PHONY: all clean icons bundle sign-macos ios ios-bundle sign-ios iosipa iossim iossim-bundle sign-iossim iossim-run windows linux android sign-android
+.PHONY: all clean icons bundle sign-macos ios ios-bundle sign-ios iosipa iossim iossim-bundle sign-iossim iossim-run windows linux android sign-android www

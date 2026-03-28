@@ -566,6 +566,11 @@
                 ['.txt'], 'untitled.txt');
             if (result) {
                 logResult('menusavas returned: ' + result);
+                /* Write test data and close to trigger the save/download */
+                var fh = await fopen(result, 'w');
+                await fputs(fh, 'Hello from Passiflora WWW test!\nSaved at: ' + new Date().toString());
+                await fclose(fh);
+                logResult('File saved.');
             } else {
                 logResult('menusavas cancelled (returned null)');
             }

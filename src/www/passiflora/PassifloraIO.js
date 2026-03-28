@@ -1272,6 +1272,327 @@ PassifloraIO = {
 
 };
 
+/* ================================================================ */
+/*  WWW (plain browser) polyfill                                     */
+/*  When os_name === "WWW", replace native POSIX bridge calls with   */
+/*  in-memory virtual filesystem + HTML File / download APIs.        */
+/* ================================================================ */
+(function () {
+    if (typeof PassifloraConfig === "undefined" ||
+        PassifloraConfig.os_name !== "WWW") return;
+
+    /* ---------- In-memory virtual file system ---------- */
+    var _vfs = {};               /* path -> Uint8Array */
+    var _handles = {};           /* handle_id -> { path, mode, pos } */
+    var _handleCounter = 0;
+    var _savePaths = {};         /* paths from menusavas awaiting download on fclose */
+    var _saveHandles = {};       /* paths from menusavas → FileSystemFileHandle (File System Access API) */
+
+    function _nextHandle() { return "webfh_" + (++_handleCounter); }
+
+    /* -- System info -- */
+    PassifloraIO.getUsername = function () {
+        return Promise.resolve("web_user");
+    };
+
+    PassifloraIO.getHomeFolder = function () {
+        return Promise.resolve("/");
+    };
+
+    PassifloraIO.listDirectory = function (path) {
+        var prefix = path;
+        if (prefix !== "/" && prefix.charAt(prefix.length - 1) !== "/")
+            prefix += "/";
+        var entries = [];
+        var seen = {};
+        var keys = Object.keys(_vfs);
+        for (var i = 0; i < keys.length; i++) {
+            var p = keys[i];
+            var rest;
+            if (prefix === "/") {
+                rest = p.substring(1);
+            } else if (p.indexOf(prefix) === 0) {
+                rest = p.substring(prefix.length);
+            } else {
+                continue;
+            }
+            var slash = rest.indexOf("/");
+            var name = slash < 0 ? rest : rest.substring(0, slash);
+            if (name && !seen[name]) {
+                seen[name] = true;
+                entries.push({ name: name, isDir: slash >= 0 });
+            }
+        }
+        return Promise.resolve(entries);
+    };
+
+    /* -- POSIX file I/O -- */
+    PassifloraIO.fopen = function (path, mode) {
+        mode = mode || "r";
+        if (mode.indexOf("r") >= 0 && !_vfs[path]) {
+            return Promise.reject(new Error("File not found: " + path));
+        }
+        if (mode.indexOf("w") >= 0) {
+            _vfs[path] = new Uint8Array(0);
+        }
+        if (mode.indexOf("a") >= 0 && !_vfs[path]) {
+            _vfs[path] = new Uint8Array(0);
+        }
+        var data = _vfs[path] || new Uint8Array(0);
+        var pos = mode.indexOf("a") >= 0 ? data.length : 0;
+        var h = _nextHandle();
+        _handles[h] = { path: path, mode: mode, pos: pos };
+        return Promise.resolve(h);
+    };
+
+    PassifloraIO.fclose = function (handle) {
+        var fh = _handles[handle];
+        if (!fh) { delete _handles[handle]; return Promise.resolve(0); }
+
+        /* File System Access API handle (showSaveFilePicker) */
+        if (_saveHandles[fh.path]) {
+            var fileHandle = _saveHandles[fh.path];
+            delete _saveHandles[fh.path];
+            delete _handles[handle];
+            var data = _vfs[fh.path] || new Uint8Array(0);
+            return fileHandle.createWritable().then(function (writable) {
+                return writable.write(data).then(function () {
+                    return writable.close();
+                });
+            }).then(function () { return 0; });
+        }
+
+        /* Legacy fallback: auto-download */
+        if (_savePaths[fh.path]) {
+            delete _savePaths[fh.path];
+            PassifloraIO.webDownload(fh.path);
+        }
+        delete _handles[handle];
+        return Promise.resolve(0);
+    };
+
+    PassifloraIO.fread = function (handle, size) {
+        var fh = _handles[handle];
+        if (!fh) return Promise.reject(new Error("Invalid file handle"));
+        var data = _vfs[fh.path] || new Uint8Array(0);
+        var end = Math.min(fh.pos + size, data.length);
+        if (fh.pos >= data.length) return Promise.resolve(null);
+        var slice = data.slice(fh.pos, end);
+        fh.pos = end;
+        return Promise.resolve(slice);
+    };
+
+    PassifloraIO.fwrite = function (handle, inputData) {
+        var fh = _handles[handle];
+        if (!fh) return Promise.reject(new Error("Invalid file handle"));
+        var bytes;
+        if (typeof inputData === "string") {
+            bytes = new TextEncoder().encode(inputData);
+        } else {
+            bytes = inputData;
+        }
+        var existing = _vfs[fh.path] || new Uint8Array(0);
+        var needed = fh.pos + bytes.length;
+        if (needed > existing.length) {
+            var bigger = new Uint8Array(needed);
+            bigger.set(existing);
+            existing = bigger;
+            _vfs[fh.path] = existing;
+        }
+        existing.set(bytes, fh.pos);
+        fh.pos += bytes.length;
+        return Promise.resolve(bytes.length);
+    };
+
+    PassifloraIO.fgets = function (handle) {
+        var fh = _handles[handle];
+        if (!fh) return Promise.reject(new Error("Invalid file handle"));
+        var data = _vfs[fh.path] || new Uint8Array(0);
+        if (fh.pos >= data.length) return Promise.resolve(null);
+        var end = fh.pos;
+        while (end < data.length && data[end] !== 10) end++;
+        if (end < data.length) end++; /* include newline */
+        var slice = data.slice(fh.pos, end);
+        fh.pos = end;
+        return Promise.resolve(new TextDecoder().decode(slice));
+    };
+
+    PassifloraIO.fputs = function (handle, str) {
+        return PassifloraIO.fwrite(handle, str);
+    };
+
+    PassifloraIO.fseek = function (handle, offset, whence) {
+        var fh = _handles[handle];
+        if (!fh) return Promise.reject(new Error("Invalid file handle"));
+        var data = _vfs[fh.path] || new Uint8Array(0);
+        if (whence === 0) fh.pos = offset;
+        else if (whence === 1) fh.pos += offset;
+        else if (whence === 2) fh.pos = data.length + offset;
+        if (fh.pos < 0) fh.pos = 0;
+        return Promise.resolve(0);
+    };
+
+    PassifloraIO.ftell = function (handle) {
+        var fh = _handles[handle];
+        if (!fh) return Promise.reject(new Error("Invalid file handle"));
+        return Promise.resolve(fh.pos);
+    };
+
+    PassifloraIO.feof = function (handle) {
+        var fh = _handles[handle];
+        if (!fh) return Promise.reject(new Error("Invalid file handle"));
+        var data = _vfs[fh.path] || new Uint8Array(0);
+        return Promise.resolve(fh.pos >= data.length ? 1 : 0);
+    };
+
+    PassifloraIO.fflush = function () {
+        return Promise.resolve(0);
+    };
+
+    PassifloraIO.remove = function (path) {
+        delete _vfs[path];
+        return Promise.resolve(0);
+    };
+
+    PassifloraIO.rename = function (oldpath, newpath) {
+        if (!_vfs[oldpath])
+            return Promise.reject(new Error("File not found: " + oldpath));
+        _vfs[newpath] = _vfs[oldpath];
+        delete _vfs[oldpath];
+        return Promise.resolve(0);
+    };
+
+    /* -- Recording: not natively available, fall back to MediaRecorder -- */
+    PassifloraIO.hasNativeRecording = function () {
+        return Promise.resolve(false);
+    };
+    PassifloraIO.startRecording = function () {
+        return Promise.reject(new Error("Native recording not available on web"));
+    };
+    PassifloraIO.stopRecording = function () {
+        return Promise.reject(new Error("Native recording not available on web"));
+    };
+    PassifloraIO.diagnoseNativeAudio = function () {
+        return Promise.reject(new Error("Native audio diagnostics not available on web"));
+    };
+
+    /* -- menuopen: HTML <input type="file"> -- */
+    PassifloraIO.menuopen = function (extensions) {
+        return new Promise(function (resolve) {
+            var input = document.createElement("input");
+            input.type = "file";
+            if (extensions && extensions.length > 0) {
+                input.accept = extensions.join(",");
+            }
+            input.style.display = "none";
+            document.body.appendChild(input);
+            input.addEventListener("change", function () {
+                var file = input.files[0];
+                document.body.removeChild(input);
+                if (!file) { resolve(null); return; }
+                var reader = new FileReader();
+                reader.onload = function () {
+                    var bytes = new Uint8Array(reader.result);
+                    var vpath = "/" + file.name;
+                    _vfs[vpath] = bytes;
+                    resolve(vpath);
+                };
+                reader.onerror = function () { resolve(null); };
+                reader.readAsArrayBuffer(file);
+            });
+            input.addEventListener("cancel", function () {
+                document.body.removeChild(input);
+                resolve(null);
+            });
+            input.click();
+        });
+    };
+
+    /* -- menusavas: native save-file picker (showSaveFilePicker) -- */
+    PassifloraIO.menusavas = function (extensions, defaultName) {
+        /* Build accept types for showSaveFilePicker */
+        var types = [];
+        if (extensions && extensions.length > 0) {
+            var exts = [];
+            for (var i = 0; i < extensions.length; i++) {
+                var ext = extensions[i].toLowerCase();
+                if (ext.charAt(0) !== ".") ext = "." + ext;
+                exts.push(ext);
+            }
+            types.push({
+                description: "Allowed files",
+                accept: { "application/octet-stream": exts }
+            });
+        }
+
+        /* Try the File System Access API (Chrome / Edge) */
+        if (typeof window.showSaveFilePicker === "function") {
+            var opts = { suggestedName: defaultName || "untitled" };
+            if (types.length) opts.types = types;
+            return window.showSaveFilePicker(opts).then(function (fileHandle) {
+                var name = fileHandle.name;
+                var vpath = "/" + name;
+                _vfs[vpath] = new Uint8Array(0);
+                _saveHandles[vpath] = fileHandle;
+                return vpath;
+            }).catch(function (err) {
+                /* User cancelled the picker */
+                if (err.name === "AbortError") return null;
+                throw err;
+            });
+        }
+
+        /* Fallback (Safari / Firefox): use defaultName and trigger a
+           browser download on fclose.  The download bar / sheet IS the
+           browser's native save experience for these engines. */
+        var name = defaultName || "untitled";
+        if (extensions && extensions.length > 0) {
+            var hasExt = false;
+            for (var j = 0; j < extensions.length; j++) {
+                var e = extensions[j].toLowerCase().replace(/^\./, "");
+                if (name.toLowerCase().endsWith("." + e)) {
+                    hasExt = true; break;
+                }
+            }
+            if (!hasExt) {
+                var first = extensions[0];
+                name += first.charAt(0) === "." ? first : "." + first;
+            }
+        }
+        var vpath = "/" + name;
+        if (!_vfs[vpath]) _vfs[vpath] = new Uint8Array(0);
+        _savePaths[vpath] = true;
+        return Promise.resolve(vpath);
+    };
+
+    /* -- webDownload: trigger browser download for a VFS path -- */
+    PassifloraIO.webDownload = function (path, mimeType) {
+        var data = _vfs[path];
+        if (!data) return;
+        var blob = new Blob([data], {
+            type: mimeType || "application/octet-stream"
+        });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = path.substring(path.lastIndexOf("/") + 1);
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    };
+
+    /* -- _posixCall: stub so closeAllFileHandles etc. don't throw -- */
+    PassifloraIO._posixCall = function (fn) {
+        if (fn === "closeAllFileHandles") {
+            _handles = {};
+            return Promise.resolve(0);
+        }
+        return Promise.reject(
+            new Error("POSIX call '" + fn + "' is not available on web"));
+    };
+})();
+
 /* POSIX constants (global) */
 const SEEK_SET = 0, SEEK_CUR = 1, SEEK_END = 2;
 

@@ -15,6 +15,7 @@ Supported target platforms include:
 * Android (build on macOS, Windows, or Linux)
 * Windows (build on macOS, Windows, or Linux)
 * Linux (build on Linux)
+* WWW (plain browser — build on any platform, serve with `python3 webserver.py`)
 * More targets may be added later if they seem useful
 
 Features:
@@ -87,6 +88,7 @@ make
 | `make android` | Build Android APK |
 | `make icons` | Generate icon sets for all platforms |
 | `make clean` | Remove all build artifacts |
+| `make www` | Build plain-browser version into `bin/WWW/` (no native compile) |
 | `make sign-macos` | Interactively sign the macOS app bundle |
 | `make sign-ios` | Interactively sign the iOS app bundle |
 | `make sign-iossim` | Interactively sign the iOS Simulator app bundle |
@@ -390,6 +392,118 @@ Use absolute paths if you need predictable locations. Again, see the code in the
 * `fread` reads a maximum of 16 MB per call. For larger files, read in a loop.
 * `fwrite` data is base64-encoded in transit; very large writes may be slow.
 * Path traversal (`..`) is rejected for `fopen`, `fremove`, and `frename`.
+
+## File Open and Save As Menus
+
+Passiflora provides two built-in sliding-panel file dialogs that work on all platforms (including WWW): **`menuopen`** for opening files and **`menusavas`** for Save As. These are methods on the `PassifloraIO` object.
+
+### `menuopen(extensions, defaultFolder)`
+
+Opens a sliding file-browser panel that lets the user navigate the filesystem and pick a file.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `extensions` | `string[]` | File extensions to filter by (e.g. `['.txt', '.md']`). Pass `[]` or `null` for all files. The user can also switch to "All files" in the dropdown. |
+| `defaultFolder` | `string` | Starting directory. If empty/null, defaults to the home folder. |
+
+Returns a Promise that resolves to the chosen file's full path, or `null` if the user cancelled.
+
+```javascript
+var path = await PassifloraIO.menuopen(['.txt', '.md'], '');
+if (path) {
+    var fh = await fopen(path, 'r');
+    var contents = await fgets(fh);
+    await fclose(fh);
+}
+```
+
+**UI features:**
+
+- Directories are shown with a 📁 icon and can be navigated into (slides forward) or backed out of (slides back).
+- Files matching the extension filter are selectable; non-matching files are dimmed.
+- An extension-filter dropdown at the bottom lets the user switch between the specified extensions and "All files".
+- Long paths in the back-navigation header are truncated to the last 20 characters with a `…` prefix.
+- Pressing Escape or tapping outside the panel cancels the dialog.
+
+### `menusavas(extensions, defaultName)`
+
+Opens a sliding Save As panel that lets the user navigate to a directory, type a filename, and save.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `extensions` | `string[]` | Allowed file extensions (e.g. `['.txt']`). Used for the filter dropdown and for extension-mismatch warnings. |
+| `defaultName` | `string` | Pre-filled filename (e.g. `'untitled.txt'`). |
+
+Returns a Promise that resolves to the chosen file's full path, or `null` if cancelled.
+
+```javascript
+var path = await PassifloraIO.menusavas(['.txt'], 'document.txt');
+if (path) {
+    var fh = await fopen(path, 'w');
+    await fputs(fh, 'Hello, world!\n');
+    await fclose(fh);
+}
+```
+
+**UI features:**
+
+- A text field and **Save** button appear at the top of the panel, pre-filled with `defaultName`.
+- The directory listing works the same as `menuopen` (navigate folders, extension filter).
+- Clicking an existing file fills the filename field with that file's name.
+- **Overwrite warning:** If a file with the entered name already exists in the current directory, a confirmation dialog asks whether to overwrite it.
+- **Extension mismatch warning:** If the entered filename doesn't match any of the specified extensions, a confirmation dialog warns the user. Both warnings can chain (extension mismatch first, then overwrite).
+
+### Styling
+
+Both dialogs are styled via `src/www/passiflora/menu.css` using the `passiflora_fo_*` CSS class prefix. The confirm dialogs use `passiflora_fo_confirm_*` classes. The dialogs respect iOS safe-area insets (`env(safe-area-inset-top)`).
+
+## WWW Target — In-Memory Virtual File System
+
+When built for the WWW target (`make www`), Passiflora runs as a plain web page served by any HTTP server — there is no native executable and no embedded HTTP server. Since a browser cannot access the host filesystem directly, the WWW build replaces the native POSIX bridge with an **in-memory virtual file system (VFS)** that provides the same API surface.
+
+The polyfill activates automatically when `PassifloraConfig.os_name === "WWW"`. All `PassifloraIO` methods are overridden transparently — application code does not need any changes to work on the WWW target.
+
+### How the VFS Works
+
+**Storage model:** Files are stored in a plain JavaScript object (`_vfs`) that maps path strings to `Uint8Array` values. For example, after writing a file at `/hello.txt`, `_vfs["/hello.txt"]` holds its byte contents.
+
+**File handles:** When you call `fopen()`, the polyfill creates a handle object that tracks the file path, open mode, and current read/write position — the same information a C `FILE*` would hold. All subsequent I/O calls (`fread`, `fwrite`, `fgets`, `fputs`, `fseek`, `ftell`, `feof`) operate on this handle's position within the `Uint8Array`.
+
+**Write operations** (`fwrite`, `fputs`) grow the `Uint8Array` as needed by allocating a larger buffer, copying existing data, and appending the new bytes. The position pointer advances accordingly.
+
+**Read operations** (`fread`, `fgets`) slice from the current position and advance the pointer. `fgets` scans for a newline character (byte 10) to return one line at a time, just like C's `fgets`.
+
+**Directory listing** (`listDirectory`) synthesizes a directory listing by scanning the keys of `_vfs` for paths that fall under the requested directory prefix. It deduplicates entries and infers whether each entry is a file or subdirectory based on remaining path separators.
+
+**Home folder:** `getHomeFolder()` returns `"/"` (the VFS root). `getUsername()` returns `"web_user"`.
+
+### Saving Files to Disk
+
+Since browser JavaScript runs in a sandbox, the VFS needs a way to get data *out* to the user's real filesystem. This is handled at `fclose()` time via two mechanisms:
+
+**File System Access API (Chrome / Edge):** When `menusavas` is called, the polyfill invokes `showSaveFilePicker()`, which shows the browser's native save dialog. The resulting `FileSystemFileHandle` is stored alongside the VFS path. When `fclose()` is later called on that file, the polyfill writes the VFS data to the real file via `FileSystemFileHandle.createWritable()`.
+
+**Download fallback (Safari / Firefox):** These browsers don't support `showSaveFilePicker()`. Instead, `menusavas` records the VFS path for download. When `fclose()` is called, the polyfill creates a `Blob` from the VFS data, generates a temporary object URL, and triggers a browser download via a programmatically-clicked `<a download>` element. The user sees the browser's standard download bar or save sheet.
+
+### Opening Files from Disk
+
+On the WWW target, `menuopen` uses an HTML `<input type="file">` element instead of the sliding file-browser panel (since the VFS has no pre-existing directory tree to browse). The browser shows its native file-open dialog. When the user selects a file, its contents are read via `FileReader.readAsArrayBuffer()` and stored in the VFS at `/<filename>`. The VFS path is returned to the caller, and subsequent `fopen`/`fread`/`fgets` calls read from the VFS copy.
+
+### Limitations
+
+- **No persistence:** The VFS lives in memory. All files are lost when the page is refreshed or closed. Files opened from disk are *copies* in the VFS; changes don't write back to the original unless the save mechanism is used.
+- **No real directories:** The VFS is a flat key-value store. Directories are inferred from path separators, but you cannot create empty directories.
+- **No native recording:** `startRecording` / `stopRecording` are not available on the WWW target. The standard `MediaRecorder` API can still be used directly via JavaScript.
+- **Single-tab scope:** Each browser tab has its own independent VFS instance.
+
+### Building and Running the WWW Target
+
+```bash
+make www                   # copies src/www/ → bin/WWW/ with WWW config
+python3 webserver.py       # serves bin/WWW/ on http://localhost:8000
+```
+
+The `webserver.py` script is a minimal Python HTTP server that serves `bin/WWW/` on port 8000 (pass a different port as a command-line argument if needed).
 
 ## Remote Debugging
 
