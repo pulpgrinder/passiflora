@@ -795,16 +795,18 @@ PassifloraIO = {
                             });
                         }
 
-                        /* ".." entry — go up a folder */
-                        var upLi = document.createElement("li");
-                        upLi.className = "passiflora_fo_item passiflora_fo_dir";
-                        upLi.textContent = "\uD83D\uDCC1 ..";
-                        var upArrow = document.createElement("span");
-                        upArrow.className = "passiflora_fo_arrow";
-                        upArrow.textContent = "\u276E";
-                        upLi.appendChild(upArrow);
-                        upLi.addEventListener("click", function () { slideBack(); });
-                        ul.appendChild(upLi);
+                        /* ".." entry — go up a folder (only if not at root) */
+                        if (dirPath !== "/") {
+                            var upLi = document.createElement("li");
+                            upLi.className = "passiflora_fo_item passiflora_fo_dir";
+                            upLi.textContent = "\uD83D\uDCC1 ..";
+                            var upArrow = document.createElement("span");
+                            upArrow.className = "passiflora_fo_arrow";
+                            upArrow.textContent = "\u276E";
+                            upLi.appendChild(upArrow);
+                            upLi.addEventListener("click", function () { slideBack(); });
+                            ul.appendChild(upLi);
+                        }
 
                         /* Sort: directories first, then alphabetical */
                         var dirs = [], files = [];
@@ -1245,16 +1247,18 @@ PassifloraIO = {
                             });
                         }
 
-                        /* ".." entry */
-                        var upLi = document.createElement("li");
-                        upLi.className = "passiflora_fo_item passiflora_fo_dir";
-                        upLi.textContent = "\uD83D\uDCC1 ..";
-                        var upArrow = document.createElement("span");
-                        upArrow.className = "passiflora_fo_arrow";
-                        upArrow.textContent = "\u276E";
-                        upLi.appendChild(upArrow);
-                        upLi.addEventListener("click", function () { slideBack(); });
-                        ul.appendChild(upLi);
+                        /* ".." entry (only if not at root) */
+                        if (dirPath !== "/") {
+                            var upLi = document.createElement("li");
+                            upLi.className = "passiflora_fo_item passiflora_fo_dir";
+                            upLi.textContent = "\uD83D\uDCC1 ..";
+                            var upArrow = document.createElement("span");
+                            upArrow.className = "passiflora_fo_arrow";
+                            upArrow.textContent = "\u276E";
+                            upLi.appendChild(upArrow);
+                            upLi.addEventListener("click", function () { slideBack(); });
+                            ul.appendChild(upLi);
+                        }
 
                         /* Sort: directories first, then alphabetical */
                         var dirs = [], files = [];

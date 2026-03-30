@@ -15,8 +15,8 @@ Supported target platforms include:
 * Android (build on macOS, Windows, or Linux)
 * Windows (build on macOS, Windows, or Linux)
 * Linux (build on Linux)
-* WWW (plain browser — build on any platform, serve with `python3 webserver.py`)
-* More targets may be added later if they seem useful
+* WWW (plain browser — build on any platform, serve with `python3 webserver.py` or any other webserver of your choice).
+* Need a different target? Open an issue... all suggestions will be considered, within the limits of time and efficiency.
 
 Features:
 
@@ -32,7 +32,7 @@ What it *doesn't* do:
 
 ![Ur Doin' It Worng](doingitwrong.jpg)
 
-Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Bundling a web browser made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then. It's my belief that it's now preferable to work through or around whatever inconsistencies and shortcomings that remain than take the enormous hit of bundling an entire browser. Passiflora does do some native bridging (e.g., the Posix-like file system), and it's possible that more native bridging will be added in the future, but the plan is to continue doing everything with web technology that *can* be done with web technology.
+Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Bundling a web browser made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then. It's my belief that it's now preferable to work through or around whatever inconsistencies and shortcomings that remain than take the enormous hit of bundling an entire browser. Passiflora does do some native bridging (e.g., geolocation, audio recording, opening external URLs), and it's possible that more native bridging will be added in the future, but the plan is to continue doing everything with web technology that *can* be done with web technology.
 
 ### Executable Size
 
@@ -120,6 +120,14 @@ The file `src/permissions` controls which platform capabilities are compiled int
 | `microphone` | All platforms | Enables microphone access (audio recording, video with audio). On iOS / macOS this adds `NSMicrophoneUsageDescription`. On Android it adds `RECORD_AUDIO` to the manifest. |
 | `remotedebugging` | All platforms | When on, the embedded HTTP server listens on all network interfaces (`0.0.0.0`), allowing remote debugging connections from other devices on the same network. When off (default for production), the server binds to `127.0.0.1` (localhost only) and remote debugging is not possible. |
 
+
+### Config
+
+The file `src/config` controls app-level settings that affect how the app behaves on each platform. Each line has the form `key value` (case-insensitive). Currently supported settings:
+
+| Setting | Values | Default | Description |
+|---------|--------|---------|-------------|
+| `orientation` | `portrait`, `landscape`, `both` | `both` | Controls whether the app is locked to portrait or landscape orientation, or rotates freely. On iOS this sets `UISupportedInterfaceOrientations` in the Info.plist. On Android it sets `android:screenOrientation` on the main activity. Desktop platforms ignore this setting. |
 
 ### Icons
 
@@ -281,38 +289,36 @@ This file is auto-generated on every build and should not be edited by hand.
 
 ## POSIX Functions
 
-Passiflora bridges a subset of C's stdio file I/O functions so that your JavaScript can read and write files on the host filesystem. All functions are **async** and return Promises. They are available both as global functions and as methods on `PassifloraIO`. An effort has been made to keep these as similar to the standard POSIX functions as possible.
+Passiflora provides a subset of C's stdio file I/O functions that operate on the in-memory **virtual file system (VFS)** backed by **IndexedDB** for persistence. All functions are **async** and return Promises. They are available both as global functions and as methods on `PassifloraIO`. An effort has been made to keep these as similar to the standard POSIX functions as possible.
 
 ### Quick Example
 
 ```javascript
 // Write a file
-let f = await fopen("(some file path)", "w");
+let f = await fopen("/hello.txt", "w");
 await fputs(f, "Hello from Passiflora!\n");
 await fclose(f);
 
 // Read it back
-f = await fopen("(some file path)", "r");
+f = await fopen("/hello.txt", "r");
 let line = await fgets(f);
 await fclose(f);
 alert(line);  // "Hello from Passiflora!\n"
 ```
 
-Obviously `(some file path)` has to be somewhere your app is allowed to write files. Consult the permissions section above and the code in the sample index.html for some tips.
-
 ### File Open / Close
 
 | Function | Description |
 |----------|-------------|
-| `fopen(path, mode)` | Open a file. Returns a numeric handle. `mode` defaults to `"r"` if omitted. Modes are the standard C modes: `"r"`, `"w"`, `"a"`, `"r+"`, `"w+"`, `"a+"` (append `"b"` for binary, e.g. `"rb"`). |
-| `fclose(handle)` | Close a previously opened file handle. |
+| `fopen(path, mode)` | Open a file. Returns a string handle (e.g. `"vfsfh_1"`). `mode` defaults to `"r"` if omitted. Modes are the standard C modes: `"r"`, `"w"`, `"a"`, `"r+"`, `"w+"`, `"a+"` (append `"b"` for binary, e.g. `"rb"`). Throws if the file does not exist when opening for read. |
+| `fclose(handle)` | Close a previously opened file handle and persist its contents to IndexedDB. Returns `0`. |
 
 ### Text I/O
 
 | Function | Description |
 |----------|-------------|
-| `fgets(handle)` | Read one line (up to 64 KB, including the newline). Returns the line as a string, or `null` at EOF. |
-| `fputs(handle, str)` | Write a string to the file. |
+| `fgets(handle)` | Read one line (up to the next `\n`). Returns the line as a string (including the newline), or `null` at EOF. |
+| `fputs(handle, str)` | Write a string to the file. Returns the number of bytes written. |
 
 ### Binary I/O
 
@@ -327,16 +333,16 @@ Obviously `(some file path)` has to be somewhere your app is allowed to write fi
 |----------|-------------|
 | `fseek(handle, offset, whence)` | Seek to a position. `whence`: `SEEK_SET` (0) = from start, `SEEK_CUR` (1) = from current, `SEEK_END` (2) = from end. |
 | `ftell(handle)` | Return the current byte offset in the file. |
-| `frewind(handle)` | Rewind to the beginning (equivalent to `fseek(handle, 0, SEEK_SET)`). |
-| `feof(handle)` | Return `true` if the file position is at end-of-file. |
-| `fflush(handle)` | Flush buffered writes to disk. |
+| `rewind(handle)` | Rewind to the beginning (equivalent to `fseek(handle, 0, SEEK_SET)`). |
+| `feof(handle)` | Return `1` if the file position is at end-of-file, `0` otherwise. |
+| `fflush(handle)` | No-op in the VFS (data is persisted to IndexedDB on `fclose`). Returns `0`. |
 
 ### Filesystem Operations
 
 | Function | Description |
 |----------|-------------|
-| `fremove(path)` | Delete a file. |
-| `frename(oldpath, newpath)` | Rename or move a file. |
+| `remove(path)` | Delete a file from the VFS and IndexedDB. |
+| `rename(oldpath, newpath)` | Rename or move a file or directory. When renaming a directory, all files and subdirectories under it are moved to the new path. |
 
 ### Directory Operations
 
@@ -346,20 +352,21 @@ Obviously `(some file path)` has to be somewhere your app is allowed to write fi
 | `rmdir(path)` | Remove an empty directory. Throws if the directory contains files or subdirectories, or does not exist. |
 | `chdir(path)` | Change the current working directory. The target must be an existing directory (either explicitly created with `mkdir` or implied by files stored under it). |
 | `getcwd()` | Return the current working directory (initially `"/"`). |
+| `PassifloraIO.listDirectory(path)` | List the contents of a directory. Returns a Promise resolving to an array of `{name, isDir}` objects. Both files stored under the path and explicitly created empty directories are included. |
 
-Paths may be absolute or relative to the current working directory. `.` and `..` components are resolved automatically. `rename()` also handles directory renames — all files and subdirectories under the old path are moved to the new path.
+Paths passed to `mkdir`, `rmdir`, `chdir`, and `rename` may be absolute or relative to the current working directory. `.` and `..` components are resolved automatically.
 
 ### Using via `PassifloraIO`
 
-All functions are also available as methods on the `PassifloraIO` object. The method names match the C originals (without the `f` prefix on `remove`/`rename`):
+All functions are also available as methods on the `PassifloraIO` object:
 
 ```javascript
-let f = await PassifloraIO.fopen("data.bin", "rb");
+let f = await PassifloraIO.fopen("/data.bin", "rb");
 let bytes = await PassifloraIO.fread(f, 1024);
 await PassifloraIO.fclose(f);
 
-await PassifloraIO.remove("old.txt");
-await PassifloraIO.rename("a.txt", "b.txt");
+await PassifloraIO.remove("/old.txt");
+await PassifloraIO.rename("/a.txt", "/b.txt");
 ```
 
 ### Constants
@@ -374,11 +381,11 @@ The following constants are available globally and on `PassifloraIO`:
 
 ### Error Handling
 
-All functions throw an `Error` on failure. The error message comes from the C runtime (e.g. `"No such file or directory"`). Use try/catch:
+All functions throw an `Error` on failure. Use try/catch:
 
 ```javascript
 try {
-    let f = await fopen("nonexistent.txt", "r");
+    let f = await fopen("/nonexistent.txt", "r");
 } catch (e) {
     console.error("Open failed:", e.message);
 }
@@ -386,22 +393,13 @@ try {
 
 ### Working Directory
 
-File paths are relative to the process's current working directory, which varies by platform:
-
-* **macOS / Linux / Windows** — wherever you launched the app from.
-* **Android** — the app's private data directory.
-* **iOS** — the app's sandbox container.
-
-Use absolute paths if you need predictable locations. Again, see the code in the sample index.html to get a handle on where you're allowed to write files.
+The current working directory starts at `"/"` on all platforms. Use `chdir()` and `getcwd()` to navigate. Paths passed to `fopen`, `fread`, etc. should be absolute (starting with `/`). The directory functions (`mkdir`, `rmdir`, `chdir`, `rename`) resolve relative paths against the current working directory.
 
 ### Notes
 
-* Calls go through the native WebView bridge (not HTTP), so they are only accessible to code running inside the app's own WebView.
-* On Android, calls are synchronous via `@JavascriptInterface`. On all other platforms they use async message handlers with callbacks.
-* Up to 63 files may be open simultaneously.
-* `fread` reads a maximum of 16 MB per call. For larger files, read in a loop.
-* `fwrite` data is base64-encoded in transit; very large writes may be slow.
-* Path traversal (`..`) is rejected for `fopen`, `fremove`, and `frename`.
+* All file I/O operates on the in-memory VFS — there is no native bridge involvement for file operations. Data is persisted to IndexedDB when files are closed.
+* There is no hard limit on the number of simultaneously open files.
+* The `beforeunload` handler automatically flushes and closes all open file handles.
 
 ## File Open and Save As Menus
 
@@ -508,6 +506,13 @@ Since the VFS is a self-contained store, Passiflora provides methods to move fil
 | `PassifloraIO.exportVFS()` | Serialises every file in the VFS to a JSON file (`passiflora_vfs.json`) and triggers a browser download. Each file's contents are base64-encoded. Returns a Promise resolving to the number of files exported. |
 | `PassifloraIO.importVFS()` | Opens a file picker for a `.json` file previously created by `exportVFS`, parses it, loads all files into the VFS, and persists them to IndexedDB. Returns a Promise resolving to the number of files imported (0 if cancelled). |
 
+### VFS Management
+
+| Function | Description |
+|----------|-------------|
+| `PassifloraIO.eraseVFS()` | Prompts the user for confirmation, then clears every file and directory from the VFS and IndexedDB. Resets the working directory to `"/"`. Returns a Promise resolving to the number of files erased (0 if the user cancels). |
+| `PassifloraIO.resetVFS()` | Erases the entire VFS and IndexedDB (without prompting), then repopulates from the compiled-in preload data (see VFS Preloading below). Returns a Promise. |
+
 ### VFS Preloading
 
 Files placed in `src/vfs/` are compiled into the app and automatically loaded into the VFS on first startup (i.e. when IndexedDB is empty). The directory structure under `src/vfs/` is preserved — for example, `src/vfs/data/config.json` becomes `/data/config.json` in the VFS.
@@ -534,6 +539,17 @@ python3 webserver.py       # serves bin/WWW/ on http://localhost:8000
 ```
 
 The `webserver.py` script is a minimal Python HTTP server that serves `bin/WWW/` on port 8000 (pass a different port as a command-line argument if needed).
+
+## Utility Functions
+
+These are methods on `PassifloraIO` (not available as bare globals).
+
+| Function | Description |
+|----------|-------------|
+| `PassifloraIO.openExternal(url)` | Open a URL in the system's default browser. On Android uses the native bridge; on other platforms issues a request to the embedded server's `openexternal` endpoint. Only `http://` and `https://` URLs are allowed. |
+| `PassifloraIO.getCurrentPosition(successCb, errorCb)` | Get the device's current GPS position. On macOS/iOS uses the native CLLocationManager bridge; on other platforms delegates to `navigator.geolocation`. Callbacks follow the standard Geolocation API signature. |
+| `PassifloraIO.webDownload(path, mimeType)` | Trigger a browser download for a VFS file. On macOS/iOS uses the native save panel via `passifloraSaveFile`; on other platforms creates a temporary download link. `mimeType` defaults to `"application/octet-stream"` if omitted. |
+| `PassifloraIO.patchLinks()` | Scan the DOM for `<a href>` elements with `http://` or `https://` URLs and attach click handlers that route them through `openExternal()` instead of navigating the webview. Called automatically on `DOMContentLoaded`. |
 
 ## Remote Debugging
 

@@ -37,6 +37,10 @@ All notable changes to this project will be documented in this file.
 
 - **`PassifloraIO.resetVFS()`**: Erases the entire VFS and IndexedDB, then repopulates from the compiled-in preload data.
 
+- **App configuration file** (`src/config`): A new key-value config file analogous to `src/permissions`. The first supported setting is `orientation` (`portrait`, `landscape`, or `both`), which controls screen orientation locking on iOS and Android. Desktop platforms ignore this setting.
+
+- **Documentation**: Added previously undocumented public APIs to the README: `eraseVFS()`, `resetVFS()`, `listDirectory()`, `openExternal()`, `getCurrentPosition()`, `webDownload()`, and `patchLinks()`.
+
 ### Changed
 
 - **Native file I/O bridge removed**: The ~540-line C file I/O implementation (`fopen`, `fread`, `fwrite`, `fclose`, `fseek`, etc.) has been removed from `passiflora.c`. All file operations now go through the JavaScript VFS. The `unrestrictedfilesystemaccess` permission has been removed.

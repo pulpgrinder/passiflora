@@ -38,6 +38,26 @@ if [ -f "$PERM_FILE" ]; then
     done < "$PERM_FILE"
 fi
 
+# ── Read src/config ────────────────────────────────────────────────
+CFG_ORIENTATION="both"
+CFG_FILE="$PROJECT_ROOT/src/config"
+if [ -f "$CFG_FILE" ]; then
+    while IFS=' ' read -r name val rest || [ -n "$name" ]; do
+        name="$(echo "$name" | tr '[:upper:]' '[:lower:]')"
+        val="$(echo "$val" | tr '[:upper:]' '[:lower:]')"
+        case "$name" in
+            orientation) CFG_ORIENTATION="$val" ;;
+        esac
+    done < "$CFG_FILE"
+fi
+
+# Map orientation config to Android screenOrientation attribute
+case "$CFG_ORIENTATION" in
+    portrait)  _android_orientation="portrait" ;;
+    landscape) _android_orientation="landscape" ;;
+    *)         _android_orientation="unspecified" ;;
+esac
+
 # ── Generate AndroidManifest.xml with only enabled permissions ─────
 MANIFEST="$ANDROID_DIR/app/src/main/AndroidManifest.xml"
 {
@@ -63,7 +83,7 @@ MANIFEST="$ANDROID_DIR/app/src/main/AndroidManifest.xml"
     }
     [ "$PERM_MICROPHONE" = "1" ] && \
         printf '%s\n' '    <uses-feature android:name="android.hardware.microphone" android:required="false" />'
-    cat <<'MANIFEST_APP'
+    cat <<MANIFEST_APP
     <!-- Allow cleartext HTTP to localhost -->
     <application
         android:label="@string/app_name"
@@ -76,6 +96,7 @@ MANIFEST="$ANDROID_DIR/app/src/main/AndroidManifest.xml"
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:screenOrientation="${_android_orientation}"
             android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -86,7 +107,7 @@ MANIFEST="$ANDROID_DIR/app/src/main/AndroidManifest.xml"
 </manifest>
 MANIFEST_APP
 } > "$MANIFEST"
-echo "mkandroid: generated AndroidManifest.xml (location=$PERM_LOCATION camera=$PERM_CAMERA mic=$PERM_MICROPHONE)"
+echo "mkandroid: generated AndroidManifest.xml (location=$PERM_LOCATION camera=$PERM_CAMERA mic=$PERM_MICROPHONE orientation=$_android_orientation)"
 
 # ── Locate Android SDK ─────────────────────────────────────────────
 if [ -z "$ANDROID_HOME" ]; then

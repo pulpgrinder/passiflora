@@ -110,6 +110,83 @@ if not "%VERSION%"=="1.0.0" (
         "$f = '%APP_GRADLE%'; $c = [IO.File]::ReadAllText($f); $c = $c -replace 'versionName \""1.0.0\""', 'versionName \""%VERSION%\""'; [IO.File]::WriteAllText($f, $c)"
 )
 
+REM ── Read src\permissions ──────────────────────────────────────────
+set PERM_LOCATION=0
+set PERM_CAMERA=0
+set PERM_MICROPHONE=0
+set PERM_REMOTEDEBUGGING=0
+if exist "%PROJECT_ROOT%\src\permissions" (
+    for /F "tokens=1,2" %%A in (%PROJECT_ROOT%\src\permissions) do (
+        if /I "%%A"=="location"        set PERM_LOCATION=%%B
+        if /I "%%A"=="camera"          set PERM_CAMERA=%%B
+        if /I "%%A"=="microphone"      set PERM_MICROPHONE=%%B
+        if /I "%%A"=="remotedebugging" set PERM_REMOTEDEBUGGING=%%B
+    )
+)
+
+REM ── Read src\config ──────────────────────────────────────────────
+set CFG_ORIENTATION=both
+if exist "%PROJECT_ROOT%\src\config" (
+    for /F "tokens=1,2" %%A in (%PROJECT_ROOT%\src\config) do (
+        if /I "%%A"=="orientation" set CFG_ORIENTATION=%%B
+    )
+)
+
+REM Map orientation to Android screenOrientation value
+set _ANDROID_ORIENTATION=unspecified
+if /I "!CFG_ORIENTATION!"=="portrait"  set _ANDROID_ORIENTATION=portrait
+if /I "!CFG_ORIENTATION!"=="landscape" set _ANDROID_ORIENTATION=landscape
+
+REM ── Generate AndroidManifest.xml ─────────────────────────────────
+set MANIFEST=%ANDROID_DIR%\app\src\main\AndroidManifest.xml
+(
+    echo ^<?xml version="1.0" encoding="utf-8"?^>
+    echo ^<manifest xmlns:android="http://schemas.android.com/apk/res/android"^>
+    echo.
+    echo     ^<uses-permission android:name="android.permission.INTERNET" /^>
+    if "!PERM_LOCATION!"=="1" (
+        echo     ^<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" /^>
+        echo     ^<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" /^>
+    )
+    if "!PERM_CAMERA!"=="1" (
+        echo     ^<uses-permission android:name="android.permission.CAMERA" /^>
+    )
+    if "!PERM_MICROPHONE!"=="1" (
+        echo     ^<uses-permission android:name="android.permission.RECORD_AUDIO" /^>
+        echo     ^<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" /^>
+    )
+    echo.
+    if "!PERM_CAMERA!"=="1" (
+        echo     ^<uses-feature android:name="android.hardware.camera" android:required="false" /^>
+        echo     ^<uses-feature android:name="android.hardware.camera.autofocus" android:required="false" /^>
+    )
+    if "!PERM_MICROPHONE!"=="1" (
+        echo     ^<uses-feature android:name="android.hardware.microphone" android:required="false" /^>
+    )
+    echo     ^<!-- Allow cleartext HTTP to localhost --^>
+    echo     ^<application
+    echo         android:label="@string/app_name"
+    echo         android:icon="@mipmap/ic_launcher"
+    echo         android:roundIcon="@mipmap/ic_launcher_round"
+    echo         android:usesCleartextTraffic="true"
+    echo         android:hardwareAccelerated="true"
+    echo         android:theme="@android:style/Theme.DeviceDefault.NoActionBar"^>
+    echo.
+    echo         ^<activity
+    echo             android:name=".MainActivity"
+    echo             android:exported="true"
+    echo             android:screenOrientation="!_ANDROID_ORIENTATION!"
+    echo             android:configChanges="orientation^|screenSize^|keyboardHidden"^>
+    echo             ^<intent-filter^>
+    echo                 ^<action android:name="android.intent.action.MAIN" /^>
+    echo                 ^<category android:name="android.intent.category.LAUNCHER" /^>
+    echo             ^</intent-filter^>
+    echo         ^</activity^>
+    echo     ^</application^>
+    echo ^</manifest^>
+) > "!MANIFEST!"
+echo mkandroid: generated AndroidManifest.xml (location=!PERM_LOCATION! camera=!PERM_CAMERA! mic=!PERM_MICROPHONE! orientation=!_ANDROID_ORIENTATION!)
+
 REM ── Build ──
 REM Capitalize first letter of BUILD_TYPE for Gradle task name
 set _BT_FIRST=%BUILD_TYPE:~0,1%

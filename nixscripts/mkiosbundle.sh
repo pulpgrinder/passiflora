@@ -44,6 +44,19 @@ if [ -f "$_permfile" ]; then
     done < "$_permfile"
 fi
 
+# Read config file (defaults)
+_cfg_orientation="both"
+_cfgfile="$(dirname "$0")/../src/config"
+if [ -f "$_cfgfile" ]; then
+    while IFS= read -r _line || [ -n "$_line" ]; do
+        _name="$(echo "${_line%% *}" | tr '[:upper:]' '[:lower:]')"
+        _val="$(echo "${_line##* }" | tr '[:upper:]' '[:lower:]')"
+        case "$_name" in
+            orientation) _cfg_orientation="$_val" ;;
+        esac
+    done < "$_cfgfile"
+fi
+
 # Prefer magick (IM7) but fall back to convert (IM6)
 if command -v magick >/dev/null 2>&1; then
     CONVERT="magick"
@@ -146,10 +159,32 @@ cat > "$APP/Info.plist" << PLIST
 
     <key>UISupportedInterfaceOrientations</key>
     <array>
+PLIST
+
+# Emit orientation entries based on config
+case "$_cfg_orientation" in
+    portrait)
+        cat >> "$APP/Info.plist" << 'PLIST'
+        <string>UIInterfaceOrientationPortrait</string>
+PLIST
+        ;;
+    landscape)
+        cat >> "$APP/Info.plist" << 'PLIST'
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+PLIST
+        ;;
+    *)
+        cat >> "$APP/Info.plist" << 'PLIST'
         <string>UIInterfaceOrientationPortrait</string>
         <string>UIInterfaceOrientationLandscapeLeft</string>
         <string>UIInterfaceOrientationLandscapeRight</string>
         <string>UIInterfaceOrientationPortraitUpsideDown</string>
+PLIST
+        ;;
+esac
+
+cat >> "$APP/Info.plist" << 'PLIST'
     </array>
 
     <key>UILaunchScreen</key>

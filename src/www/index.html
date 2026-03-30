@@ -15,22 +15,31 @@
     <p>
         <img src="test.png" alt="Test Image">
     </p>
+
+    <h2>Navigation</h2>
     <p>
         <a href="test.html">Visit Test Page</a>
         <a href="https://amazon.com">Visit Amazon</a>
         <button onclick="PassifloraIO.openExternal('https://google.com')">Open Google in new browser window</button>
         <button onclick="checkLocation()">Check Location</button>
+    </p>
+
+    <h2>File System</h2>
+    <p>
         <button onclick="testFileSystem()">Test File System</button>
         <button onclick="testMenuOpen()">Test Menu Open</button>
         <button onclick="testMenuSaveAs()">Test Save As</button>
-        <button onclick="testExportVFS()">Export VFS</button>
-        <button onclick="testImportVFS()">Import VFS</button>
+    </p>
+    <p>
         <button onclick="testImportFile()">Import File</button>
         <button onclick="testExportFile()">Export File</button>
+        <button onclick="testExportVFS()">Export VFS</button>
+        <button onclick="testImportVFS()">Import VFS</button>
         <button onclick="testEraseVFS()">Erase VFS</button>
         <button onclick="testResetVFS()">Reset VFS</button>
     </p>
-    <h2>Media Tests</h2>
+
+    <h2>Record &amp; Playback</h2>
     <p>
         <label for="cameraSelect">Camera:</label>
         <select id="cameraSelect"><option value="">-- select --</option></select>
@@ -38,14 +47,6 @@
         <select id="micSelect"><option value="">-- select --</option></select>
         <button onclick="refreshDevices()">Refresh Devices</button>
     </p>
-    <p>
-        <button onclick="startMedia('both')">Start Camera + Microphone</button>
-        <button onclick="startMedia('video')">Start Camera Only</button>
-        <button onclick="startMedia('audio')">Start Microphone Only</button>
-        <button onclick="stopMedia()">Stop</button>
-        <button onclick="diagAudio()">Diagnose Audio</button>
-    </p>
-    <h2>Record &amp; Playback</h2>
     <p>
         <button id="recordBtn" onclick="toggleRecording()">Record Video + Audio</button>
         <button id="playBtn" onclick="playRecording()" disabled>Play Recording</button>
@@ -368,41 +369,6 @@
         });
     }
 
-    function startMedia(mode) {
-        stopMedia();
-        const camId = document.getElementById('cameraSelect').value;
-        const micId = document.getElementById('micSelect').value;
-        const constraints = {};
-        if (mode === 'video' || mode === 'both') {
-            constraints.video = camId ? { deviceId: { exact: camId } } : true;
-        } else {
-            constraints.video = false;
-        }
-        if (mode === 'audio' || mode === 'both') {
-            constraints.audio = micId ? { deviceId: { exact: micId } } : true;
-        } else {
-            constraints.audio = false;
-        }
-        navigator.mediaDevices.getUserMedia(constraints)
-        .then(function(stream) {
-            activeStream = stream;
-            const tracks = stream.getTracks().map(function(t) { return t.kind + ' (' + t.label + ')'; });
-            logResult('Active: ' + tracks.join(', '));
-            if (stream.getVideoTracks().length > 0) {
-                const video = document.createElement('video');
-                video.autoplay = true;
-                video.playsInline = true;
-                video.muted = true;
-                video.style.maxWidth = '100%';
-                video.srcObject = stream;
-                document.getElementById('mediaContainer').appendChild(video);
-            }
-        })
-        .catch(function(err) {
-            alert('Error (' + mode + '): ' + err.name + ': ' + err.message);
-        });
-    }
-
     // Populate device lists on startup
     refreshDevices();
    
@@ -471,62 +437,6 @@
         const line = document.createElement('div');
         line.textContent = result;
         resultElem.appendChild(line);
-    }
-    function diagAudio() {
-        logResult('--- Audio diagnostics ---');
-        logResult('isSecureContext: ' + window.isSecureContext);
-        logResult('userAgent: ' + navigator.userAgent);
-        if (window.PassifloraBridge && window.PassifloraBridge.checkPermissions) {
-            logResult('Android permissions: ' + window.PassifloraBridge.checkPermissions());
-        }
-        navigator.mediaDevices.enumerateDevices().then(function(devs) {
-            const mics = devs.filter(function(d) { return d.kind === 'audioinput'; });
-            logResult('audioinput devices: ' + mics.length);
-            mics.forEach(function(d, i) {
-                logResult('  [' + i + '] id=' + d.deviceId + ' label=' + d.label + ' group=' + d.groupId);
-            });
-
-            logResult('Test 1: getUserMedia({audio: true}) ...');
-            return navigator.mediaDevices.getUserMedia({audio: true}).then(function(s) {
-                logResult('Test 1 SUCCESS');
-                s.getTracks().forEach(function(t) { logResult('  ' + t.kind + ' ' + t.label); t.stop(); });
-            }).catch(function(e) {
-                logResult('Test 1 FAIL: ' + e.name + ': ' + e.message);
-
-                logResult('Test 2: getUserMedia({audio: true, video: true}) ...');
-                return navigator.mediaDevices.getUserMedia({audio: true, video: true}).then(function(s) {
-                    logResult('Test 2 SUCCESS (audio+video together works!)');
-                    s.getTracks().forEach(function(t) { logResult('  ' + t.kind + ' ' + t.label); t.stop(); });
-                }).catch(function(e2) {
-                    logResult('Test 2 FAIL: ' + e2.name + ': ' + e2.message);
-
-                    logResult('Test 3: getUserMedia({video: true}) then getUserMedia({audio: true}) ...');
-                    return navigator.mediaDevices.getUserMedia({video: true}).then(function(vs) {
-                        logResult('  video stream got, now trying audio...');
-                        return navigator.mediaDevices.getUserMedia({audio: true}).then(function(as) {
-                            logResult('Test 3 SUCCESS (audio works after video opened!)');
-                            as.getTracks().forEach(function(t) { logResult('  ' + t.kind + ' ' + t.label); t.stop(); });
-                            vs.getTracks().forEach(function(t) { t.stop(); });
-                        }).catch(function(e3) {
-                            logResult('Test 3 FAIL: ' + e3.name + ': ' + e3.message);
-                            vs.getTracks().forEach(function(t) { t.stop(); });
-                        });
-                    });
-                });
-            });
-        });
-
-        // Also run GStreamer native audio diagnostics if available
-        if (typeof PassifloraIO !== 'undefined' && PassifloraIO.diagnoseNativeAudio) {
-            logResult('--- GStreamer native audio diagnostics ---');
-            PassifloraIO.diagnoseNativeAudio().then(function(info) {
-                info.split('\n').forEach(function(line) {
-                    if (line.trim()) logResult('  ' + line);
-                });
-            }).catch(function(e) {
-                logResult('  (native audio diag not available: ' + e.message + ')');
-            });
-        }
     }
     async function testMenuOpen() {
         logResult('Opening file picker for frompassiflora.txt...');
