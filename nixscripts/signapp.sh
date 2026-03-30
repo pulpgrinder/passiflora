@@ -164,6 +164,7 @@ ENTEOF
         fi
 
         # shellcheck disable=SC2086
+        xattr -cr "$BUNDLE"
         codesign --deep --force --options runtime \
             --sign "$SIGN_ID" \
             $ENTITLEMENTS_FLAG \
@@ -193,6 +194,7 @@ ENTEOF
         fi
 
         # shellcheck disable=SC2086
+        xattr -cr "$BUNDLE"
         codesign --force \
             --sign "$SIGN_ID" \
             --generate-entitlement-der \

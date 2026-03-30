@@ -9,7 +9,6 @@ PERM_LOCATION   := $(shell awk '/^location /   {print $$2}' src/permissions 2>/d
 PERM_CAMERA     := $(shell awk '/^camera /     {print $$2}' src/permissions 2>/dev/null)
 PERM_MICROPHONE := $(shell awk '/^microphone / {print $$2}' src/permissions 2>/dev/null)
 PERM_REMOTEDEBUGGING := $(shell awk '/^remotedebugging / {print $$2}' src/permissions 2>/dev/null)
-PERM_UNRESTRICTEDFILESYSTEMACCESS := $(shell awk '/^unrestrictedfilesystemaccess / {print $$2}' src/permissions 2>/dev/null)
 PERM_DEFS := -DPROGNAME_STR=\"$(PROGNAME)\"
 ifeq ($(PERM_LOCATION),1)
   PERM_DEFS += -DPERM_LOCATION
@@ -22,9 +21,6 @@ ifeq ($(PERM_MICROPHONE),1)
 endif
 ifeq ($(PERM_REMOTEDEBUGGING),1)
   PERM_DEFS += -DPERM_REMOTEDEBUGGING
-endif
-ifeq ($(PERM_UNRESTRICTEDFILESYSTEMACCESS),1)
-  PERM_DEFS += -DPERM_UNRESTRICTEDFILESYSTEMACCESS
 endif
 
 # Platform detection
@@ -129,6 +125,7 @@ endif
 
 $(GENDIR)/zipdata.h: $(CONTENT)
 	@mkdir -p $(GENDIR)
+	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 
 $(GENDIR)/menu.h: $(MENU_TEMPLATE) nixscripts/mkmenu.sh
@@ -142,6 +139,7 @@ $(GENDIR)/win_menu.h: src/Windows/menus/menu.txt nixscripts/mkmenu.sh
 $(BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/menu.h
 	@mkdir -p $(dir $(CONFIG_JS))
 	sh nixscripts/mkmenu_json.sh "$(MENU_TEMPLATE)" "$(PROGNAME)" "$(OS_NAME)" "$(CONFIG_JS)"
+	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
 	sh nixscripts/mkzipfile.sh "$(CONTENT)" "$(GENDIR)/zipdata.h"
 ifeq ($(UNAME_S),Linux)
 	@# Generate linux_icon.h with embedded icon (or stub if no icon available)
@@ -186,6 +184,7 @@ $(IOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR
 ifeq ($(UNAME_S),Darwin)
 	@mkdir -p $(dir $(CONFIG_JS))
 	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt "$(PROGNAME)" iOS "$(CONFIG_JS)"
+	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
 	sh nixscripts/mkzipfile.sh "$(CONTENT)" "$(GENDIR)/zipdata.h"
 	mkdir -p $(IOS_BINDIR)
 	$(IOS_CC) $(IOS_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(IOS_LDFLAGS)
@@ -241,8 +240,10 @@ ifeq ($(UNAME_S),Darwin)
 	echo "Platform: iOS (device — IPA packaging)"; \
 	echo ""; \
 	echo "Signing options:"; \
-	echo "  • Apple Distribution / iPhone Distribution — For App Store or enterprise distribution."; \
-	echo "  • Apple Development / iPhone Developer — For ad-hoc/device testing."; \
+	echo "  • Apple Development / iPhone Developer — For installing on local devices (ad-hoc testing)."; \
+	echo "  • Apple Distribution / iPhone Distribution — For App Store or enterprise distribution ONLY."; \
+	echo ""; \
+	echo "For sideloading to a local device, choose a DEVELOPMENT certificate."; \
 	echo ""; \
 	IDENTITIES=$$(security find-identity -v -p codesigning 2>/dev/null \
 		| grep -E '^\s+[0-9]+\)' | sed 's/^[[:space:]]*//'); \
@@ -275,6 +276,7 @@ ifeq ($(UNAME_S),Darwin)
 	echo ""; \
 	echo "Signing with: $$SIGN_DESC"; \
 	\
+	xattr -cr $(IOS_APP_BUNDLE); \
 	codesign --force \
 		--sign "$$SIGN_ID" \
 		--entitlements "$$ENT_FILE" \
@@ -291,7 +293,8 @@ ifeq ($(UNAME_S),Darwin)
 	rm -rf $(IOS_BINDIR)/_ipa_staging; \
 	mkdir -p $(IOS_BINDIR)/_ipa_staging/Payload; \
 	cp -R $(IOS_APP_BUNDLE) $(IOS_BINDIR)/_ipa_staging/Payload/; \
-	cd $(IOS_BINDIR)/_ipa_staging && zip -qr "$(CURDIR)/$(IOS_IPA)" Payload; \
+	ditto -c -k --sequesterRsrc --keepParent \
+		$(IOS_BINDIR)/_ipa_staging/Payload "$(CURDIR)/$(IOS_IPA)"; \
 	rm -rf $(IOS_BINDIR)/_ipa_staging; \
 	echo "iosipa: $(IOS_IPA) created."
 else
@@ -305,6 +308,7 @@ $(SIMOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GEND
 ifeq ($(UNAME_S),Darwin)
 	@mkdir -p $(dir $(CONFIG_JS))
 	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt "$(PROGNAME)" iOS "$(CONFIG_JS)"
+	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
 	sh nixscripts/mkzipfile.sh "$(CONTENT)" "$(GENDIR)/zipdata.h"
 	mkdir -p $(SIMOS_BINDIR)
 	$(SIMOS_CC) $(SIMOS_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(SIMOS_LDFLAGS)
@@ -374,6 +378,7 @@ $(WV2_LOADER_H):
 $(WIN_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/win_menu.h $(WV2_LOADER_H)
 	@mkdir -p $(dir $(CONFIG_JS))
 	sh nixscripts/mkmenu_json.sh src/Windows/menus/menu.txt $(PROGNAME) Windows $(CONFIG_JS)
+	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 	mkdir -p $(WIN_BINDIR)
 	@if [ -f src/icons/builticons/windows/app.ico ] && \
@@ -396,6 +401,7 @@ linux: $(GENDIR)/menu.h
 ifeq ($(UNAME_S),Linux)
 	@mkdir -p $(dir $(CONFIG_JS))
 	sh nixscripts/mkmenu_json.sh src/Linux/menus/menu.txt $(PROGNAME) Linux $(CONFIG_JS)
+	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 	@mkdir -p $(GENDIR)
 	@_ICON="$(LINUX_ICON_PNG)"; \
@@ -422,6 +428,7 @@ endif
 android: $(GENDIR)/menu.h
 	@mkdir -p $(dir $(CONFIG_JS))
 	sh nixscripts/mkmenu_json.sh src/android/menus/menu.txt $(PROGNAME) Android $(CONFIG_JS)
+	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 	sh nixscripts/mkandroid.sh $(PROGNAME) $(BUNDLE_ID) $(VERSION)
 
@@ -479,6 +486,7 @@ WWW_BINDIR = bin/WWW
 www:
 	@mkdir -p $(dir $(CONFIG_JS))
 	sh nixscripts/mkmenu_json.sh src/WWW/menus/menu.txt $(PROGNAME) WWW $(CONFIG_JS)
+	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
 	@rm -rf $(WWW_BINDIR)
 	@mkdir -p $(WWW_BINDIR)
 	cp -R $(CONTENT)/* $(WWW_BINDIR)/

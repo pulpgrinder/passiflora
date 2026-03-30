@@ -25,7 +25,6 @@ BUILD_TYPE="${BUILD_TYPE:-debug}"
 PERM_LOCATION=0
 PERM_CAMERA=0
 PERM_MICROPHONE=0
-PERM_UNRESTRICTEDFILESYSTEMACCESS=0
 PERM_REMOTEDEBUGGING=0
 PERM_FILE="$PROJECT_ROOT/src/permissions"
 if [ -f "$PERM_FILE" ]; then
@@ -34,7 +33,6 @@ if [ -f "$PERM_FILE" ]; then
             location)    PERM_LOCATION="$val" ;;
             camera)      PERM_CAMERA="$val" ;;
             microphone)  PERM_MICROPHONE="$val" ;;
-            unrestrictedfilesystemaccess)  PERM_UNRESTRICTEDFILESYSTEMACCESS="$val" ;;
             remotedebugging)  PERM_REMOTEDEBUGGING="$val" ;;
         esac
     done < "$PERM_FILE"
@@ -57,8 +55,6 @@ MANIFEST="$ANDROID_DIR/app/src/main/AndroidManifest.xml"
         printf '%s\n' '    <uses-permission android:name="android.permission.RECORD_AUDIO" />'
     [ "$PERM_MICROPHONE" = "1" ] && \
         printf '%s\n' '    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />'
-    [ "$PERM_UNRESTRICTEDFILESYSTEMACCESS" = "1" ] && \
-        printf '%s\n' '    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />'
     printf '\n'
     # Hardware feature declarations (optional, so required=false)
     [ "$PERM_CAMERA" = "1" ] && {
@@ -90,7 +86,7 @@ MANIFEST="$ANDROID_DIR/app/src/main/AndroidManifest.xml"
 </manifest>
 MANIFEST_APP
 } > "$MANIFEST"
-echo "mkandroid: generated AndroidManifest.xml (location=$PERM_LOCATION camera=$PERM_CAMERA mic=$PERM_MICROPHONE unrestrictedfs=$PERM_UNRESTRICTEDFILESYSTEMACCESS)"
+echo "mkandroid: generated AndroidManifest.xml (location=$PERM_LOCATION camera=$PERM_CAMERA mic=$PERM_MICROPHONE)"
 
 # ── Locate Android SDK ─────────────────────────────────────────────
 if [ -z "$ANDROID_HOME" ]; then
@@ -180,7 +176,6 @@ echo "mkandroid: building $BUILD_TYPE APK ($GRADLE_TASK)..."
     -PPERM_LOCATION="$PERM_LOCATION" \
     -PPERM_CAMERA="$PERM_CAMERA" \
     -PPERM_MICROPHONE="$PERM_MICROPHONE" \
-    -PPERM_UNRESTRICTEDFILESYSTEMACCESS="$PERM_UNRESTRICTEDFILESYSTEMACCESS" \
     -PPERM_REMOTEDEBUGGING="$PERM_REMOTEDEBUGGING" \
     --project-cache-dir "$PROJECT_ROOT/bin/Android/gradle-cache")
 

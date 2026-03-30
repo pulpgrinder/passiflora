@@ -39,7 +39,6 @@ if exist "%SCRIPT_DIR%\src\permissions" (
         if /I "%%A"=="camera"            if "%%B"=="1" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_CAMERA
         if /I "%%A"=="microphone"        if "%%B"=="1" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_MICROPHONE
         if /I "%%A"=="remotedebugging"   if "%%B"=="1" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_REMOTEDEBUGGING
-        if /I "%%A"=="unrestrictedfilesystemaccess" if "%%B"=="1" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_UNRESTRICTEDFILESYSTEMACCESS
     )
 )
 
@@ -101,6 +100,9 @@ mkdir src\www\generated 2>nul
 mkdir src\C\generated 2>nul
 echo [android] Generating config.js from src\android\menus\menu.txt...
 call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\android\menus\menu.txt %PROGNAME% Android src\www\generated\config.js
+if errorlevel 1 exit /b 1
+echo [android] Generating vfspreload.js...
+call "%SCRIPT_DIR%\winscripts\mkvfspreload.bat" src\vfs src\www\generated\vfspreload.js
 if errorlevel 1 exit /b 1
 echo [android] Generating zipdata.h...
 call "%SCRIPT_DIR%\winscripts\mkzipfile.bat" %CONTENT% src\C\generated\zipdata.h
@@ -213,6 +215,14 @@ echo [windows] Generating config.js from src\Windows\menus\menu.txt...
 call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\Windows\menus\menu.txt %PROGNAME% Windows src\www\generated\config.js
 if errorlevel 1 (
     echo [ERROR] mkmenu_json.bat failed >&2
+    exit /b 1
+)
+
+REM ── Step 1b: Generate vfspreload.js (before zip!) ──
+echo [windows] Generating vfspreload.js...
+call "%SCRIPT_DIR%\winscripts\mkvfspreload.bat" src\vfs src\www\generated\vfspreload.js
+if errorlevel 1 (
+    echo [ERROR] mkvfspreload.bat failed >&2
     exit /b 1
 )
 

@@ -118,7 +118,6 @@ The file `src/permissions` controls which platform capabilities are compiled int
 | `location` | All platforms | Enables GPS / geolocation. On iOS and macOS this links CoreLocation and adds the required `NSLocation*` plist keys. On Android it adds `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` to the manifest and enables the WebView geolocation prompt. |
 | `camera` | All platforms | Enables camera access (screenshots, image capture, video recording). On iOS / macOS this links AVFoundation and adds `NSCameraUsageDescription`. On Android it adds the `CAMERA` manifest permission. |
 | `microphone` | All platforms | Enables microphone access (audio recording, video with audio). On iOS / macOS this adds `NSMicrophoneUsageDescription`. On Android it adds `RECORD_AUDIO` to the manifest. |
-| `unrestrictedfilesystemaccess` | All platforms | Controls filesystem scope for the POSIX file I/O bridge. When **on** (`1`), JavaScript can read and write anywhere the OS permits. When **off** (`0`, recommended for production), all file operations (fopen, remove, rename, startRecording) are restricted to an app-specific documents folder. The `getHomeFolder()` bridge always returns this folder. On Android, this setting also controls whether the `MANAGE_EXTERNAL_STORAGE` manifest permission is included and whether the all-files-access prompt appears. Note that on Android this folder is private storage for the app. I'm still looking for a good solution to make a publicly-readable files on Android without turning on unrestrictedfilesystemaccess.
 | `remotedebugging` | All platforms | When on, the embedded HTTP server listens on all network interfaces (`0.0.0.0`), allowing remote debugging connections from other devices on the same network. When off (default for production), the server binds to `127.0.0.1` (localhost only) and remote debugging is not possible. |
 
 
@@ -339,6 +338,17 @@ Obviously `(some file path)` has to be somewhere your app is allowed to write fi
 | `fremove(path)` | Delete a file. |
 | `frename(oldpath, newpath)` | Rename or move a file. |
 
+### Directory Operations
+
+| Function | Description |
+|----------|-------------|
+| `mkdir(path)` | Create a directory. Intermediate directories must already exist. Throws if the directory (or a file at that path) already exists. |
+| `rmdir(path)` | Remove an empty directory. Throws if the directory contains files or subdirectories, or does not exist. |
+| `chdir(path)` | Change the current working directory. The target must be an existing directory (either explicitly created with `mkdir` or implied by files stored under it). |
+| `getcwd()` | Return the current working directory (initially `"/"`). |
+
+Paths may be absolute or relative to the current working directory. `.` and `..` components are resolved automatically. `rename()` also handles directory renames — all files and subdirectories under the old path are moved to the new path.
+
 ### Using via `PassifloraIO`
 
 All functions are also available as methods on the `PassifloraIO` object. The method names match the C originals (without the `f` prefix on `remove`/`rename`):
@@ -395,11 +405,11 @@ Use absolute paths if you need predictable locations. Again, see the code in the
 
 ## File Open and Save As Menus
 
-Passiflora provides two built-in sliding-panel file dialogs that work on all platforms (including WWW): **`menuopen`** for opening files and **`menusavas`** for Save As. These are methods on the `PassifloraIO` object.
+Passiflora provides two built-in sliding-panel file dialogs: **`menuopen`** for opening files and **`menusavas`** for Save As. These are methods on the `PassifloraIO` object. The dialogs appear as sliding panels that let the user browse the virtual file system (VFS). To bring files in from the real filesystem or save files out, use **`importFile`** and **`exportFile`** (see [Importing and Exporting Files](#importing-and-exporting-files) below).
 
 ### `menuopen(extensions, defaultFolder)`
 
-Opens a sliding file-browser panel that lets the user navigate the filesystem and pick a file.
+Opens a sliding file-browser panel that lets the user navigate the VFS and pick a file.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -422,6 +432,8 @@ if (path) {
 - Directories are shown with a 📁 icon and can be navigated into (slides forward) or backed out of (slides back).
 - Files matching the extension filter are selectable; non-matching files are dimmed.
 - An extension-filter dropdown at the bottom lets the user switch between the specified extensions and "All files".
+- A **Create Folder** button (📁+) next to the filter dropdown creates a new directory named "Untitled", "Untitled 2", etc. in the current directory.
+- **Long-press rename:** Long-pressing (500 ms) on any file or directory name makes it editable inline. The name becomes a plain-text contenteditable field. Edit the name and tap/click away (or press Enter) to rename; press Escape to cancel. HTML markup, newlines, and extra whitespace are stripped automatically.
 - Long paths in the back-navigation header are truncated to the last 20 characters with a `…` prefix.
 - Pressing Escape or tapping outside the panel cancels the dialog.
 
@@ -452,49 +464,67 @@ if (path) {
 - Clicking an existing file fills the filename field with that file's name.
 - **Overwrite warning:** If a file with the entered name already exists in the current directory, a confirmation dialog asks whether to overwrite it.
 - **Extension mismatch warning:** If the entered filename doesn't match any of the specified extensions, a confirmation dialog warns the user. Both warnings can chain (extension mismatch first, then overwrite).
+- A **Create Folder** button and **long-press rename** are available, working the same as in `menuopen` (see above).
 
 ### Styling
 
 Both dialogs are styled via `src/www/passiflora/menu.css` using the `passiflora_fo_*` CSS class prefix. The confirm dialogs use `passiflora_fo_confirm_*` classes. The dialogs respect iOS safe-area insets (`env(safe-area-inset-top)`).
 
-## WWW Target — In-Memory Virtual File System
+## Virtual File System + IndexedDB
 
-When built for the WWW target (`make www`), Passiflora runs as a plain web page served by any HTTP server — there is no native executable and no embedded HTTP server. Since a browser cannot access the host filesystem directly, the WWW build replaces the native POSIX bridge with an **in-memory virtual file system (VFS)** that provides the same API surface.
-
-The polyfill activates automatically when `PassifloraConfig.os_name === "WWW"`. All `PassifloraIO` methods are overridden transparently — application code does not need any changes to work on the WWW target.
+On **all platforms** (macOS, iOS, Linux, Windows, Android, and WWW), Passiflora stores files in a **virtual file system (VFS)** backed by **IndexedDB** for persistence. The POSIX-style `PassifloraIO` methods (`fopen`, `fread`, `fwrite`, `fclose`, etc.) operate entirely in JavaScript — the native C bridge is no longer used for file I/O.
 
 ### How the VFS Works
 
 **Storage model:** Files are stored in a plain JavaScript object (`_vfs`) that maps path strings to `Uint8Array` values. For example, after writing a file at `/hello.txt`, `_vfs["/hello.txt"]` holds its byte contents.
 
-**File handles:** When you call `fopen()`, the polyfill creates a handle object that tracks the file path, open mode, and current read/write position — the same information a C `FILE*` would hold. All subsequent I/O calls (`fread`, `fwrite`, `fgets`, `fputs`, `fseek`, `ftell`, `feof`) operate on this handle's position within the `Uint8Array`.
+**IndexedDB persistence:** On startup an IndexedDB database (`PassifloraVFS`) is opened and every stored file is loaded (hydrated) into the in-memory `_vfs`. When a file is closed with `fclose()`, its contents are persisted back to IndexedDB. `remove()` and `rename()` also update IndexedDB immediately. The browser's persistent-storage permission (`navigator.storage.persist()`) is requested automatically to reduce the chance of eviction.
 
-**Write operations** (`fwrite`, `fputs`) grow the `Uint8Array` as needed by allocating a larger buffer, copying existing data, and appending the new bytes. The position pointer advances accordingly.
+**File handles:** `fopen()` creates a handle object that tracks the file path, open mode, and current read/write position — the same information a C `FILE*` would hold. All subsequent I/O calls (`fread`, `fwrite`, `fgets`, `fputs`, `fseek`, `ftell`, `feof`) operate on this handle's position within the `Uint8Array`.
 
-**Read operations** (`fread`, `fgets`) slice from the current position and advance the pointer. `fgets` scans for a newline character (byte 10) to return one line at a time, just like C's `fgets`.
+**Write operations** (`fwrite`, `fputs`) grow the `Uint8Array` as needed by allocating a larger buffer, copying existing data, and appending the new bytes.
 
-**Directory listing** (`listDirectory`) synthesizes a directory listing by scanning the keys of `_vfs` for paths that fall under the requested directory prefix. It deduplicates entries and infers whether each entry is a file or subdirectory based on remaining path separators.
+**Read operations** (`fread`, `fgets`) slice from the current position and advance the pointer. `fgets` scans for a newline character (byte 10) to return one line at a time.
 
-**Home folder:** `getHomeFolder()` returns `"/"` (the VFS root). `getUsername()` returns `"web_user"`.
+**Directories:** Explicit directories are tracked in a separate in-memory set (`_dirs`) and persisted to an IndexedDB object store (`"dirs"`). `mkdir()` creates an entry; `rmdir()` removes it (if empty). `chdir()` and `getcwd()` manage a current working directory that is used to resolve relative paths.
 
-### Saving Files to Disk
+**Directory listing** (`listDirectory`) synthesizes a directory listing by scanning the keys of `_vfs` for paths under the requested directory prefix **and** checking `_dirs` for explicitly created empty directories, deduplicating entries and inferring file-vs-directory from remaining path separators.
 
-Since browser JavaScript runs in a sandbox, the VFS needs a way to get data *out* to the user's real filesystem. This is handled at `fclose()` time via two mechanisms:
+**Home folder:** `getHomeFolder()` returns `"/"`.
 
-**File System Access API (Chrome / Edge):** When `menusavas` is called, the polyfill invokes `showSaveFilePicker()`, which shows the browser's native save dialog. The resulting `FileSystemFileHandle` is stored alongside the VFS path. When `fclose()` is later called on that file, the polyfill writes the VFS data to the real file via `FileSystemFileHandle.createWritable()`.
+### Importing and Exporting Files
 
-**Download fallback (Safari / Firefox):** These browsers don't support `showSaveFilePicker()`. Instead, `menusavas` records the VFS path for download. When `fclose()` is called, the polyfill creates a `Blob` from the VFS data, generates a temporary object URL, and triggers a browser download via a programmatically-clicked `<a download>` element. The user sees the browser's standard download bar or save sheet.
+Since the VFS is a self-contained store, Passiflora provides methods to move files between the VFS and the real filesystem:
 
-### Opening Files from Disk
+| Function | Description |
+|----------|-------------|
+| `PassifloraIO.importFile(extensions)` | Shows the browser/OS file picker (`<input type="file">`). The selected file is read and stored in the VFS at `/<filename>`, and persisted to IndexedDB. Returns a Promise resolving to the VFS path, or `null` if cancelled. |
+| `PassifloraIO.exportFile(vfsPath, suggestedName)` | Saves a VFS file to the real filesystem. On Chrome/Edge uses `showSaveFilePicker()`; on other browsers triggers a download. Returns a Promise resolving to the VFS path exported, or `null` if cancelled. |
 
-On the WWW target, `menuopen` uses an HTML `<input type="file">` element instead of the sliding file-browser panel (since the VFS has no pre-existing directory tree to browse). The browser shows its native file-open dialog. When the user selects a file, its contents are read via `FileReader.readAsArrayBuffer()` and stored in the VFS at `/<filename>`. The VFS path is returned to the caller, and subsequent `fopen`/`fread`/`fgets` calls read from the VFS copy.
+### Bulk VFS Export / Import
+
+| Function | Description |
+|----------|-------------|
+| `PassifloraIO.exportVFS()` | Serialises every file in the VFS to a JSON file (`passiflora_vfs.json`) and triggers a browser download. Each file's contents are base64-encoded. Returns a Promise resolving to the number of files exported. |
+| `PassifloraIO.importVFS()` | Opens a file picker for a `.json` file previously created by `exportVFS`, parses it, loads all files into the VFS, and persists them to IndexedDB. Returns a Promise resolving to the number of files imported (0 if cancelled). |
+
+### VFS Preloading
+
+Files placed in `src/vfs/` are compiled into the app and automatically loaded into the VFS on first startup (i.e. when IndexedDB is empty). The directory structure under `src/vfs/` is preserved — for example, `src/vfs/data/config.json` becomes `/data/config.json` in the VFS.
+
+The build scripts (`mkvfspreload.sh` / `mkvfspreload.bat`) base64-encode every file under `src/vfs/` into `src/www/generated/vfspreload.js`, which is included in the zip bundle. On startup, if the VFS is empty, the preload data is decoded and written to both the in-memory VFS and IndexedDB.
+
+To reset the VFS back to the compiled-in preload data (erasing any user changes), call:
+
+```javascript
+await PassifloraIO.resetVFS();   // clears VFS + IndexedDB, reloads preload data
+```
 
 ### Limitations
 
-- **No persistence:** The VFS lives in memory. All files are lost when the page is refreshed or closed. Files opened from disk are *copies* in the VFS; changes don't write back to the original unless the save mechanism is used.
-- **No real directories:** The VFS is a flat key-value store. Directories are inferred from path separators, but you cannot create empty directories.
-- **No native recording:** `startRecording` / `stopRecording` are not available on the WWW target. The standard `MediaRecorder` API can still be used directly via JavaScript.
-- **Single-tab scope:** Each browser tab has its own independent VFS instance.
+- **Explicit directories are optional:** The VFS is fundamentally a flat key-value store. Directories are inferred from path separators in file paths. You can also create explicit empty directories with `mkdir()`, which are persisted to IndexedDB and appear in directory listings.
+- **No native recording on WWW:** `startRecording` / `stopRecording` are not available on the WWW target. On native platforms the recording bridge still works.
+- **IndexedDB quotas:** Browsers limit IndexedDB storage (Chrome: ~80% of disk, Firefox: ~5%, Safari: ~1 GB). Very large datasets may hit these limits.
 
 ### Building and Running the WWW Target
 
@@ -509,48 +539,9 @@ The `webserver.py` script is a minimal Python HTTP server that serves `bin/WWW/`
 
 Passiflora includes a built-in remote debugging facility that lets you execute JavaScript in a running app from an external browser. This is useful for inspecting app state, testing code snippets, and diagnosing issues on platforms where browser DevTools aren't available (iOS, Android, etc.).
 
-Remote debugging is compile-gated. It is only available when `remotedebugging` is set to `1` in `src/permissions`.
+Remote debugging is compile-gated — set `remotedebugging` to `1` in `src/permissions` to enable it. When enabled, a setup overlay appears at app startup where you enter a shared passphrase and copy the debugger URL. Open that URL in a browser on another device to send JavaScript commands to the running app.
 
-### Enabling Debug Mode
-
-When the `remotedebugging` permission is enabled, debug mode activates automatically at app startup. A full-screen overlay appears with:
-
-- A red **⚠️ Remote Debugging Enabled** warning banner and a reminder not to ship apps with remote debugging turned on.
-- A read-only **Debugger URL** field (e.g. `http://192.168.1.42:60810/debug`) with a copy button. Open this URL in a web browser on another machine to use the debugger.Do this before entering your passphrase and clicking OK, as the dialog will disappear after that.
-- A **Passphrase** input (masked) where you enter a shared secret used to authenticate debug commands.
-
-After entering a passphrase and clicking **OK**, the overlay closes and the app is ready to accept debug commands.
-
-
-### How It Works
-
-1. The external debugger computes an HMAC-SHA256 signature of `nonce + ':' + javascript` using the shared passphrase, then POSTs `{"javascript": "...", "signature": "...", "nonce": <number>}` to `http://<host>:<port>/__passiflora/debug`.
-2. The app's embedded HTTP server relays the payload to the webview via `passiflora_eval_js()`.
-3. Inside the webview, `PassifloraIO._debugExec()` validates the HMAC-SHA256 signature using a pure-JavaScript implementation. If the signature doesn't match, execution is refused and an error is sent back to the debugger. If the nonce is not strictly greater than the previous nonce, the request is rejected as a replay.
-4. If valid, the code is executed via indirect `eval()` in global scope.
-5. Return values (if not `undefined`) are automatically captured. `console.log()`, `console.error()`, and `console.warn()` output is also captured during execution and POSTed back to `/__passiflora/debug_result`.
-6. The debugger polls `/__passiflora/debug_result` and displays the captured output. If no result is ready, the server returns HTTP 204. If a result is still pending from a previous command, the server returns HTTP 429.
-
-### Seeing Output
-
-`console.log()` output and non-`undefined` return values are both captured:
-
-```javascript
-// Both of these produce output:
-document.title
-console.log(document.title)
-```
-
-`console.error()` and `console.warn()` output is captured with `ERROR:` or `WARN:` prefixes. `alert()` and other side effects work normally but don't produce captured output.
-
-### Security Notes
-
-- By default, the embedded server listens only on `127.0.0.1` (localhost). Remote debugging connections are blocked unless `remotedebugging` is set to `1` in `src/permissions`, which makes the server listen on all network interfaces (`0.0.0.0`).
-- Every command must be signed with HMAC-SHA256 using the shared passphrase and an incrementing nonce. Commands with invalid signatures or replayed nonces are rejected.
-- The passphrase input in the app overlay is masked (`type="password"`).
-- Debug mode is compile-gated: it is completely absent from the binary unless `remotedebugging 1` is set in `src/permissions`.
-- Use a strong passphrase, especially when debugging over a network.
-- For production releases, set `remotedebugging 0` in `src/permissions`.
+For the full protocol details, security notes, and usage tips, see **[DEBUGGING.md](DEBUGGING.md)**.
 
 ## About this project
 

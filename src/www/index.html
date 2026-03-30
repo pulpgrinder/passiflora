@@ -23,6 +23,12 @@
         <button onclick="testFileSystem()">Test File System</button>
         <button onclick="testMenuOpen()">Test Menu Open</button>
         <button onclick="testMenuSaveAs()">Test Save As</button>
+        <button onclick="testExportVFS()">Export VFS</button>
+        <button onclick="testImportVFS()">Import VFS</button>
+        <button onclick="testImportFile()">Import File</button>
+        <button onclick="testExportFile()">Export File</button>
+        <button onclick="testEraseVFS()">Erase VFS</button>
+        <button onclick="testResetVFS()">Reset VFS</button>
     </p>
     <h2>Media Tests</h2>
     <p>
@@ -237,7 +243,7 @@
         container.appendChild(indicator);
 
         PassifloraIO.getHomeFolder().then(function(home) {
-            nativeRecordPath = home + '/.passiflora_recording.webm';
+            nativeRecordPath = home + '.passiflora_recording.webm';
             return PassifloraIO.startRecording(nativeRecordPath, true, true);
         }).then(function() {
             nativeRecording = true;
@@ -402,16 +408,8 @@
    
     async function testFileSystem() {
         try {
-            const username = await PassifloraIO.getUsername();
-            logResult("Current username: " + username);
-        } catch(e) {
-            logResult("Error getting username: " + e.message);
-        }
-        try {
-           let homeFolder = await PassifloraIO.getHomeFolder();
-            logResult("Home folder: " + homeFolder);
             try {
-            let checkPath = homeFolder + "/frompassiflora.txt";
+            let checkPath = "/frompassiflora.txt";
             let fh = await fopen(checkPath, "r");
             await fclose(fh);
             logResult("Persisted file " + checkPath + " from previous run present: yes");
@@ -420,11 +418,11 @@
             await fclose(fh);
             logResult("Contents of persisted file: " + contents);
         } catch(e) {
-            logResult("Persisted file " + homeFolder + "/frompassiflora.txt from previous run present: no");
+            logResult("Persisted file /frompassiflora.txt from previous run present: no");
         }
             try {
             logResult("Testing file write...");
-            let testFilePath = homeFolder + "/testfile.txt";
+            let testFilePath = "/testfile.txt";
             let fh = await fopen(testFilePath, "w");
             await fputs(fh, "This is a test file.");
             await fclose(fh);
@@ -435,7 +433,7 @@
   
         try {
             logResult("Testing file read...");
-            let testFilePath = homeFolder + "/testfile.txt";
+            let testFilePath = "/testfile.txt";
             let fh = await fopen(testFilePath, "r");
             let contents = await fgets(fh);
             await fclose(fh);
@@ -445,7 +443,7 @@
         }
         try {
             logResult ("Testing file delete...");
-            let testFilePath = homeFolder + "/testfile.txt";
+            let testFilePath = "/testfile.txt";
             await remove(testFilePath);
             logResult("Successfully deleted test file: " + testFilePath);
         } catch(e) {
@@ -453,29 +451,15 @@
         }
         try {
             logResult("Testing (to be left in file system)...");
-            let testFilePath = homeFolder + "/frompassiflora.txt";
+            let testFilePath = "/frompassiflora.txt";
             let fh = await fopen(testFilePath, "w");
-            await fputs(fh, "This file was created by Passiflora as a test of file system persistence. It should remain in the home folder after this test. Created at: " + new Date().toString());
+            await fputs(fh, "This file was created by Passiflora as a test of file system persistence. It should remain after this test. Created at: " + new Date().toString());
             await fclose(fh);
             logResult("Successfully wrote to file: " + testFilePath);
-            logResult("You should now have a file named 'frompassiflora.txt' in the home folder.");
+            logResult("You should now have a file named 'frompassiflora.txt' in the VFS root.");
             
         } catch(e) {
             logResult("Error writing test file: " + e.message);
-        }
-
-        // Test sandbox enforcement: try writing outside the home folder
-        try {
-            logResult("Testing sandbox: writing outside home folder...");
-            let outsidePath = homeFolder + "/../sandbox_escape_test.txt";
-            let fh = await fopen(outsidePath, "w");
-            await fputs(fh, "This should not exist.");
-            await fclose(fh);
-            logResult("WARNING: wrote outside home folder (unrestrictedfilesystemaccess must be on): " + outsidePath);
-            // Clean up
-            try { await remove(outsidePath); } catch(ignore) {}
-        } catch(e) {
-            logResult("Sandbox OK — blocked write outside home folder: " + e.message);
         }
 
     } catch(e) {
@@ -579,6 +563,97 @@
         }
     }
 
+    async function testExportVFS() {
+        logResult('Exporting VFS...');
+        try {
+            var count = await PassifloraIO.exportVFS();
+            logResult('Exported ' + count + ' file(s) to passiflora_vfs.json');
+        } catch(e) {
+            alert(e.message);
+        }
+    }
+
+    async function testImportVFS() {
+        logResult('Importing VFS...');
+        try {
+            var count = await PassifloraIO.importVFS();
+            if (count > 0) {
+                logResult('Imported ' + count + ' file(s) into VFS');
+            } else {
+                logResult('Import cancelled (no file selected)');
+            }
+        } catch(e) {
+            alert(e.message);
+        }
+    }
+
+    async function testEraseVFS() {
+        logResult('Erasing VFS...');
+        try {
+            var count = await PassifloraIO.eraseVFS();
+            if (count > 0) {
+                logResult('Erased ' + count + ' file(s) from VFS');
+            } else {
+                logResult('Erase cancelled');
+            }
+        } catch(e) {
+            alert(e.message);
+        }
+    }
+
+    async function testResetVFS() {
+        logResult('Resetting VFS to preloaded data...');
+        try {
+            await PassifloraIO.resetVFS();
+            logResult('VFS reset complete');
+        } catch(e) {
+            alert(e.message);
+        }
+    }
+
+    async function testImportFile() {
+        logResult('Importing file from real filesystem...');
+        try {
+            var vpath = await PassifloraIO.importFile();
+            if (vpath) {
+                logResult('Imported to VFS path: ' + vpath);
+            } else {
+                logResult('Import cancelled (no file selected)');
+            }
+        } catch(e) {
+            logResult('importFile error: ' + e.message);
+        }
+    }
+
+    async function testExportFile() {
+        logResult('Listing VFS root...');
+        try {
+            var entries = await PassifloraIO.listDirectory("/");
+            if (entries.length === 0) {
+                logResult('VFS is empty — import or create a file first.');
+                return;
+            }
+            var firstFile = null;
+            for (var i = 0; i < entries.length; i++) {
+                if (!entries[i].isDir) { firstFile = entries[i].name; break; }
+            }
+            if (!firstFile) {
+                logResult('No files found in VFS root (only folders).');
+                return;
+            }
+            var fullPath = '/' + firstFile;
+            logResult('Exporting: ' + fullPath);
+            var result = await PassifloraIO.exportFile(fullPath);
+            if (result) {
+                logResult('Exported ' + result);
+            } else {
+                logResult('Export cancelled');
+            }
+        } catch(e) {
+            logResult('exportFile error: ' + e.message);
+        }
+    }
+
     function checkLocation(){
        if (!navigator.geolocation) {
            logResult('Geolocation API not supported');
@@ -597,6 +672,7 @@
 
 </script>
 <script src="generated/config.js"></script>
+<script src="generated/vfspreload.js"></script>
 <script src="passiflora/buildmenu.js"></script>
 <script src="passiflora/PassifloraIO.js"></script>
 <script src="app.js"></script>

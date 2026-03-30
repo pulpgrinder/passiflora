@@ -48,7 +48,7 @@ static WKWebView *g_ios_webView = nil;
 /* ------------------------------------------------------------------ */
 @interface ZSSceneDelegate : UIResponder
     <UIWindowSceneDelegate, WKUIDelegate, WKNavigationDelegate,
-     WKScriptMessageHandler
+     WKScriptMessageHandler, UIScrollViewDelegate
 #ifdef PERM_LOCATION
      , CLLocationManagerDelegate
 #endif
@@ -84,6 +84,8 @@ static WKWebView *g_ios_webView = nil;
     config.allowsInlineMediaPlayback = YES;
     [config.userContentController addScriptMessageHandler:self
                                                      name:@"passifloraPosix"];
+    [config.userContentController addScriptMessageHandler:self
+                                                     name:@"passifloraSaveFile"];
 #ifdef PERM_LOCATION
     [config.userContentController addScriptMessageHandler:self
                                                      name:@"passifloraGeolocation"];
@@ -93,6 +95,8 @@ static WKWebView *g_ios_webView = nil;
         [[WKWebView alloc] initWithFrame:CGRectZero configuration:config];
     webView.UIDelegate = self;
     webView.navigationDelegate = self;
+    webView.scrollView.bounces = NO;
+    webView.scrollView.delegate = self;
     g_ios_webView = webView;
 
     UIViewController *vc = [[UIViewController alloc] init];
@@ -334,6 +338,15 @@ static WKWebView *g_ios_webView = nil;
 }
 #endif
 
+/* UIScrollViewDelegate: prevent horizontal scrolling */
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView
+{
+    if (scrollView.contentOffset.x != 0) {
+        scrollView.contentOffset =
+            CGPointMake(0, scrollView.contentOffset.y);
+    }
+}
+
 /* WKNavigationDelegate: intercept link clicks to external URLs */
 - (void)webView:(WKWebView *)wv
     decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction
@@ -397,6 +410,31 @@ static WKWebView *g_ios_webView = nil;
                 [g_ios_webView evaluateJavaScript:js completionHandler:nil];
             });
         });
+    }
+    else if ([message.name isEqualToString:@"passifloraSaveFile"]) {
+        NSDictionary *body = message.body;
+        NSString *filename = body[@"filename"];
+        NSString *base64 = body[@"data"];
+        if (!filename || !base64) return;
+        NSData *fileData = [[NSData alloc]
+            initWithBase64EncodedString:base64 options:0];
+        if (!fileData) return;
+        /* Write to a temp file, then present the document picker for saving */
+        NSString *tmpPath = [NSTemporaryDirectory()
+            stringByAppendingPathComponent:filename];
+        [fileData writeToFile:tmpPath atomically:YES];
+        NSURL *tmpURL = [NSURL fileURLWithPath:tmpPath];
+        UIDocumentPickerViewController *picker =
+            [[UIDocumentPickerViewController alloc]
+                initForExportingURLs:@[tmpURL]];
+        UIViewController *root = self.window.rootViewController;
+        if (picker.popoverPresentationController) {
+            picker.popoverPresentationController.sourceView = root.view;
+            picker.popoverPresentationController.sourceRect =
+                CGRectMake(CGRectGetMidX(root.view.bounds),
+                           CGRectGetMidY(root.view.bounds), 0, 0);
+        }
+        [root presentViewController:picker animated:YES completion:nil];
     }
 #ifdef PERM_LOCATION
     else if ([message.name isEqualToString:@"passifloraGeolocation"]) {
@@ -717,6 +755,20 @@ static void build_menus(void)
             });
         });
     }
+    else if ([message.name isEqualToString:@"passifloraSaveFile"]) {
+        NSDictionary *body = message.body;
+        NSString *filename = body[@"filename"];
+        NSString *base64 = body[@"data"];
+        if (!filename || !base64) return;
+        NSData *fileData = [[NSData alloc]
+            initWithBase64EncodedString:base64 options:0];
+        if (!fileData) return;
+        NSSavePanel *panel = [NSSavePanel savePanel];
+        [panel setNameFieldStringValue:filename];
+        if ([panel runModal] == NSModalResponseOK && panel.URL) {
+            [fileData writeToURL:panel.URL atomically:YES];
+        }
+    }
 #ifdef PERM_LOCATION
     else if ([message.name isEqualToString:@"passifloraGeolocation"]) {
         NSString *cbId = [NSString stringWithFormat:@"%@", message.body];
@@ -780,6 +832,24 @@ static void build_menus(void)
     NSModalResponse resp = [alert runModal];
     completionHandler(resp == NSAlertFirstButtonReturn
         ? [input stringValue] : nil);
+}
+
+/* WKUIDelegate: <input type="file"> — show NSOpenPanel */
+- (void)webView:(WKWebView *)wv
+    runOpenPanelWithParameters:(WKOpenPanelParameters *)parameters
+    initiatedByFrame:(WKFrameInfo *)frame
+    completionHandler:(void (^)(NSArray<NSURL *> * _Nullable))completionHandler
+{
+    (void)wv; (void)frame;
+    NSOpenPanel *panel = [NSOpenPanel openPanel];
+    [panel setCanChooseFiles:YES];
+    [panel setCanChooseDirectories:NO];
+    [panel setAllowsMultipleSelection:parameters.allowsMultipleSelection];
+    if ([panel runModal] == NSModalResponseOK) {
+        completionHandler(panel.URLs);
+    } else {
+        completionHandler(nil);
+    }
 }
 
 #ifdef PERM_LOCATION
@@ -929,6 +999,8 @@ void ui_open(int port)
 #endif
         [config.userContentController addScriptMessageHandler:delegate
                                                          name:@"passifloraPosix"];
+        [config.userContentController addScriptMessageHandler:delegate
+                                                         name:@"passifloraSaveFile"];
 #ifdef PERM_LOCATION
         [config.userContentController addScriptMessageHandler:delegate
                                                          name:@"passifloraGeolocation"];
@@ -2631,6 +2703,52 @@ static gpointer posix_thread_func(gpointer data)
     return NULL;
 }
 
+/* ---- passifloraSaveFile handler: native save dialog for exports ---- */
+static void on_save_file_message(WebKitUserContentManager *manager,
+                                 WebKitJavascriptResult *js_result,
+                                 gpointer data)
+{
+    (void)manager; (void)data;
+    JSCValue *val = webkit_javascript_result_get_js_value(js_result);
+    JSCValue *fn_val   = jsc_value_object_get_property(val, "filename");
+    JSCValue *data_val = jsc_value_object_get_property(val, "data");
+    char *filename = fn_val   ? jsc_value_to_string(fn_val)   : NULL;
+    char *b64data  = data_val ? jsc_value_to_string(data_val) : NULL;
+    if (fn_val)   g_object_unref(fn_val);
+    if (data_val) g_object_unref(data_val);
+
+    if (!filename || !b64data) {
+        g_free(filename);
+        g_free(b64data);
+        return;
+    }
+
+    GtkWidget *dialog = gtk_file_chooser_dialog_new(
+        "Save File", NULL, GTK_FILE_CHOOSER_ACTION_SAVE,
+        "_Cancel", GTK_RESPONSE_CANCEL,
+        "_Save",   GTK_RESPONSE_ACCEPT, NULL);
+    gtk_file_chooser_set_do_overwrite_confirmation(
+        GTK_FILE_CHOOSER(dialog), TRUE);
+    gtk_file_chooser_set_current_name(
+        GTK_FILE_CHOOSER(dialog), filename);
+
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        char *path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+        gsize out_len;
+        guchar *decoded = g_base64_decode(b64data, &out_len);
+        if (decoded) {
+            g_file_set_contents(path, (const char *)decoded,
+                                (gssize)out_len, NULL);
+            g_free(decoded);
+        }
+        g_free(path);
+    }
+
+    gtk_widget_destroy(dialog);
+    g_free(filename);
+    g_free(b64data);
+}
+
 static void on_posix_message(WebKitUserContentManager *manager,
                              WebKitJavascriptResult *js_result,
                              gpointer data)
@@ -2813,6 +2931,10 @@ void ui_open(int port)
         ucm, "passifloraPosix");
     g_signal_connect(ucm, "script-message-received::passifloraPosix",
                      G_CALLBACK(on_posix_message), NULL);
+    webkit_user_content_manager_register_script_message_handler(
+        ucm, "passifloraSaveFile");
+    g_signal_connect(ucm, "script-message-received::passifloraSaveFile",
+                     G_CALLBACK(on_save_file_message), NULL);
 
     g_linux_webview = WEBKIT_WEB_VIEW(
         webkit_web_view_new_with_user_content_manager(ucm));

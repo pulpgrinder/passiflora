@@ -39,7 +39,6 @@ android {
         buildConfigField "boolean", "PERM_LOCATION",    perm('location')
         buildConfigField "boolean", "PERM_CAMERA",       perm('camera')
         buildConfigField "boolean", "PERM_MICROPHONE",   perm('microphone')
-        buildConfigField "boolean", "PERM_UNRESTRICTEDFILESYSTEMACCESS",   perm('unrestrictedfilesystemaccess')
         buildConfigField "boolean", "PERM_REMOTEDEBUGGING",   perm('remotedebugging')
     }
 

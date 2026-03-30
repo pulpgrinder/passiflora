@@ -238,10 +238,6 @@ PassifloraIO = {
         });
     },
 
-    getUsername: function () {
-        return PassifloraIO._posixCall("getUsername", {});
-    },
-
     getHomeFolder: function () {
         return PassifloraIO._posixCall("getHomeFolder", {});
     },
@@ -503,6 +499,104 @@ PassifloraIO = {
     },
 
     /* ================================================================ */
+    /*  Long-press rename helper for file/folder list items             */
+    /* ================================================================ */
+
+    _attachLongPressRename: function (nameEl, oldName, isDir, prefix, dirPath, refreshFn) {
+        var RENAME_MS = 500;
+        var timer = null;
+        var editing = false;
+
+        function cancelTimer() {
+            if (timer) { clearTimeout(timer); timer = null; }
+        }
+
+        function startEdit(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            cancelTimer();
+            editing = true;
+
+            nameEl.textContent = oldName;
+            nameEl.contentEditable = "plaintext-only";
+            if (nameEl.contentEditable !== "plaintext-only")
+                nameEl.contentEditable = "true";
+            nameEl.focus();
+
+            var range = document.createRange();
+            range.selectNodeContents(nameEl);
+            var sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+
+            nameEl.addEventListener("blur", finishEdit, { once: true });
+            nameEl.addEventListener("keydown", onEditKey);
+        }
+
+        function onEditKey(e) {
+            if (e.key === "Enter" || e.keyCode === 13) {
+                e.preventDefault();
+                nameEl.blur();
+            }
+            if (e.key === "Escape" || e.keyCode === 27) {
+                editing = false;
+                nameEl.contentEditable = "false";
+                nameEl.removeEventListener("keydown", onEditKey);
+                nameEl.textContent = (prefix || "") + oldName;
+            }
+        }
+
+        function finishEdit() {
+            editing = false;
+            nameEl.removeEventListener("keydown", onEditKey);
+            nameEl.contentEditable = "false";
+
+            var raw = nameEl.textContent || nameEl.innerText || "";
+            var newName = raw.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+
+            nameEl.textContent = (prefix || "") + (newName || oldName);
+
+            if (!newName || newName === oldName) return;
+
+            var sep = "/";
+            function joinPath(dir, name) {
+                if (dir.charAt(dir.length - 1) === sep) return dir + name;
+                return dir + sep + name;
+            }
+            var oldPath = joinPath(dirPath, oldName);
+            var newPath = joinPath(dirPath, newName);
+
+            PassifloraIO.rename(oldPath, newPath).then(function () {
+                if (refreshFn) refreshFn();
+            }).catch(function () {
+                nameEl.textContent = (prefix || "") + oldName;
+            });
+        }
+
+        /* Suppress clicks while in edit mode — prevents the li click
+           handler from firing when the long-press touchend/mouseup
+           generates a click event. */
+        nameEl.addEventListener("click", function (e) {
+            if (editing) { e.stopPropagation(); e.preventDefault(); }
+        });
+
+        nameEl.addEventListener("touchstart", function (e) {
+            cancelTimer();
+            timer = setTimeout(function () { startEdit(e); }, RENAME_MS);
+        }, { passive: false });
+        nameEl.addEventListener("touchend", cancelTimer);
+        nameEl.addEventListener("touchcancel", cancelTimer);
+        nameEl.addEventListener("touchmove", cancelTimer);
+
+        nameEl.addEventListener("mousedown", function (e) {
+            cancelTimer();
+            timer = setTimeout(function () { startEdit(e); }, RENAME_MS);
+        });
+        nameEl.addEventListener("mouseup", cancelTimer);
+        nameEl.addEventListener("mouseleave", cancelTimer);
+    },
+
+    /* ================================================================ */
     /*  File-open sliding menu                                          */
     /* ================================================================ */
 
@@ -539,9 +633,7 @@ PassifloraIO = {
             return false;
         }
 
-        var SEP = "/";                       /* path separator */
-        if (navigator.platform && navigator.platform.indexOf("Win") >= 0)
-            SEP = "\\";
+        var SEP = "/";
 
         function joinPath(dir, name) {
             if (dir.charAt(dir.length - 1) === SEP) return dir + name;
@@ -661,6 +753,30 @@ PassifloraIO = {
                         populateList();
                     });
                     filterRow.appendChild(sel);
+
+                    var newDirBtn = document.createElement("button");
+                    newDirBtn.className = "passiflora_fo_newdir";
+                    newDirBtn.textContent = "\uD83D\uDCC1+";
+                    newDirBtn.title = "Create Folder";
+                    newDirBtn.addEventListener("click", function () {
+                        var base = "Untitled";
+                        var taken = {};
+                        if (entries) {
+                            for (var ti = 0; ti < entries.length; ti++)
+                                taken[entries[ti].name] = true;
+                        }
+                        var name = base;
+                        var n = 2;
+                        while (taken[name]) { name = base + " " + n; n++; }
+                        var newPath = dirPath === "/" ? "/" + name : dirPath + "/" + name;
+                        PassifloraIO.mkdir(newPath).then(function () {
+                            return PassifloraIO.listDirectory(dirPath);
+                        }).then(function (list) {
+                            entries = list;
+                            populateList();
+                        });
+                    });
+                    filterRow.appendChild(newDirBtn);
                     screen.appendChild(filterRow);
 
                     /* Fetch directory listing and populate */
@@ -671,6 +787,13 @@ PassifloraIO = {
                         listWrap.innerHTML = "";
                         var ul = document.createElement("ul");
                         ul.className = "passiflora_fo_ul";
+
+                        function refreshDir() {
+                            PassifloraIO.listDirectory(dirPath).then(function (list) {
+                                entries = list;
+                                populateList();
+                            });
+                        }
 
                         /* ".." entry — go up a folder */
                         var upLi = document.createElement("li");
@@ -709,6 +832,9 @@ PassifloraIO = {
                                     var newScreen = buildDirScreen(sub, ent.name);
                                     slideForward(newScreen);
                                 });
+                                PassifloraIO._attachLongPressRename(
+                                    nameSpan, ent.name, true,
+                                    "\uD83D\uDCC1 ", dirPath, refreshDir);
                                 ul.appendChild(li);
                             })(dirs[i]);
                         }
@@ -720,12 +846,17 @@ PassifloraIO = {
                                     ent.name, filterAll, extsLower);
                                 li.className = "passiflora_fo_item passiflora_fo_file" +
                                     (matches ? " passiflora_fo_match" : " passiflora_fo_dim");
-                                li.textContent = ent.name;
+                                var nameSpan = document.createElement("span");
+                                nameSpan.textContent = ent.name;
+                                li.appendChild(nameSpan);
                                 if (matches) {
                                     li.addEventListener("click", function () {
                                         finish(joinPath(dirPath, ent.name));
                                     });
                                 }
+                                PassifloraIO._attachLongPressRename(
+                                    nameSpan, ent.name, false,
+                                    "", dirPath, refreshDir);
                                 ul.appendChild(li);
                             })(files[i]);
                         }
@@ -858,8 +989,6 @@ PassifloraIO = {
         }
 
         var SEP = "/";
-        if (navigator.platform && navigator.platform.indexOf("Win") >= 0)
-            SEP = "\\";
 
         function joinPath(dir, name) {
             if (dir.charAt(dir.length - 1) === SEP) return dir + name;
@@ -1066,6 +1195,34 @@ PassifloraIO = {
                         populateList();
                     });
                     filterRow.appendChild(sel);
+
+                    var newDirBtn = document.createElement("button");
+                    newDirBtn.className = "passiflora_fo_newdir";
+                    newDirBtn.textContent = "\uD83D\uDCC1+";
+                    newDirBtn.title = "Create Folder";
+                    newDirBtn.addEventListener("click", function () {
+                        var base = "Untitled";
+                        var taken = {};
+                        if (entries) {
+                            for (var ti = 0; ti < entries.length; ti++)
+                                taken[entries[ti].name] = true;
+                        }
+                        var name = base;
+                        var n = 2;
+                        while (taken[name]) { name = base + " " + n; n++; }
+                        var newPath = dirPath === "/" ? "/" + name : dirPath + "/" + name;
+                        PassifloraIO.mkdir(newPath).then(function () {
+                            return PassifloraIO.listDirectory(dirPath);
+                        }).then(function (list) {
+                            entries = list;
+                            currentFiles = [];
+                            for (var fi = 0; fi < list.length; fi++) {
+                                if (!list[fi].isDir) currentFiles.push(list[fi].name);
+                            }
+                            populateList();
+                        });
+                    });
+                    filterRow.appendChild(newDirBtn);
                     screen.appendChild(filterRow);
 
                     /* Fetch directory listing and populate */
@@ -1076,6 +1233,17 @@ PassifloraIO = {
                         listWrap.innerHTML = "";
                         var ul = document.createElement("ul");
                         ul.className = "passiflora_fo_ul";
+
+                        function refreshDir() {
+                            PassifloraIO.listDirectory(dirPath).then(function (list) {
+                                entries = list;
+                                currentFiles = [];
+                                for (var fi = 0; fi < list.length; fi++) {
+                                    if (!list[fi].isDir) currentFiles.push(list[fi].name);
+                                }
+                                populateList();
+                            });
+                        }
 
                         /* ".." entry */
                         var upLi = document.createElement("li");
@@ -1115,6 +1283,9 @@ PassifloraIO = {
                                     var newScreen = buildDirScreen(sub, ent.name);
                                     slideForward(newScreen);
                                 });
+                                PassifloraIO._attachLongPressRename(
+                                    nameSpan, ent.name, true,
+                                    "\uD83D\uDCC1 ", dirPath, refreshDir);
                                 ul.appendChild(li);
                             })(dirs[i]);
                         }
@@ -1126,7 +1297,9 @@ PassifloraIO = {
                                     ent.name, filterAll, extsLower);
                                 li.className = "passiflora_fo_item passiflora_fo_file" +
                                     (matches ? " passiflora_fo_match" : " passiflora_fo_dim");
-                                li.textContent = ent.name;
+                                var nameSpan = document.createElement("span");
+                                nameSpan.textContent = ent.name;
+                                li.appendChild(nameSpan);
                                 /* Clicking an existing file = overwrite + extension confirm */
                                 li.addEventListener("click", function () {
                                     nameInput.value = ent.name;
@@ -1147,6 +1320,9 @@ PassifloraIO = {
                                         if (ok) finish(joinPath(dirPath, ent.name));
                                     });
                                 });
+                                PassifloraIO._attachLongPressRename(
+                                    nameSpan, ent.name, false,
+                                    "", dirPath, refreshDir);
                                 ul.appendChild(li);
                             })(files[i]);
                         }
@@ -1270,104 +1446,254 @@ PassifloraIO = {
         });
     },
 
+    /* ================================================================ */
+    /*  VFS Export / Import / File Transfer                             */
+    /*  Overridden by the VFS+IndexedDB IIFE below.                    */
+    /* ================================================================ */
+
+    exportVFS: function () {
+        return Promise.reject(new Error("VFS not yet initialized."));
+    },
+
+    importVFS: function () {
+        return Promise.reject(new Error("VFS not yet initialized."));
+    },
+
+    importFile: function () {
+        return Promise.reject(new Error("VFS not yet initialized."));
+    },
+
+    exportFile: function () {
+        return Promise.reject(new Error("VFS not yet initialized."));
+    },
+
+    eraseVFS: function () {
+        return Promise.reject(new Error("VFS not yet initialized."));
+    },
+
 };
 
 /* ================================================================ */
-/*  WWW (plain browser) polyfill                                     */
-/*  When os_name === "WWW", replace native POSIX bridge calls with   */
-/*  in-memory virtual filesystem + HTML File / download APIs.        */
+/*  VFS + IndexedDB — persistent virtual file system (all platforms) */
+/*  Replaces native POSIX bridge file I/O on every target.           */
+/*  Non-file native calls (recording, geolocation) pass through.     */
 /* ================================================================ */
 (function () {
-    if (typeof PassifloraConfig === "undefined" ||
-        PassifloraConfig.os_name !== "WWW") return;
+    if (typeof PassifloraConfig === "undefined") return;
 
     /* ---------- In-memory virtual file system ---------- */
     var _vfs = {};               /* path -> Uint8Array */
+    var _dirs = {};              /* path -> true (explicitly created directories) */
+    var _cwd = "/";              /* current working directory */
     var _handles = {};           /* handle_id -> { path, mode, pos } */
     var _handleCounter = 0;
-    var _savePaths = {};         /* paths from menusavas awaiting download on fclose */
-    var _saveHandles = {};       /* paths from menusavas → FileSystemFileHandle (File System Access API) */
 
-    function _nextHandle() { return "webfh_" + (++_handleCounter); }
+    function _nextHandle() { return "vfsfh_" + (++_handleCounter); }
+
+    /* ---------- IndexedDB persistence layer ---------- */
+    var _db = null;
+
+    var _dbReady = new Promise(function (resolve) {
+        if (typeof indexedDB === "undefined") { resolve(); return; }
+        try {
+            var req = indexedDB.open("PassifloraVFS", 2);
+            req.onupgradeneeded = function (e) {
+                var db = e.target.result;
+                if (!db.objectStoreNames.contains("files"))
+                    db.createObjectStore("files");
+                if (!db.objectStoreNames.contains("dirs"))
+                    db.createObjectStore("dirs");
+            };
+            req.onsuccess = function (e) {
+                _db = e.target.result;
+                /* Hydrate VFS from IndexedDB */
+                var tx = _db.transaction(["files", "dirs"], "readonly");
+                var store = tx.objectStore("files");
+                var keysReq = store.getAllKeys();
+                var valsReq = store.getAll();
+                var dirStore = tx.objectStore("dirs");
+                var dirKeysReq = dirStore.getAllKeys();
+                keysReq.onsuccess = function () {
+                    valsReq.onsuccess = function () {
+                        var keys = keysReq.result;
+                        var vals = valsReq.result;
+                        for (var i = 0; i < keys.length; i++)
+                            _vfs[keys[i]] = vals[i] instanceof Uint8Array
+                                ? vals[i] : new Uint8Array(vals[i]);
+                        dirKeysReq.onsuccess = function () {
+                            var dk = dirKeysReq.result;
+                            for (var i = 0; i < dk.length; i++)
+                                _dirs[dk[i]] = true;
+                            /* Preload compiled-in data on first run */
+                            if (Object.keys(_vfs).length === 0)
+                                _loadPreloadData();
+                            resolve();
+                        };
+                        dirKeysReq.onerror = function () { resolve(); };
+                    };
+                };
+                valsReq.onerror = function () { resolve(); };
+                keysReq.onerror = function () { resolve(); };
+            };
+            req.onerror = function () { resolve(); };
+        } catch (e) { resolve(); }
+    });
+
+    /* ---------- Preload compiled-in VFS data ---------- */
+    function _loadPreloadData() {
+        if (typeof _PASSIFLORA_VFS_PRELOAD === "undefined" ||
+            !_PASSIFLORA_VFS_PRELOAD.length) return;
+        for (var i = 0; i < _PASSIFLORA_VFS_PRELOAD.length; i++) {
+            var entry = _PASSIFLORA_VFS_PRELOAD[i];
+            var raw = atob(entry.data);
+            var arr = new Uint8Array(raw.length);
+            for (var j = 0; j < raw.length; j++) arr[j] = raw.charCodeAt(j);
+            _vfs[entry.path] = arr;
+            _dbPut(entry.path, arr);
+            /* Create parent directories */
+            var parts = entry.path.split("/");
+            for (var k = 2; k < parts.length; k++) {
+                var dir = parts.slice(0, k).join("/");
+                if (!_dirs[dir]) { _dirs[dir] = true; _dbPutDir(dir); }
+            }
+        }
+    }
+
+    function _dbPut(path, data) {
+        if (!_db) return;
+        try {
+            var tx = _db.transaction("files", "readwrite");
+            tx.objectStore("files").put(data, path);
+        } catch (e) { /* IndexedDB unavailable or quota exceeded */ }
+    }
+
+    function _dbDelete(path) {
+        if (!_db) return;
+        try {
+            var tx = _db.transaction("files", "readwrite");
+            tx.objectStore("files").delete(path);
+        } catch (e) { /* IndexedDB unavailable */ }
+    }
+
+    function _dbPutDir(path) {
+        if (!_db) return;
+        try {
+            var tx = _db.transaction("dirs", "readwrite");
+            tx.objectStore("dirs").put(true, path);
+        } catch (e) { /* IndexedDB unavailable */ }
+    }
+
+    function _dbDeleteDir(path) {
+        if (!_db) return;
+        try {
+            var tx = _db.transaction("dirs", "readwrite");
+            tx.objectStore("dirs").delete(path);
+        } catch (e) { /* IndexedDB unavailable */ }
+    }
+
+    /* Resolve a path relative to _cwd into an absolute path */
+    function _resolvePath(p) {
+        if (p.charAt(0) !== "/") {
+            p = (_cwd === "/" ? "/" : _cwd + "/") + p;
+        }
+        /* Normalise . and .. */
+        var parts = p.split("/");
+        var out = [];
+        for (var i = 0; i < parts.length; i++) {
+            if (parts[i] === "" || parts[i] === ".") continue;
+            if (parts[i] === "..") { if (out.length) out.pop(); }
+            else out.push(parts[i]);
+        }
+        return "/" + out.join("/");
+    }
+
+    /* Request persistent storage so browsers don't evict data */
+    if (navigator.storage && navigator.storage.persist) {
+        navigator.storage.persist();
+    }
 
     /* -- System info -- */
-    PassifloraIO.getUsername = function () {
-        return Promise.resolve("web_user");
-    };
-
     PassifloraIO.getHomeFolder = function () {
         return Promise.resolve("/");
     };
 
+    /* -- Directory listing (from VFS) -- */
     PassifloraIO.listDirectory = function (path) {
-        var prefix = path;
-        if (prefix !== "/" && prefix.charAt(prefix.length - 1) !== "/")
-            prefix += "/";
-        var entries = [];
-        var seen = {};
-        var keys = Object.keys(_vfs);
-        for (var i = 0; i < keys.length; i++) {
-            var p = keys[i];
-            var rest;
-            if (prefix === "/") {
-                rest = p.substring(1);
-            } else if (p.indexOf(prefix) === 0) {
-                rest = p.substring(prefix.length);
-            } else {
-                continue;
+        return _dbReady.then(function () {
+            var prefix = path;
+            if (prefix !== "/" && prefix.charAt(prefix.length - 1) !== "/")
+                prefix += "/";
+            var entries = [];
+            var seen = {};
+            var keys = Object.keys(_vfs);
+            for (var i = 0; i < keys.length; i++) {
+                var p = keys[i];
+                var rest;
+                if (prefix === "/") {
+                    rest = p.substring(1);
+                } else if (p.indexOf(prefix) === 0) {
+                    rest = p.substring(prefix.length);
+                } else {
+                    continue;
+                }
+                var slash = rest.indexOf("/");
+                var name = slash < 0 ? rest : rest.substring(0, slash);
+                if (name && !seen[name]) {
+                    seen[name] = true;
+                    entries.push({ name: name, isDir: slash >= 0 });
+                }
             }
-            var slash = rest.indexOf("/");
-            var name = slash < 0 ? rest : rest.substring(0, slash);
-            if (name && !seen[name]) {
-                seen[name] = true;
-                entries.push({ name: name, isDir: slash >= 0 });
+            /* Include explicitly-created (possibly empty) directories */
+            var dirKeys = Object.keys(_dirs);
+            for (var i = 0; i < dirKeys.length; i++) {
+                var d = dirKeys[i];
+                var rest;
+                if (prefix === "/") {
+                    rest = d.substring(1);
+                } else if (d.indexOf(prefix) === 0) {
+                    rest = d.substring(prefix.length);
+                } else {
+                    continue;
+                }
+                var slash = rest.indexOf("/");
+                var name = slash < 0 ? rest : rest.substring(0, slash);
+                if (name && !seen[name]) {
+                    seen[name] = true;
+                    entries.push({ name: name, isDir: true });
+                }
             }
-        }
-        return Promise.resolve(entries);
+            return entries;
+        });
     };
 
-    /* -- POSIX file I/O -- */
+    /* -- POSIX file I/O (VFS-backed, persisted to IndexedDB) -- */
     PassifloraIO.fopen = function (path, mode) {
-        mode = mode || "r";
-        if (mode.indexOf("r") >= 0 && !_vfs[path]) {
-            return Promise.reject(new Error("File not found: " + path));
-        }
-        if (mode.indexOf("w") >= 0) {
-            _vfs[path] = new Uint8Array(0);
-        }
-        if (mode.indexOf("a") >= 0 && !_vfs[path]) {
-            _vfs[path] = new Uint8Array(0);
-        }
-        var data = _vfs[path] || new Uint8Array(0);
-        var pos = mode.indexOf("a") >= 0 ? data.length : 0;
-        var h = _nextHandle();
-        _handles[h] = { path: path, mode: mode, pos: pos };
-        return Promise.resolve(h);
+        return _dbReady.then(function () {
+            mode = mode || "r";
+            if (mode.indexOf("r") >= 0 && !_vfs[path]) {
+                throw new Error("File not found: " + path);
+            }
+            if (mode.indexOf("w") >= 0) {
+                _vfs[path] = new Uint8Array(0);
+            }
+            if (mode.indexOf("a") >= 0 && !_vfs[path]) {
+                _vfs[path] = new Uint8Array(0);
+            }
+            var data = _vfs[path] || new Uint8Array(0);
+            var pos = mode.indexOf("a") >= 0 ? data.length : 0;
+            var h = _nextHandle();
+            _handles[h] = { path: path, mode: mode, pos: pos };
+            return h;
+        });
     };
 
     PassifloraIO.fclose = function (handle) {
         var fh = _handles[handle];
         if (!fh) { delete _handles[handle]; return Promise.resolve(0); }
-
-        /* File System Access API handle (showSaveFilePicker) */
-        if (_saveHandles[fh.path]) {
-            var fileHandle = _saveHandles[fh.path];
-            delete _saveHandles[fh.path];
-            delete _handles[handle];
-            var data = _vfs[fh.path] || new Uint8Array(0);
-            return fileHandle.createWritable().then(function (writable) {
-                return writable.write(data).then(function () {
-                    return writable.close();
-                });
-            }).then(function () { return 0; });
-        }
-
-        /* Legacy fallback: auto-download */
-        if (_savePaths[fh.path]) {
-            delete _savePaths[fh.path];
-            PassifloraIO.webDownload(fh.path);
-        }
+        var path = fh.path;
         delete _handles[handle];
+        /* Persist to IndexedDB */
+        if (_vfs[path]) _dbPut(path, _vfs[path]);
         return Promise.resolve(0);
     };
 
@@ -1450,40 +1776,139 @@ PassifloraIO = {
     };
 
     PassifloraIO.remove = function (path) {
-        delete _vfs[path];
-        return Promise.resolve(0);
+        return _dbReady.then(function () {
+            delete _vfs[path];
+            _dbDelete(path);
+            return 0;
+        });
     };
 
     PassifloraIO.rename = function (oldpath, newpath) {
-        if (!_vfs[oldpath])
-            return Promise.reject(new Error("File not found: " + oldpath));
-        _vfs[newpath] = _vfs[oldpath];
-        delete _vfs[oldpath];
-        return Promise.resolve(0);
+        return _dbReady.then(function () {
+            oldpath = _resolvePath(oldpath);
+            newpath = _resolvePath(newpath);
+            /* Rename a directory — move all files under it */
+            if (_dirs[oldpath]) {
+                var oldPrefix = oldpath + "/";
+                var newPrefix = newpath + "/";
+                var keys = Object.keys(_vfs);
+                for (var i = 0; i < keys.length; i++) {
+                    if (keys[i].indexOf(oldPrefix) === 0) {
+                        var suffix = keys[i].substring(oldPrefix.length);
+                        _vfs[newPrefix + suffix] = _vfs[keys[i]];
+                        _dbPut(newPrefix + suffix, _vfs[keys[i]]);
+                        delete _vfs[keys[i]];
+                        _dbDelete(keys[i]);
+                    }
+                }
+                /* Move sub-directories */
+                var dk = Object.keys(_dirs);
+                for (var i = 0; i < dk.length; i++) {
+                    if (dk[i] === oldpath || dk[i].indexOf(oldPrefix) === 0) {
+                        var newDir = newpath + dk[i].substring(oldpath.length);
+                        _dirs[newDir] = true;
+                        _dbPutDir(newDir);
+                        delete _dirs[dk[i]];
+                        _dbDeleteDir(dk[i]);
+                    }
+                }
+                return 0;
+            }
+            /* Rename a file */
+            if (!_vfs[oldpath])
+                throw new Error("File not found: " + oldpath);
+            _vfs[newpath] = _vfs[oldpath];
+            delete _vfs[oldpath];
+            _dbDelete(oldpath);
+            _dbPut(newpath, _vfs[newpath]);
+            return 0;
+        });
     };
 
-    /* -- Recording: not natively available, fall back to MediaRecorder -- */
-    PassifloraIO.hasNativeRecording = function () {
-        return Promise.resolve(false);
-    };
-    PassifloraIO.startRecording = function () {
-        return Promise.reject(new Error("Native recording not available on web"));
-    };
-    PassifloraIO.stopRecording = function () {
-        return Promise.reject(new Error("Native recording not available on web"));
-    };
-    PassifloraIO.diagnoseNativeAudio = function () {
-        return Promise.reject(new Error("Native audio diagnostics not available on web"));
+    /* -- POSIX directory functions -- */
+    PassifloraIO.getcwd = function () {
+        return Promise.resolve(_cwd);
     };
 
-    /* -- menuopen: HTML <input type="file"> -- */
-    PassifloraIO.menuopen = function (extensions) {
+    PassifloraIO.chdir = function (path) {
+        return _dbReady.then(function () {
+            var resolved = _resolvePath(path);
+            if (resolved === "/") { _cwd = "/"; return 0; }
+            /* Check if the directory exists (has files under it or is explicit) */
+            if (_dirs[resolved]) { _cwd = resolved; return 0; }
+            var prefix = resolved + "/";
+            var keys = Object.keys(_vfs);
+            for (var i = 0; i < keys.length; i++) {
+                if (keys[i].indexOf(prefix) === 0) { _cwd = resolved; return 0; }
+            }
+            /* Also check sub-directories */
+            var dk = Object.keys(_dirs);
+            for (var i = 0; i < dk.length; i++) {
+                if (dk[i].indexOf(prefix) === 0) { _cwd = resolved; return 0; }
+            }
+            throw new Error("Directory not found: " + resolved);
+        });
+    };
+
+    PassifloraIO.mkdir = function (path) {
+        return _dbReady.then(function () {
+            var resolved = _resolvePath(path);
+            if (resolved === "/") return 0;
+            if (_dirs[resolved]) throw new Error("Directory already exists: " + resolved);
+            /* Check if a file has this exact path */
+            if (_vfs[resolved]) throw new Error("A file already exists at: " + resolved);
+            _dirs[resolved] = true;
+            _dbPutDir(resolved);
+            return 0;
+        });
+    };
+
+    PassifloraIO.rmdir = function (path) {
+        return _dbReady.then(function () {
+            var resolved = _resolvePath(path);
+            if (resolved === "/") throw new Error("Cannot remove root directory");
+            /* Check the directory is empty */
+            var prefix = resolved + "/";
+            var keys = Object.keys(_vfs);
+            for (var i = 0; i < keys.length; i++) {
+                if (keys[i].indexOf(prefix) === 0)
+                    throw new Error("Directory not empty: " + resolved);
+            }
+            var dk = Object.keys(_dirs);
+            for (var i = 0; i < dk.length; i++) {
+                if (dk[i] !== resolved && dk[i].indexOf(prefix) === 0)
+                    throw new Error("Directory not empty: " + resolved);
+            }
+            if (!_dirs[resolved]) throw new Error("Directory not found: " + resolved);
+            delete _dirs[resolved];
+            _dbDeleteDir(resolved);
+            return 0;
+        });
+    };
+
+    /* -- Recording: WWW-only stubs (native platforms keep the bridge) -- */
+    if (PassifloraConfig.os_name === "WWW") {
+        PassifloraIO.hasNativeRecording = function () {
+            return Promise.resolve(false);
+        };
+        PassifloraIO.startRecording = function () {
+            return Promise.reject(new Error("Native recording not available on web"));
+        };
+        PassifloraIO.stopRecording = function () {
+            return Promise.reject(new Error("Native recording not available on web"));
+        };
+        PassifloraIO.diagnoseNativeAudio = function () {
+            return Promise.reject(new Error("Native audio diagnostics not available on web"));
+        };
+    }
+
+    /* -- importFile: pick a file from the real filesystem into VFS -- */
+    PassifloraIO.importFile = function (extensions) {
         return new Promise(function (resolve) {
             var input = document.createElement("input");
             input.type = "file";
-            if (extensions && extensions.length > 0) {
+            if (extensions && extensions.length > 0)
                 input.accept = extensions.join(",");
-            }
             input.style.display = "none";
             document.body.appendChild(input);
             input.addEventListener("change", function () {
@@ -1495,6 +1920,7 @@ PassifloraIO = {
                     var bytes = new Uint8Array(reader.result);
                     var vpath = "/" + file.name;
                     _vfs[vpath] = bytes;
+                    _dbPut(vpath, bytes);
                     resolve(vpath);
                 };
                 reader.onerror = function () { resolve(null); };
@@ -1508,86 +1934,229 @@ PassifloraIO = {
         });
     };
 
-    /* -- menusavas: native save-file picker (showSaveFilePicker) -- */
-    PassifloraIO.menusavas = function (extensions, defaultName) {
-        /* Build accept types for showSaveFilePicker */
-        var types = [];
-        if (extensions && extensions.length > 0) {
-            var exts = [];
-            for (var i = 0; i < extensions.length; i++) {
-                var ext = extensions[i].toLowerCase();
-                if (ext.charAt(0) !== ".") ext = "." + ext;
-                exts.push(ext);
-            }
-            types.push({
-                description: "Allowed files",
-                accept: { "application/octet-stream": exts }
-            });
-        }
+    /* -- exportFile: save a VFS file to the real filesystem -- */
+    PassifloraIO.exportFile = function (vfsPath, suggestedName) {
+        return _dbReady.then(function () {
+            var data = _vfs[vfsPath];
+            if (!data) throw new Error("File not found in VFS: " + vfsPath);
+            suggestedName = suggestedName ||
+                vfsPath.substring(vfsPath.lastIndexOf("/") + 1);
 
-        /* Try the File System Access API (Chrome / Edge) */
-        if (typeof window.showSaveFilePicker === "function") {
-            var opts = { suggestedName: defaultName || "untitled" };
-            if (types.length) opts.types = types;
-            return window.showSaveFilePicker(opts).then(function (fileHandle) {
-                var name = fileHandle.name;
-                var vpath = "/" + name;
-                _vfs[vpath] = new Uint8Array(0);
-                _saveHandles[vpath] = fileHandle;
-                return vpath;
-            }).catch(function (err) {
-                /* User cancelled the picker */
-                if (err.name === "AbortError") return null;
-                throw err;
-            });
-        }
+            /* File System Access API (Chrome / Edge / Chromium WebViews) */
+            if (typeof window.showSaveFilePicker === "function") {
+                return window.showSaveFilePicker({ suggestedName: suggestedName })
+                    .then(function (fh) { return fh.createWritable(); })
+                    .then(function (w) {
+                        return w.write(data).then(function () { return w.close(); });
+                    })
+                    .then(function () { return vfsPath; })
+                    .catch(function (err) {
+                        if (err.name === "AbortError") return null;
+                        throw err;
+                    });
+            }
 
-        /* Fallback (Safari / Firefox): use defaultName and trigger a
-           browser download on fclose.  The download bar / sheet IS the
-           browser's native save experience for these engines. */
-        var name = defaultName || "untitled";
-        if (extensions && extensions.length > 0) {
-            var hasExt = false;
-            for (var j = 0; j < extensions.length; j++) {
-                var e = extensions[j].toLowerCase().replace(/^\./, "");
-                if (name.toLowerCase().endsWith("." + e)) {
-                    hasExt = true; break;
-                }
-            }
-            if (!hasExt) {
-                var first = extensions[0];
-                name += first.charAt(0) === "." ? first : "." + first;
-            }
-        }
-        var vpath = "/" + name;
-        if (!_vfs[vpath]) _vfs[vpath] = new Uint8Array(0);
-        _savePaths[vpath] = true;
-        return Promise.resolve(vpath);
+            /* Fallback: browser download */
+            PassifloraIO.webDownload(vfsPath);
+            return vfsPath;
+        });
     };
 
     /* -- webDownload: trigger browser download for a VFS path -- */
     PassifloraIO.webDownload = function (path, mimeType) {
         var data = _vfs[path];
         if (!data) return;
+        var filename = path.substring(path.lastIndexOf("/") + 1);
+        /* Native WKWebView save panel (macOS / iOS) */
+        if (window.webkit && window.webkit.messageHandlers &&
+            window.webkit.messageHandlers.passifloraSaveFile) {
+            var binary = "";
+            for (var j = 0; j < data.length; j++)
+                binary += String.fromCharCode(data[j]);
+            window.webkit.messageHandlers.passifloraSaveFile.postMessage({
+                filename: filename,
+                data: btoa(binary)
+            });
+            return;
+        }
+        /* Browser download fallback */
         var blob = new Blob([data], {
             type: mimeType || "application/octet-stream"
         });
         var url = URL.createObjectURL(blob);
         var a = document.createElement("a");
         a.href = url;
-        a.download = path.substring(path.lastIndexOf("/") + 1);
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
     };
 
-    /* -- _posixCall: stub so closeAllFileHandles etc. don't throw -- */
-    PassifloraIO._posixCall = function (fn) {
+    /* -- exportVFS: serialise the entire VFS to a JSON download -- */
+    PassifloraIO.exportVFS = function () {
+        return _dbReady.then(function () {
+            var obj = {};
+            var keys = Object.keys(_vfs);
+            for (var i = 0; i < keys.length; i++) {
+                var data = _vfs[keys[i]];
+                var binary = "";
+                for (var j = 0; j < data.length; j++)
+                    binary += String.fromCharCode(data[j]);
+                obj[keys[i]] = btoa(binary);
+            }
+            var json = JSON.stringify(obj, null, 2);
+            /* Native WKWebView save panel (macOS / iOS) */
+            if (window.webkit && window.webkit.messageHandlers &&
+                window.webkit.messageHandlers.passifloraSaveFile) {
+                window.webkit.messageHandlers.passifloraSaveFile.postMessage({
+                    filename: "passiflora_vfs.json",
+                    data: btoa(unescape(encodeURIComponent(json)))
+                });
+                return keys.length;
+            }
+            /* Browser download fallback */
+            var blob = new Blob([json], { type: "application/json" });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement("a");
+            a.href = url;
+            a.download = "passiflora_vfs.json";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+            return keys.length;
+        });
+    };
+
+    /* -- importVFS: load a previously-exported VFS JSON file -- */
+    PassifloraIO.importVFS = function () {
+        return new Promise(function (resolve, reject) {
+            var input = document.createElement("input");
+            input.type = "file";
+            input.accept = ".json";
+            input.style.display = "none";
+            document.body.appendChild(input);
+            input.addEventListener("change", function () {
+                var file = input.files[0];
+                document.body.removeChild(input);
+                if (!file) { resolve(0); return; }
+                var reader = new FileReader();
+                reader.onload = function () {
+                    try {
+                        var obj = JSON.parse(reader.result);
+                        var count = 0;
+                        var keys = Object.keys(obj);
+                        for (var i = 0; i < keys.length; i++) {
+                            var binary = atob(obj[keys[i]]);
+                            var bytes = new Uint8Array(binary.length);
+                            for (var j = 0; j < binary.length; j++)
+                                bytes[j] = binary.charCodeAt(j);
+                            _vfs[keys[i]] = bytes;
+                            _dbPut(keys[i], bytes);
+                            count++;
+                        }
+                        resolve(count);
+                    } catch (e) {
+                        reject(new Error("Invalid VFS JSON: " + e.message));
+                    }
+                };
+                reader.onerror = function () {
+                    reject(new Error("Failed to read file"));
+                };
+                reader.readAsText(file);
+            });
+            input.addEventListener("cancel", function () {
+                document.body.removeChild(input);
+                resolve(0);
+            });
+            input.click();
+        });
+    };
+
+    /* -- eraseVFS: clear every file from the VFS and IndexedDB -- */
+    PassifloraIO.eraseVFS = function () {
+        return _dbReady.then(function () {
+            if (!confirm("Erase all files in the virtual file system?")) {
+                return 0;
+            }
+            /* Close any open file handles */
+            _handles = {};
+            /* Count files before clearing */
+            var count = Object.keys(_vfs).length;
+            /* Clear the in-memory VFS */
+            var keys = Object.keys(_vfs);
+            for (var i = 0; i < keys.length; i++) {
+                delete _vfs[keys[i]];
+            }
+            /* Clear directories */
+            var dk = Object.keys(_dirs);
+            for (var i = 0; i < dk.length; i++) {
+                delete _dirs[dk[i]];
+            }
+            _cwd = "/";
+            /* Clear the IndexedDB object stores */
+            return new Promise(function (resolve, reject) {
+                var tx = _db.transaction(["files", "dirs"], "readwrite");
+                var req1 = tx.objectStore("files").clear();
+                var req2 = tx.objectStore("dirs").clear();
+                tx.oncomplete = function () { resolve(count); };
+                tx.onerror = function () {
+                    reject(new Error("Failed to clear IndexedDB: " + tx.error));
+                };
+            });
+        });
+    };
+
+    /* -- resetVFS: erase VFS then repopulate from compiled-in preload -- */
+    PassifloraIO.resetVFS = function () {
+        return _dbReady.then(function () {
+            /* Close any open file handles */
+            _handles = {};
+            /* Clear the in-memory VFS */
+            var keys = Object.keys(_vfs);
+            for (var i = 0; i < keys.length; i++) {
+                delete _vfs[keys[i]];
+            }
+            /* Clear directories */
+            var dk = Object.keys(_dirs);
+            for (var i = 0; i < dk.length; i++) {
+                delete _dirs[dk[i]];
+            }
+            _cwd = "/";
+            /* Clear the IndexedDB object stores, then reload preload data */
+            return new Promise(function (resolve, reject) {
+                var tx = _db.transaction(["files", "dirs"], "readwrite");
+                tx.objectStore("files").clear();
+                tx.objectStore("dirs").clear();
+                tx.oncomplete = function () {
+                    _loadPreloadData();
+                    resolve();
+                };
+                tx.onerror = function () {
+                    reject(new Error("Failed to clear IndexedDB: " + tx.error));
+                };
+            });
+        });
+    };
+
+    /* -- _posixCall: intercept closeAllFileHandles, pass through others -- */
+    var _origPosixCall = (PassifloraConfig.os_name !== "WWW" &&
+        typeof PassifloraIO._posixCall === "function")
+        ? PassifloraIO._posixCall.bind(PassifloraIO) : null;
+
+    PassifloraIO._posixCall = function (fn, params) {
         if (fn === "closeAllFileHandles") {
+            /* Best-effort flush of open files to IndexedDB */
+            var keys = Object.keys(_handles);
+            for (var i = 0; i < keys.length; i++) {
+                var fh = _handles[keys[i]];
+                if (fh && _vfs[fh.path]) _dbPut(fh.path, _vfs[fh.path]);
+            }
             _handles = {};
             return Promise.resolve(0);
         }
+        if (_origPosixCall) return _origPosixCall(fn, params);
         return Promise.reject(
             new Error("POSIX call '" + fn + "' is not available on web"));
     };
@@ -1610,6 +2179,10 @@ function feof(handle)              { return PassifloraIO.feof(handle); }
 function fflush(handle)            { return PassifloraIO.fflush(handle); }
 function remove(path)              { return PassifloraIO.remove(path); }
 function rename(oldpath, newpath)  { return PassifloraIO.rename(oldpath, newpath); }
+function mkdir(path)               { return PassifloraIO.mkdir(path); }
+function rmdir(path)               { return PassifloraIO.rmdir(path); }
+function chdir(path)               { return PassifloraIO.chdir(path); }
+function getcwd()                  { return PassifloraIO.getcwd(); }
 
 /* Auto-patch remote links once the DOM is ready */
 document.addEventListener("DOMContentLoaded", function () {

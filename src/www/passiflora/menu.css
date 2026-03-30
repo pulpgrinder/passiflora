@@ -1,7 +1,21 @@
 /* PassifloraMenu styles */
 
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+html, body {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
 body {
     padding-bottom: 1em;
+}
+
+img, video, canvas {
+    max-width: 100%;
+    height: auto;
 }
 
 .hamburgermenu {
@@ -42,7 +56,7 @@ body {
     top: 0;
     right: 0;
     bottom: 0;
-    width: 100vw;
+    width: 100%;
     z-index: 99999;
     overflow: hidden;
     background: #fff;
@@ -171,7 +185,7 @@ ul.passiflora_menu li:has(+ li.passiflora_menu_separator) {
     top: 0;
     right: 0;
     bottom: 0;
-    width: 100vw;
+    width: 100%;
     z-index: 99999;
     overflow: hidden;
     background: #fff;
@@ -283,14 +297,31 @@ ul.passiflora_menu li:has(+ li.passiflora_menu_separator) {
     background: #f8f8f8;
     border-top: 1px solid #ccc;
     flex-shrink: 0;
+    gap: 8px;
 }
 .passiflora_fo_wrapper .passiflora_fo_select {
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     padding: 6px 8px;
     font-size: 14px;
     border: 1px solid #aaa;
     border-radius: 4px;
     background: #fff;
+}
+.passiflora_fo_wrapper .passiflora_fo_newdir {
+    padding: 6px 12px;
+    font-size: 20px;
+    line-height: 1;
+    font-weight: 600;
+    color: #007aff;
+    background: none;
+    border: 1px solid #aaa;
+    border-radius: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.passiflora_fo_wrapper .passiflora_fo_newdir:active {
+    background: #e0e0e0;
 }
 
 /* ================================================================ */
@@ -309,6 +340,7 @@ ul.passiflora_menu li:has(+ li.passiflora_menu_separator) {
 }
 .passiflora_fo_wrapper .passiflora_fo_nameinput {
     flex: 1;
+    min-width: 0;
     padding: 6px 8px;
     font-size: 15px;
     border: 1px solid #aaa;

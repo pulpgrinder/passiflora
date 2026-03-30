@@ -231,4 +231,8 @@ cat >> "$APP/Info.plist" << 'PLIST'
 </plist>
 PLIST
 
+# Strip extended attributes (resource forks, provenance, etc.) so codesign
+# and xcrun simctl install don't reject the bundle.
+xattr -cr "$APP"
+
 echo "mkiosbundle: ${APP} created"

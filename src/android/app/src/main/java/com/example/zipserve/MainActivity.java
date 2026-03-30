@@ -17,8 +17,6 @@ import android.webkit.JsPromptResult;
 import android.webkit.PermissionRequest;
 import android.app.AlertDialog;
 import android.os.Build;
-import android.os.Environment;
-import android.provider.Settings;
 import android.widget.EditText;
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -71,17 +69,6 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        /* On Android 11+, request all-files access so the POSIX bridge
-           can read/write the shared Documents folder directly. */
-        if (BuildConfig.PERM_UNRESTRICTEDFILESYSTEMACCESS
-                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
-                && !Environment.isExternalStorageManager()) {
-            Intent intent = new Intent(
-                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                Uri.parse("package:" + getPackageName()));
-            startActivity(intent);
-        }
 
         /* Full-screen: extend behind status bar */
         getWindow().addFlags(
