@@ -13,7 +13,7 @@
 set -e
 
 PROGNAME="${1:?Usage: $0 <progname> [bundleid] [version]}"
-BUNDLE_ID="${2:-com.example.passiflora}"
+BUNDLE_ID="${2:-com.example.$PROGNAME}"
 VERSION="${3:-1.0.0}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -21,24 +21,11 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ANDROID_DIR="$PROJECT_ROOT/src/android"
 BUILD_TYPE="${BUILD_TYPE:-debug}"
 
-# ── Read src/permissions ───────────────────────────────────────────
-PERM_LOCATION=0
-PERM_CAMERA=0
-PERM_MICROPHONE=0
-PERM_REMOTEDEBUGGING=0
-PERM_FILE="$PROJECT_ROOT/src/permissions"
-if [ -f "$PERM_FILE" ]; then
-    while IFS=' ' read -r name val rest || [ -n "$name" ]; do
-        case "$name" in
-            location)    PERM_LOCATION="$val" ;;
-            camera)      PERM_CAMERA="$val" ;;
-            microphone)  PERM_MICROPHONE="$val" ;;
-            remotedebugging)  PERM_REMOTEDEBUGGING="$val" ;;
-        esac
-    done < "$PERM_FILE"
-fi
-
-# ── Read src/config ────────────────────────────────────────────────
+# ── Read src/config ─────────────────────────────────────────────────
+PERM_LOCATION=false
+PERM_CAMERA=false
+PERM_MICROPHONE=false
+PERM_REMOTEDEBUGGING=false
 CFG_ORIENTATION="both"
 CFG_FILE="$PROJECT_ROOT/src/config"
 if [ -f "$CFG_FILE" ]; then
@@ -46,7 +33,11 @@ if [ -f "$CFG_FILE" ]; then
         name="$(echo "$name" | tr '[:upper:]' '[:lower:]')"
         val="$(echo "$val" | tr '[:upper:]' '[:lower:]')"
         case "$name" in
-            orientation) CFG_ORIENTATION="$val" ;;
+            uselocation)          PERM_LOCATION="$val" ;;
+            usecamera)            PERM_CAMERA="$val" ;;
+            usemicrophone)        PERM_MICROPHONE="$val" ;;
+            allowremotedebugging) PERM_REMOTEDEBUGGING="$val" ;;
+            orientation)          CFG_ORIENTATION="$val" ;;
         esac
     done < "$CFG_FILE"
 fi
@@ -65,23 +56,23 @@ MANIFEST="$ANDROID_DIR/app/src/main/AndroidManifest.xml"
     printf '%s\n' '<manifest xmlns:android="http://schemas.android.com/apk/res/android">'
     printf '\n'
     printf '%s\n' '    <uses-permission android:name="android.permission.INTERNET" />'
-    [ "$PERM_LOCATION" = "1" ] && {
+    [ "$PERM_LOCATION" = "true" ] && {
         printf '%s\n' '    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />'
         printf '%s\n' '    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />'
     }
-    [ "$PERM_CAMERA" = "1" ] && \
+    [ "$PERM_CAMERA" = "true" ] && \
         printf '%s\n' '    <uses-permission android:name="android.permission.CAMERA" />'
-    [ "$PERM_MICROPHONE" = "1" ] && \
+    [ "$PERM_MICROPHONE" = "true" ] && \
         printf '%s\n' '    <uses-permission android:name="android.permission.RECORD_AUDIO" />'
-    [ "$PERM_MICROPHONE" = "1" ] && \
+    [ "$PERM_MICROPHONE" = "true" ] && \
         printf '%s\n' '    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />'
     printf '\n'
     # Hardware feature declarations (optional, so required=false)
-    [ "$PERM_CAMERA" = "1" ] && {
+    [ "$PERM_CAMERA" = "true" ] && {
         printf '%s\n' '    <uses-feature android:name="android.hardware.camera" android:required="false" />'
         printf '%s\n' '    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />'
     }
-    [ "$PERM_MICROPHONE" = "1" ] && \
+    [ "$PERM_MICROPHONE" = "true" ] && \
         printf '%s\n' '    <uses-feature android:name="android.hardware.microphone" android:required="false" />'
     cat <<MANIFEST_APP
     <!-- Allow cleartext HTTP to localhost -->

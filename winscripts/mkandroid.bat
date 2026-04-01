@@ -110,25 +110,19 @@ if not "%VERSION%"=="1.0.0" (
         "$f = '%APP_GRADLE%'; $c = [IO.File]::ReadAllText($f); $c = $c -replace 'versionName \""1.0.0\""', 'versionName \""%VERSION%\""'; [IO.File]::WriteAllText($f, $c)"
 )
 
-REM ── Read src\permissions ──────────────────────────────────────────
-set PERM_LOCATION=0
-set PERM_CAMERA=0
-set PERM_MICROPHONE=0
-set PERM_REMOTEDEBUGGING=0
-if exist "%PROJECT_ROOT%\src\permissions" (
-    for /F "tokens=1,2" %%A in (%PROJECT_ROOT%\src\permissions) do (
-        if /I "%%A"=="location"        set PERM_LOCATION=%%B
-        if /I "%%A"=="camera"          set PERM_CAMERA=%%B
-        if /I "%%A"=="microphone"      set PERM_MICROPHONE=%%B
-        if /I "%%A"=="remotedebugging" set PERM_REMOTEDEBUGGING=%%B
-    )
-)
-
-REM ── Read src\config ──────────────────────────────────────────────
+REM ── Read src\config (permissions + settings) ─────────────────────
+set PERM_LOCATION=false
+set PERM_CAMERA=false
+set PERM_MICROPHONE=false
+set PERM_REMOTEDEBUGGING=false
 set CFG_ORIENTATION=both
 if exist "%PROJECT_ROOT%\src\config" (
     for /F "tokens=1,2" %%A in (%PROJECT_ROOT%\src\config) do (
-        if /I "%%A"=="orientation" set CFG_ORIENTATION=%%B
+        if /I "%%A"=="uselocation"          set PERM_LOCATION=%%B
+        if /I "%%A"=="usecamera"            set PERM_CAMERA=%%B
+        if /I "%%A"=="usemicrophone"        set PERM_MICROPHONE=%%B
+        if /I "%%A"=="allowremotedebugging" set PERM_REMOTEDEBUGGING=%%B
+        if /I "%%A"=="orientation"          set CFG_ORIENTATION=%%B
     )
 )
 
@@ -144,23 +138,23 @@ set MANIFEST=%ANDROID_DIR%\app\src\main\AndroidManifest.xml
     echo ^<manifest xmlns:android="http://schemas.android.com/apk/res/android"^>
     echo.
     echo     ^<uses-permission android:name="android.permission.INTERNET" /^>
-    if "!PERM_LOCATION!"=="1" (
+    if "!PERM_LOCATION!"=="true" (
         echo     ^<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" /^>
         echo     ^<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" /^>
     )
-    if "!PERM_CAMERA!"=="1" (
+    if "!PERM_CAMERA!"=="true" (
         echo     ^<uses-permission android:name="android.permission.CAMERA" /^>
     )
-    if "!PERM_MICROPHONE!"=="1" (
+    if "!PERM_MICROPHONE!"=="true" (
         echo     ^<uses-permission android:name="android.permission.RECORD_AUDIO" /^>
         echo     ^<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" /^>
     )
     echo.
-    if "!PERM_CAMERA!"=="1" (
+    if "!PERM_CAMERA!"=="true" (
         echo     ^<uses-feature android:name="android.hardware.camera" android:required="false" /^>
         echo     ^<uses-feature android:name="android.hardware.camera.autofocus" android:required="false" /^>
     )
-    if "!PERM_MICROPHONE!"=="1" (
+    if "!PERM_MICROPHONE!"=="true" (
         echo     ^<uses-feature android:name="android.hardware.microphone" android:required="false" /^>
     )
     echo     ^<!-- Allow cleartext HTTP to localhost --^>

@@ -6,6 +6,7 @@ REM
 REM Targets:
 REM   windows   — Build the Windows exe (default)
 REM   android   — Build the Android APK
+REM   www       — Build plain-browser version into bin\WWW\
 REM   icons     — Generate icon sets
 REM   clean     — Remove build artifacts
 REM   all       — windows (alias)
@@ -32,13 +33,13 @@ if "%WIN_WINDRES%"=="" set WIN_WINDRES=windres
 set WIN_CFLAGS=-Wall -Wextra -O2 -DPROGNAME_STR=\"%PROGNAME%\"
 set WIN_LDFLAGS=-lws2_32 -lshell32 -lgdi32 -lole32 -luuid -mwindows -static -lpthread
 
-REM ── Read src\permissions ──
-if exist "%SCRIPT_DIR%\src\permissions" (
-    for /F "tokens=1,2" %%A in (%SCRIPT_DIR%\src\permissions) do (
-        if /I "%%A"=="location"          if "%%B"=="1" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_LOCATION
-        if /I "%%A"=="camera"            if "%%B"=="1" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_CAMERA
-        if /I "%%A"=="microphone"        if "%%B"=="1" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_MICROPHONE
-        if /I "%%A"=="remotedebugging"   if "%%B"=="1" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_REMOTEDEBUGGING
+REM ── Read permissions from src\config ──
+if exist "%SCRIPT_DIR%\src\config" (
+    for /F "tokens=1,2" %%A in (%SCRIPT_DIR%\src\config) do (
+        if /I "%%A"=="uselocation"          if /I "%%B"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_LOCATION
+        if /I "%%A"=="usecamera"            if /I "%%B"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_CAMERA
+        if /I "%%A"=="usemicrophone"        if /I "%%B"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_MICROPHONE
+        if /I "%%A"=="allowremotedebugging" if /I "%%B"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_REMOTEDEBUGGING
     )
 )
 
@@ -52,10 +53,11 @@ if /I "%TARGET%"=="clean" goto :do_clean
 if /I "%TARGET%"=="icons" goto :do_icons
 if /I "%TARGET%"=="android" goto :do_android
 if /I "%TARGET%"=="sign-android" goto :do_sign_android
+if /I "%TARGET%"=="www" goto :do_www
 if /I "%TARGET%"=="all" goto :do_all
 if /I "%TARGET%"=="windows" goto :do_windows
 echo Unknown target: %TARGET%
-echo Usage: %~nx0 [windows^|android^|sign-android^|icons^|clean^|all]
+echo Usage: %~nx0 [windows^|android^|sign-android^|www^|icons^|clean^|all]
 exit /b 1
 
 REM ================================================================
@@ -192,6 +194,46 @@ if errorlevel 1 (
 )
 
 echo [sign-android] %ANDROID_APK% signed successfully.
+goto :eof
+
+REM ================================================================
+REM  www
+REM ================================================================
+:do_www
+set WWW_BINDIR=%SCRIPT_DIR%\bin\WWW
+
+mkdir src\www\generated 2>nul
+
+echo [www] Generating config.js from src\www\menus\menu.txt...
+call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\www\menus\menu.txt %PROGNAME% WWW src\www\generated\config.js
+if errorlevel 1 (
+    echo [ERROR] mkmenu_json.bat failed >&2
+    exit /b 1
+)
+
+echo [www] Generating vfspreload.js...
+call "%SCRIPT_DIR%\winscripts\mkvfspreload.bat" src\vfs src\www\generated\vfspreload.js
+if errorlevel 1 (
+    echo [ERROR] mkvfspreload.bat failed >&2
+    exit /b 1
+)
+
+if exist "%WWW_BINDIR%" rmdir /S /Q "%WWW_BINDIR%"
+mkdir "%WWW_BINDIR%" 2>nul
+
+echo [www] Copying src\www to %WWW_BINDIR%...
+xcopy /S /E /Q /Y "%SCRIPT_DIR%\src\www\*" "%WWW_BINDIR%\" >nul
+if errorlevel 1 (
+    echo [ERROR] Copy failed >&2
+    exit /b 1
+)
+
+echo.
+echo === WWW target ready (bin\WWW\) ===
+echo Run the development server with:
+echo   python webserver.py
+echo Then open http://localhost:8000 in your browser.
+echo.
 goto :eof
 
 REM ================================================================

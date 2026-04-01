@@ -1,1 +1,0 @@
-alert("System ID: " + PassifloraConfig.os_name);

@@ -11,19 +11,21 @@ All notable changes to this project will be documented in this file.
 - **Directory functions**: `mkdir(path)`, `rmdir(path)`, `chdir(path)`, `getcwd()` — POSIX-style directory management with IndexedDB persistence. Relative paths and `.`/`..` components are resolved automatically. `rename()` now handles directory renames (moves all files and subdirectories under the old path).
 
 - **File import/export**:
-  - `PassifloraIO.importFile(extensions)` — import a file from the real filesystem into the VFS via the browser file picker.
+  - `PassifloraIO.importFile(extensions, path)` — import a file from the real filesystem into the VFS via the browser file picker. The optional `path` parameter specifies the VFS directory to save into (defaults to `"/"`).
   - `PassifloraIO.exportFile(vfsPath, suggestedName)` — export a VFS file to the real filesystem (uses `showSaveFilePicker()` on Chrome/Edge, download fallback elsewhere).
   - `PassifloraIO.exportVFS()` — bulk-export the entire VFS as a JSON file.
   - `PassifloraIO.importVFS()` — bulk-import a previously exported VFS JSON file.
   - `PassifloraIO.eraseVFS()` — clear all files, directories, and reset the working directory.
 
-- **File Open dialog** (`PassifloraIO.menuopen`): Sliding-panel file browser for picking files from the VFS. Supports extension filtering, directory navigation with slide animations, and an "All files" toggle.
+- **WWW target on Windows**: Added `www` target to `build.bat` so `.\build www` builds the plain-browser version into `bin\WWW\` on Windows, matching the existing `make www` on macOS/Linux.
 
-- **Save As dialog** (`PassifloraIO.menusavas`): Sliding-panel Save As dialog with filename input, overwrite confirmation, and extension-mismatch warnings.
+- **File Open dialog** (`PassifloraIO.menuOpen`): Sliding-panel file browser for picking files from the VFS. Supports extension filtering, directory navigation with slide animations, and an "All files" toggle.
 
-- **Create Folder button**: Both `menuopen` and `menusavas` panels include a 📁+ button that creates a new directory named "Untitled", "Untitled 2", etc. in the current directory.
+- **Save As dialog** (`PassifloraIO.menuSaveAs`): Sliding-panel Save As dialog with filename input, overwrite confirmation, and extension-mismatch warnings.
 
-- **Long-press rename**: Long-pressing (500 ms) a file or directory name in `menuopen` or `menusavas` makes it editable inline. HTML, newlines, and extra whitespace are stripped. Enter confirms; Escape cancels. Normal click behavior is suppressed while editing.
+- **Create Folder button**: Both `menuOpen` and `menuSaveAs` panels include a 📁+ button that creates a new directory named "Untitled", "Untitled 2", etc. in the current directory.
+
+- **Long-press rename**: Long-pressing (500 ms) a file or directory name in `menuOpen` or `menuSaveAs` makes it editable inline. HTML, newlines, and extra whitespace are stripped. Enter confirms; Escape cancels. Normal click behavior is suppressed while editing.
 
 - **WWW browser target** (`make www`): Builds a plain-browser version of the app into `bin/WWW/` with no native compilation needed.
 
@@ -37,13 +39,15 @@ All notable changes to this project will be documented in this file.
 
 - **`PassifloraIO.resetVFS()`**: Erases the entire VFS and IndexedDB, then repopulates from the compiled-in preload data.
 
-- **App configuration file** (`src/config`): A new key-value config file analogous to `src/permissions`. The first supported setting is `orientation` (`portrait`, `landscape`, or `both`), which controls screen orientation locking on iOS and Android. Desktop platforms ignore this setting.
+- **App configuration file** (`src/config`): A unified key-value config file that controls permissions and app settings. Supported keys: `uselocation`, `usecamera`, `usemicrophone`, `allowremotedebugging` (`true`/`false`), and `orientation` (`portrait`, `landscape`, or `both`). The separate `src/permissions` file has been removed.
 
 - **Documentation**: Added previously undocumented public APIs to the README: `eraseVFS()`, `resetVFS()`, `listDirectory()`, `openExternal()`, `getCurrentPosition()`, `webDownload()`, and `patchLinks()`.
 
 ### Changed
 
 - **Native file I/O bridge removed**: The ~540-line C file I/O implementation (`fopen`, `fread`, `fwrite`, `fclose`, `fseek`, etc.) has been removed from `passiflora.c`. All file operations now go through the JavaScript VFS. The `unrestrictedfilesystemaccess` permission has been removed.
+
+- **Recording API returns data directly**: `stopRecording()` now returns the recorded WebM data as a `Uint8Array` instead of writing to a native filesystem path. The C side writes to a temporary file automatically, base64-encodes the result, and deletes the temp file. `startRecording(hasVideo, hasAudio)` no longer takes a `path` parameter. This eliminates the need for callers to manage native file paths — recording data can be stored directly in the VFS.
 
 - **IndexedDB schema version 2**: The `PassifloraVFS` IndexedDB database now has two object stores: `"files"` (file contents) and `"dirs"` (explicitly created directories).
 

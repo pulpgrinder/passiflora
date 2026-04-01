@@ -28,6 +28,10 @@
 #include <signal.h>
 #include <pthread.h>
 
+#if defined(__linux__) && !defined(__ANDROID__)
+#include <glib.h>  /* g_free for GLib-allocated strings */
+#endif
+
 /* ---- Platform socket abstraction ---- */
 #ifdef _WIN32
   #ifndef WIN32_LEAN_AND_MEAN
@@ -89,6 +93,13 @@
 /* ------------------------------------------------------------------ */
 #include "generated/zipdata.h"
 #include "zipzip.h"
+
+/* ---- Buffer size constants ---- */
+#define PATH_BUF    2048
+#define HDR_BUF     2048
+#define RESP_BUF     512
+#define JSON_ERR_BUF 1024
+#define JSON_ESC_BUF  512
 
 /* Provided by UI.c */
 extern void ui_open(int port);
@@ -189,59 +200,43 @@ static pthread_cond_t  conn_cond  = PTHREAD_COND_INITIALIZER;
 /* ------------------------------------------------------------------ */
 /*  MIME type helper                                                   */
 /* ------------------------------------------------------------------ */
+static const struct { const char *ext; const char *mime; } mime_table[] = {
+    { "html",  "text/html; charset=utf-8" },
+    { "htm",   "text/html; charset=utf-8" },
+    { "css",   "text/css; charset=utf-8" },
+    { "js",    "application/javascript; charset=utf-8" },
+    { "json",  "application/json; charset=utf-8" },
+    { "xml",   "application/xml; charset=utf-8" },
+    { "svg",   "image/svg+xml" },
+    { "png",   "image/png" },
+    { "jpg",   "image/jpeg" },
+    { "jpeg",  "image/jpeg" },
+    { "gif",   "image/gif" },
+    { "ico",   "image/x-icon" },
+    { "woff",  "font/woff" },
+    { "woff2", "font/woff2" },
+    { "ttf",   "font/ttf" },
+    { "otf",   "font/otf" },
+    { "wasm",  "application/wasm" },
+    { "pdf",   "application/pdf" },
+    { "txt",   "text/plain; charset=utf-8" },
+    { "md",    "text/markdown; charset=utf-8" },
+    { "mp3",   "audio/mpeg" },
+    { "mp4",   "video/mp4" },
+    { "webm",  "video/webm" },
+    { "webp",  "image/webp" },
+    { "m4a",   "audio/mp4" },
+    { "mov",   "video/quicktime" },
+};
 static const char *mime_for_path(const char *path)
 {
     const char *dot = strrchr(path, '.');
     if (!dot) return "application/octet-stream";
     dot++;
-    if (strcasecmp(dot, "html") == 0 || strcasecmp(dot, "htm") == 0)
-        return "text/html; charset=utf-8";
-    if (strcasecmp(dot, "css") == 0)
-        return "text/css; charset=utf-8";
-    if (strcasecmp(dot, "js") == 0)
-        return "application/javascript; charset=utf-8";
-    if (strcasecmp(dot, "json") == 0)
-        return "application/json; charset=utf-8";
-    if (strcasecmp(dot, "xml") == 0)
-        return "application/xml; charset=utf-8";
-    if (strcasecmp(dot, "svg") == 0)
-        return "image/svg+xml";
-    if (strcasecmp(dot, "png") == 0)
-        return "image/png";
-    if (strcasecmp(dot, "jpg") == 0 || strcasecmp(dot, "jpeg") == 0)
-        return "image/jpeg";
-    if (strcasecmp(dot, "gif") == 0)
-        return "image/gif";
-    if (strcasecmp(dot, "ico") == 0)
-        return "image/x-icon";
-    if (strcasecmp(dot, "woff") == 0)
-        return "font/woff";
-    if (strcasecmp(dot, "woff2") == 0)
-        return "font/woff2";
-    if (strcasecmp(dot, "ttf") == 0)
-        return "font/ttf";
-    if (strcasecmp(dot, "otf") == 0)
-        return "font/otf";
-    if (strcasecmp(dot, "wasm") == 0)
-        return "application/wasm";
-    if (strcasecmp(dot, "pdf") == 0)
-        return "application/pdf";
-    if (strcasecmp(dot, "txt") == 0)
-        return "text/plain; charset=utf-8";
-    if (strcasecmp(dot, "md") == 0)
-        return "text/markdown; charset=utf-8";
-    if (strcasecmp(dot, "mp3") == 0)
-        return "audio/mpeg";
-    if (strcasecmp(dot, "mp4") == 0)
-        return "video/mp4";
-    if (strcasecmp(dot, "webm") == 0)
-        return "video/webm";
-    if (strcasecmp(dot, "webp") == 0)
-        return "image/webp";
-    if (strcasecmp(dot, "m4a") == 0)
-        return "audio/mp4";
-    if (strcasecmp(dot, "mov") == 0)
-        return "video/quicktime";
+    for (size_t i = 0; i < sizeof(mime_table) / sizeof(mime_table[0]); i++) {
+        if (strcasecmp(dot, mime_table[i].ext) == 0)
+            return mime_table[i].mime;
+    }
     return "application/octet-stream";
 }
 
@@ -264,7 +259,7 @@ static void send_response(int fd, int code, const char *status,
                            const char *content_type,
                            const unsigned char *body, size_t body_len)
 {
-    char hdr[2048];
+    char hdr[HDR_BUF];
     int hlen = snprintf(hdr, sizeof hdr,
         "HTTP/1.1 %d %s\r\n"
         "Content-Type: %s\r\n"
@@ -328,24 +323,35 @@ static int form_get_str(const char *body, const char *key,
 /* ---- JSON result builders (return malloc'd string, caller frees) ---- */
 /* These are non-static so UI.c media functions can use them. */
 
+/* Escape a string for embedding inside a JSON "..." value.
+   Writes at most dst_sz-1 bytes into dst; always NUL-terminates.
+   Returns the number of bytes written (excluding NUL). */
+static size_t json_escape(char *dst, size_t dst_sz,
+                           const char *src, size_t src_len)
+{
+    size_t j = 0;
+    for (size_t i = 0; i < src_len && j < dst_sz - 6; i++) {
+        unsigned char c = (unsigned char)src[i];
+        if (c == '"')       { dst[j++] = '\\'; dst[j++] = '"'; }
+        else if (c == '\\') { dst[j++] = '\\'; dst[j++] = '\\'; }
+        else if (c == '\n') { dst[j++] = '\\'; dst[j++] = 'n'; }
+        else if (c == '\r') { dst[j++] = '\\'; dst[j++] = 'r'; }
+        else if (c == '\t') { dst[j++] = '\\'; dst[j++] = 't'; }
+        else if (c < 0x20)  { j += snprintf(dst + j, dst_sz - j,
+                                             "\\u%04x", c); }
+        else                { dst[j++] = c; }
+    }
+    dst[j] = '\0';
+    return j;
+}
+
 char *json_error(const char *msg)
 {
-    char esc[512];
-    size_t j = 0;
-    for (size_t i = 0; msg[i] && j < sizeof(esc) - 6; i++) {
-        unsigned char c = (unsigned char)msg[i];
-        if (c == '"')       { esc[j++] = '\\'; esc[j++] = '"'; }
-        else if (c == '\\') { esc[j++] = '\\'; esc[j++] = '\\'; }
-        else if (c == '\n') { esc[j++] = '\\'; esc[j++] = 'n'; }
-        else if (c == '\r') { esc[j++] = '\\'; esc[j++] = 'r'; }
-        else if (c < 0x20)  { j += snprintf(esc + j, sizeof(esc) - j,
-                                             "\\u%04x", c); }
-        else                { esc[j++] = c; }
-    }
-    esc[j] = '\0';
-    char *buf = malloc(1024);
+    char esc[JSON_ESC_BUF];
+    json_escape(esc, sizeof(esc), msg, strlen(msg));
+    char *buf = malloc(JSON_ERR_BUF);
     if (!buf) return NULL;
-    snprintf(buf, 1024, "{\"ok\":false,\"error\":\"%s\"}", esc);
+    snprintf(buf, JSON_ERR_BUF, "{\"ok\":false,\"error\":\"%s\"}", esc);
     return buf;
 }
 
@@ -376,17 +382,7 @@ char *json_ok_str(const char *val)
     if (!buf) return json_error("Out of memory");
     size_t pos = 0;
     pos += snprintf(buf, bufsz, "{\"ok\":true,\"result\":\"");
-    for (size_t i = 0; i < slen && pos < bufsz - 10; i++) {
-        unsigned char c = (unsigned char)val[i];
-        if (c == '"')       { buf[pos++] = '\\'; buf[pos++] = '"'; }
-        else if (c == '\\') { buf[pos++] = '\\'; buf[pos++] = '\\'; }
-        else if (c == '\n') { buf[pos++] = '\\'; buf[pos++] = 'n'; }
-        else if (c == '\r') { buf[pos++] = '\\'; buf[pos++] = 'r'; }
-        else if (c == '\t') { buf[pos++] = '\\'; buf[pos++] = 't'; }
-        else if (c < 0x20)  { pos += snprintf(buf + pos, bufsz - pos,
-                                               "\\u%04x", c); }
-        else                { buf[pos++] = c; }
-    }
+    pos += json_escape(buf + pos, bufsz - pos, val, slen);
     pos += snprintf(buf + pos, bufsz - pos, "\"}");
     return buf;
 }
@@ -403,7 +399,7 @@ char *json_ok_str(const char *val)
 /* ------------------------------------------------------------------ */
 static const char *getDocumentsDirectory(void)
 {
-    static char doc_dir[2048] = "";
+    static char doc_dir[PATH_BUF] = "";
     if (doc_dir[0]) return doc_dir;
 
 #ifdef _WIN32
@@ -441,7 +437,7 @@ static const char *getDocumentsDirectory(void)
         if (pw) dd_home = pw->pw_dir;
     }
     if (dd_home) {
-        char parent[1024];
+        char parent[PATH_BUF];
         snprintf(parent, sizeof parent, "%s/Documents", dd_home);
         mkdir(parent, 0755);
         snprintf(doc_dir, sizeof doc_dir, "%s/%s", parent, PROGNAME_STR);
@@ -463,58 +459,6 @@ static const char *getDocumentsDirectory(void)
     return doc_dir[0] ? doc_dir : NULL;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Sandbox check — ensure a path resolves inside the documents dir    */
-/* ------------------------------------------------------------------ */
-static int path_in_sandbox(const char *path)
-{
-    const char *sandbox = getDocumentsDirectory();
-    if (!sandbox) return 0;
-
-#ifdef _WIN32
-    char resolved[2048], resolved_sb[2048];
-    if (!_fullpath(resolved, path, sizeof resolved))
-        return 0;
-    if (!_fullpath(resolved_sb, sandbox, sizeof resolved_sb))
-        return 0;
-    size_t slen = strlen(resolved_sb);
-    return (_strnicmp(resolved, resolved_sb, slen) == 0 &&
-            (resolved[slen] == '\\' || resolved[slen] == '/' ||
-             resolved[slen] == '\0'));
-#else
-    /* Canonicalize the sandbox path to resolve symlinks */
-    char *real_sandbox = realpath(sandbox, NULL);
-    if (!real_sandbox) return 0;
-    size_t slen = strlen(real_sandbox);
-
-    /* Try realpath for existing paths */
-    char *resolved = realpath(path, NULL);
-    if (resolved) {
-        int ok = (strncmp(resolved, real_sandbox, slen) == 0 &&
-                  (resolved[slen] == '/' || resolved[slen] == '\0'));
-        free(resolved);
-        free(real_sandbox);
-        return ok;
-    }
-    /* For new files, resolve the parent directory */
-    char pathcopy[2048];
-    snprintf(pathcopy, sizeof pathcopy, "%s", path);
-    char *last_slash = strrchr(pathcopy, '/');
-    if (last_slash && last_slash != pathcopy) {
-        *last_slash = '\0';
-        resolved = realpath(pathcopy, NULL);
-        if (resolved) {
-            int ok = (strncmp(resolved, real_sandbox, slen) == 0 &&
-                      (resolved[slen] == '/' || resolved[slen] == '\0'));
-            free(resolved);
-            free(real_sandbox);
-            return ok;
-        }
-    }
-    free(real_sandbox);
-    return 0;
-#endif
-}
 #endif
 
 char *passiflora_posix_call(const char *params)
@@ -537,13 +481,12 @@ char *passiflora_posix_call(const char *params)
 #if defined(__linux__) && !defined(__ANDROID__)
     if (strcmp(func, "startRecording") == 0) {
         extern char *gst_start_recording(const char *path, int has_video, int has_audio);
-        char rec_path[2048], rec_video[8], rec_audio[8];
-        if (form_get_str(body, "path", rec_path, sizeof rec_path) < 0) {
-            free(body); return json_error("path required");
-        }
-        if (strstr(rec_path, "..") || !path_in_sandbox(rec_path)) {
-            free(body); return json_error("Access denied: path outside app folder");
-        }
+        char rec_video[8], rec_audio[8];
+        /* Auto-generate a temp path inside the sandbox */
+        const char *sandbox = getDocumentsDirectory();
+        if (!sandbox) { free(body); return json_error("Cannot determine app folder"); }
+        char rec_path[4096];
+        snprintf(rec_path, sizeof rec_path, "%s/.passiflora_recording.webm", sandbox);
         if (form_get_str(body, "video", rec_video, sizeof rec_video) < 0)
             rec_video[0] = '0', rec_video[1] = '\0';
         if (form_get_str(body, "audio", rec_audio, sizeof rec_audio) < 0)
@@ -558,10 +501,16 @@ char *passiflora_posix_call(const char *params)
     }
 
     if (strcmp(func, "stopRecording") == 0) {
-        extern char *gst_stop_recording(void);
-        char *err = gst_stop_recording();
+        extern char *gst_stop_recording(char **out_b64);
+        char *b64 = NULL;
+        char *err = gst_stop_recording(&b64);
         free(body);
-        if (err) { char *r = json_error(err); free(err); return r; }
+        if (err) { char *r = json_error(err); free(err); free(b64); return r; }
+        if (b64) {
+            char *r = json_ok_str(b64);
+            g_free(b64);
+            return r;
+        }
         return json_ok_str("stopped");
     }
 
@@ -703,7 +652,7 @@ static void handle_request(int fd)
     }
 
     /* Parse request line */
-    char method[16] = {0}, path[2048] = {0};
+    char method[16] = {0}, path[PATH_BUF] = {0};
     if (sscanf(hdr, "%15s %2047s", method, path) < 2) {
         send_text(fd, 400, "Bad Request", "Malformed request\n");
         free(hdr);
@@ -718,7 +667,7 @@ static void handle_request(int fd)
 
     /* Sanitise path for logging: replace control chars */
     {
-        char safe[2048];
+        char safe[PATH_BUF];
         size_t i;
         for (i = 0; path[i] && i < sizeof(safe) - 1; i++)
             safe[i] = (unsigned char)path[i] < 0x20 || path[i] == 0x7f
@@ -845,7 +794,7 @@ static void handle_request(int fd)
             "Access-Control-Allow-Headers: Content-Type\r\n"
             "Connection: close\r\n";
         const char *resp_body = "{\"ok\":true}\n";
-        char resp[512];
+        char resp[RESP_BUF];
         int rlen = snprintf(resp, sizeof resp,
             "%sContent-Length: %zu\r\n\r\n%s",
             resp_hdrs, strlen(resp_body), resp_body);
@@ -900,7 +849,7 @@ static void handle_request(int fd)
             }
             debug_result_buf = body2;
             pthread_mutex_unlock(&debug_result_lock);
-            char resp[512];
+            char resp[RESP_BUF];
             const char *rb = "{\"ok\":true}\n";
             int rlen = snprintf(resp, sizeof resp,
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n%s"
@@ -914,7 +863,7 @@ static void handle_request(int fd)
             debug_result_buf = NULL;
             pthread_mutex_unlock(&debug_result_lock);
             if (result) {
-                char resp[512];
+                char resp[RESP_BUF];
                 int rlen = snprintf(resp, sizeof resp,
                     "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n%s"
                     "Connection: close\r\nContent-Length: %zu\r\n\r\n",
@@ -925,7 +874,7 @@ static void handle_request(int fd)
                 }
                 free(result);
             } else {
-                char resp[256];
+                char resp[RESP_BUF];
                 int rlen = snprintf(resp, sizeof resp,
                     "HTTP/1.1 204 No Content\r\n%s"
                     "Connection: close\r\n\r\n", cors);
@@ -1062,7 +1011,7 @@ static void handle_request(int fd)
         const char *qs = path + 27;
         /* Extract url= parameter */
         if (strncmp(qs, "url=", 4) == 0) {
-            char target[2048];
+            char target[PATH_BUF];
             snprintf(target, sizeof target, "%s", qs + 4);
             /* Only allow http:// and https:// URLs */
             if (strncmp(target, "http://", 7) == 0 ||

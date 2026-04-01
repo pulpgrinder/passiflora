@@ -4,23 +4,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Test Page</title>
+    <title>Test App</title>
     <link rel="stylesheet" href="passiflora/menu.css">
 </head>
 
 <body>
     <div class="hamburgermenu">≡</div>
-    <h1>Test Page</h1>
-    <p>This is a test page for the HTML structure.</p>
+    <h1>Test App</h1>
+    <p>This is a test app for Passiflora.</p>
     <p>
         <img src="test.png" alt="Test Image">
     </p>
 
     <h2>Navigation</h2>
     <p>
-        <a href="test.html">Visit Test Page</a>
-        <a href="https://amazon.com">Visit Amazon</a>
-        <button onclick="PassifloraIO.openExternal('https://google.com')">Open Google in new browser window</button>
+        <button onclick="window.location.href='test.html'">Open Internal HTML Page in App</button>
+        <button onclick="PassifloraIO.openExternal('https://google.com')">Open External Page in Browser</button>
         <button onclick="checkLocation()">Check Location</button>
     </p>
 
@@ -62,7 +61,6 @@
     let recordedChunks = [];
     let recordedBlob = null;
     let nativeRecording = false;  // true when using GStreamer fallback
-    let nativeRecordPath = '';
     let recordingAudioCtx = null; // AudioContext used during recording
     let recordingCanvas = null;   // canvas used for frame-rate normalization
     let recordingFrameId = null;  // requestAnimationFrame handle
@@ -70,27 +68,15 @@
     function toggleRecording() {
         // Stop if already recording (either native or MediaRecorder)
         if (nativeRecording) {
-            PassifloraIO.stopRecording().then(function() {
+            PassifloraIO.stopRecording().then(function(data) {
                 document.getElementById('recordBtn').textContent = 'Record Video + Audio';
                 document.getElementById('playBtn').disabled = false;
-                logResult('Recording saved (native)');
-                // Load the file as a blob for playback
-                return PassifloraIO.fopen(nativeRecordPath, 'rb');
-            }).then(function(fd) {
-                // Read in chunks — fread returns Uint8Array directly
-                var chunks = [];
-                function readChunk() {
-                    return PassifloraIO.fread(fd, 65536).then(function(bytes) {
-                        if (!bytes || bytes.length === 0) { return PassifloraIO.fclose(fd).then(function() { return chunks; }); }
-                        chunks.push(bytes);
-                        if (bytes.length < 65536) return PassifloraIO.fclose(fd).then(function() { return chunks; });
-                        return readChunk();
-                    });
+                if (data) {
+                    recordedBlob = new Blob([data], { type: 'video/webm' });
+                    logResult('Recording saved (' + (recordedBlob.size / 1024).toFixed(1) + ' KB, video/webm)');
+                } else {
+                    logResult('Recording stopped (no data returned)');
                 }
-                return readChunk();
-            }).then(function(chunks) {
-                recordedBlob = new Blob(chunks, { type: 'video/webm' });
-                logResult('Recording saved (' + (recordedBlob.size / 1024).toFixed(1) + ' KB, video/webm)');
                 stopMedia();
             }).catch(function(err) {
                 logResult('Stop error: ' + err.message);
@@ -165,17 +151,17 @@
             //  2) Running audio through an AudioContext so its
             //     timestamps are sample-counted, not wall-clock.
             // Both tracks then share a single stable timing base.
-            var FPS = 30;
-            var recStream = new MediaStream();
-            var videoTracks = stream.getVideoTracks();
-            var audioTracks = stream.getAudioTracks();
+            const FPS = 30;
+            const recStream = new MediaStream();
+            const videoTracks = stream.getVideoTracks();
+            const audioTracks = stream.getAudioTracks();
 
             if (videoTracks.length > 0) {
-                var canvas = document.createElement('canvas');
-                var vSettings = videoTracks[0].getSettings();
+                const canvas = document.createElement('canvas');
+                const vSettings = videoTracks[0].getSettings();
                 canvas.width  = vSettings.width  || 640;
                 canvas.height = vSettings.height || 480;
-                var ctx2d = canvas.getContext('2d');
+                const ctx2d = canvas.getContext('2d');
                 recordingCanvas = canvas;
 
                 // Draw camera frames onto the canvas at a steady rate
@@ -187,15 +173,15 @@
                 }
                 recordingFrameId = requestAnimationFrame(drawFrame);
 
-                var canvasStream = canvas.captureStream(FPS);
+                const canvasStream = canvas.captureStream(FPS);
                 canvasStream.getVideoTracks().forEach(function(t) { recStream.addTrack(t); });
             }
 
             if (audioTracks.length > 0 && typeof AudioContext !== 'undefined') {
-                var actx = new AudioContext();
+                const actx = new AudioContext();
                 recordingAudioCtx = actx;
-                var src = actx.createMediaStreamSource(stream);
-                var dest = actx.createMediaStreamDestination();
+                const src = actx.createMediaStreamSource(stream);
+                const dest = actx.createMediaStreamDestination();
                 src.connect(dest);
                 dest.stream.getAudioTracks().forEach(function(t) { recStream.addTrack(t); });
             } else {
@@ -204,18 +190,18 @@
 
             // Pick a supported MIME type
             let mimeType = '';
-            var types = ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus',
+            const types = ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus',
                          'video/webm', 'video/mp4'];
-            for (var i = 0; i < types.length; i++) {
+            for (let i = 0; i < types.length; i++) {
                 if (MediaRecorder.isTypeSupported(types[i])) { mimeType = types[i]; break; }
             }
-            var options = mimeType ? { mimeType: mimeType } : {};
+            const options = mimeType ? { mimeType: mimeType } : {};
             mediaRecorder = new MediaRecorder(recStream, options);
             mediaRecorder.ondataavailable = function(e) {
                 if (e.data && e.data.size > 0) recordedChunks.push(e.data);
             };
             mediaRecorder.onstop = function() {
-                var type = mediaRecorder.mimeType || 'video/webm';
+                const type = mediaRecorder.mimeType || 'video/webm';
                 recordedBlob = new Blob(recordedChunks, { type: type });
                 recordedChunks = [];
                 document.getElementById('recordBtn').textContent = 'Record Video + Audio';
@@ -236,17 +222,14 @@
         // No getUserMedia preview here — GStreamer needs exclusive access
         // to the camera and microphone devices on Linux.
         stopMedia();
-        var container = document.getElementById('mediaContainer');
+        const container = document.getElementById('mediaContainer');
         container.innerHTML = '';
-        var indicator = document.createElement('div');
+        const indicator = document.createElement('div');
         indicator.style.cssText = 'padding:2em;text-align:center;font-size:1.2em;color:#c00';
         indicator.textContent = '\u25CF Recording (native)...';
         container.appendChild(indicator);
 
-        PassifloraIO.getHomeFolder().then(function(home) {
-            nativeRecordPath = home + '.passiflora_recording.webm';
-            return PassifloraIO.startRecording(nativeRecordPath, true, true);
-        }).then(function() {
+        PassifloraIO.startRecording(true, true).then(function() {
             nativeRecording = true;
             recordedBlob = null;
             document.getElementById('playBtn').disabled = true;
@@ -260,12 +243,12 @@
     function playRecording() {
         if (!recordedBlob) return;
         stopMedia();
-        var container = document.getElementById('mediaContainer');
+        const container = document.getElementById('mediaContainer');
         container.innerHTML = '';
 
         // Log codec support for debugging
-        var testVid = document.createElement('video');
-        var types = [
+        const testVid = document.createElement('video');
+        const types = [
             'video/webm', 'video/webm;codecs=vp8', 'video/webm;codecs=vp8,opus',
             'video/webm;codecs=vp8,vorbis', 'audio/webm;codecs=opus',
             'audio/webm;codecs=vorbis', 'audio/ogg;codecs=opus'
@@ -276,7 +259,7 @@
 
         logResult('Blob size: ' + recordedBlob.size + ' bytes, type: ' + recordedBlob.type);
 
-        var video = document.createElement('video');
+        const video = document.createElement('video');
         video.controls = true;
         video.playsInline = true;
         video.muted = false;
@@ -284,7 +267,7 @@
         video.style.maxWidth = '100%';
         video.src = URL.createObjectURL(recordedBlob);
         video.onerror = function() {
-            var e = video.error;
+            const e = video.error;
             logResult('Video error: code=' + (e ? e.code : '?') + ' msg=' + (e ? e.message : '?'));
         };
         container.appendChild(video);
@@ -316,7 +299,7 @@
         const sel = document.getElementById(selectId);
         const prev = sel.value;
         sel.innerHTML = '<option value="">-- default --</option>';
-        var seen = {};
+        const seen = {};
         devices.forEach(function(d, i) {
             if (!d.deviceId || seen[d.deviceId]) return;
             seen[d.deviceId] = true;
@@ -441,42 +424,42 @@
     async function testMenuOpen() {
         logResult('Opening file picker for frompassiflora.txt...');
         try {
-            var result = await PassifloraIO.menuopen(
+            const result = await PassifloraIO.menuOpen(
                 ['.txt'], '');
             if (result) {
-                logResult('menuopen returned: ' + result);
+                logResult('menuOpen returned: ' + result);
             } else {
-                logResult('menuopen cancelled (returned null)');
+                logResult('menuOpen cancelled (returned null)');
             }
         } catch(e) {
-            logResult('menuopen error: ' + e.message);
+            logResult('menuOpen error: ' + e.message);
         }
     }
 
     async function testMenuSaveAs() {
         logResult('Opening Save As for .txt files...');
         try {
-            var result = await PassifloraIO.menusavas(
+            const result = await PassifloraIO.menuSaveAs(
                 ['.txt'], 'untitled.txt');
             if (result) {
-                logResult('menusavas returned: ' + result);
+                logResult('menuSaveAs returned: ' + result);
                 /* Write test data and close to trigger the save/download */
-                var fh = await fopen(result, 'w');
+                const fh = await fopen(result, 'w');
                 await fputs(fh, 'Hello from Passiflora WWW test!\nSaved at: ' + new Date().toString());
                 await fclose(fh);
                 logResult('File saved.');
             } else {
-                logResult('menusavas cancelled (returned null)');
+                logResult('menuSaveAs cancelled (returned null)');
             }
         } catch(e) {
-            logResult('menusavas error: ' + e.message);
+            logResult('menuSaveAs error: ' + e.message);
         }
     }
 
     async function testExportVFS() {
         logResult('Exporting VFS...');
         try {
-            var count = await PassifloraIO.exportVFS();
+            const count = await PassifloraIO.exportVFS();
             logResult('Exported ' + count + ' file(s) to passiflora_vfs.json');
         } catch(e) {
             alert(e.message);
@@ -486,7 +469,7 @@
     async function testImportVFS() {
         logResult('Importing VFS...');
         try {
-            var count = await PassifloraIO.importVFS();
+            const count = await PassifloraIO.importVFS();
             if (count > 0) {
                 logResult('Imported ' + count + ' file(s) into VFS');
             } else {
@@ -500,7 +483,7 @@
     async function testEraseVFS() {
         logResult('Erasing VFS...');
         try {
-            var count = await PassifloraIO.eraseVFS();
+            const count = await PassifloraIO.eraseVFS();
             if (count > 0) {
                 logResult('Erased ' + count + ' file(s) from VFS');
             } else {
@@ -524,7 +507,7 @@
     async function testImportFile() {
         logResult('Importing file from real filesystem...');
         try {
-            var vpath = await PassifloraIO.importFile();
+            const vpath = await PassifloraIO.importFile();
             if (vpath) {
                 logResult('Imported to VFS path: ' + vpath);
             } else {
@@ -536,24 +519,15 @@
     }
 
     async function testExportFile() {
-        logResult('Listing VFS root...');
+        logResult('Browse for a file to export...');
         try {
-            var entries = await PassifloraIO.listDirectory("/");
-            if (entries.length === 0) {
-                logResult('VFS is empty — import or create a file first.');
+            const chosen = await PassifloraIO.menuOpen([], '/');
+            if (!chosen) {
+                logResult('Export cancelled (no file selected)');
                 return;
             }
-            var firstFile = null;
-            for (var i = 0; i < entries.length; i++) {
-                if (!entries[i].isDir) { firstFile = entries[i].name; break; }
-            }
-            if (!firstFile) {
-                logResult('No files found in VFS root (only folders).');
-                return;
-            }
-            var fullPath = '/' + firstFile;
-            logResult('Exporting: ' + fullPath);
-            var result = await PassifloraIO.exportFile(fullPath);
+            logResult('Exporting: ' + chosen);
+            const result = await PassifloraIO.exportFile(chosen);
             if (result) {
                 logResult('Exported ' + result);
             } else {
@@ -585,8 +559,6 @@
 <script src="generated/vfspreload.js"></script>
 <script src="passiflora/buildmenu.js"></script>
 <script src="passiflora/PassifloraIO.js"></script>
-<script src="app.js"></script>
-<script src="init.js"></script>
 
 </body>
 </html>

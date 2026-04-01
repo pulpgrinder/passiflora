@@ -25,26 +25,11 @@ if [ -z "$PROGNAME" ] || [ -z "$BINARY" ]; then
     exit 1
 fi
 
-# Read permissions file (default everything to 0)
-_perm_location=0
-_perm_camera=0
-_perm_microphone=0
-_perm_remotedebugging=0
-_permfile="$(dirname "$0")/../src/permissions"
-if [ -f "$_permfile" ]; then
-    while IFS= read -r _line || [ -n "$_line" ]; do
-        _name="${_line%% *}"
-        _val="${_line##* }"
-        case "$_name" in
-            location)         _perm_location="$_val" ;;
-            camera)           _perm_camera="$_val" ;;
-            microphone)       _perm_microphone="$_val" ;;
-            remotedebugging)  _perm_remotedebugging="$_val" ;;
-        esac
-    done < "$_permfile"
-fi
-
-# Read config file (defaults)
+# Read config file (permissions + settings)
+_perm_location=false
+_perm_camera=false
+_perm_microphone=false
+_perm_remotedebugging=false
 _cfg_orientation="both"
 _cfgfile="$(dirname "$0")/../src/config"
 if [ -f "$_cfgfile" ]; then
@@ -52,7 +37,11 @@ if [ -f "$_cfgfile" ]; then
         _name="$(echo "${_line%% *}" | tr '[:upper:]' '[:lower:]')"
         _val="$(echo "${_line##* }" | tr '[:upper:]' '[:lower:]')"
         case "$_name" in
-            orientation) _cfg_orientation="$_val" ;;
+            uselocation)          _perm_location="$_val" ;;
+            usecamera)            _perm_camera="$_val" ;;
+            usemicrophone)        _perm_microphone="$_val" ;;
+            allowremotedebugging) _perm_remotedebugging="$_val" ;;
+            orientation)          _cfg_orientation="$_val" ;;
         esac
     done < "$_cfgfile"
 fi
@@ -226,29 +215,29 @@ cat >> "$APP/Info.plist" << 'PLIST'
     <true/>
 PLIST
 
-# Conditionally emit privacy plist keys based on src/permissions
-if [ "$_perm_location" = "1" ]; then
+# Conditionally emit privacy plist keys based on src/config
+if [ "$_perm_location" = "true" ]; then
     cat >> "$APP/Info.plist" << 'PLIST'
 
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>This app needs your location for location-based features.</string>
 PLIST
 fi
-if [ "$_perm_camera" = "1" ]; then
+if [ "$_perm_camera" = "true" ]; then
     cat >> "$APP/Info.plist" << 'PLIST'
 
     <key>NSCameraUsageDescription</key>
     <string>This app needs access to your camera for photo and video capture.</string>
 PLIST
 fi
-if [ "$_perm_microphone" = "1" ]; then
+if [ "$_perm_microphone" = "true" ]; then
     cat >> "$APP/Info.plist" << 'PLIST'
 
     <key>NSMicrophoneUsageDescription</key>
     <string>This app needs access to your microphone for audio and video recording.</string>
 PLIST
 fi
-if [ "$_perm_remotedebugging" = "1" ]; then
+if [ "$_perm_remotedebugging" = "true" ]; then
     cat >> "$APP/Info.plist" << 'PLIST'
 
     <key>NSLocalNetworkUsageDescription</key>

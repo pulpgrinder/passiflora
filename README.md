@@ -4,7 +4,7 @@
 
 Passiflora is a no-nonsense cross-platform packager that wraps HTML/JavaScript/CSS/etc. in an executable (similar to Electron and its ilk). 
 
-Note that this should be considered **experimental** at this point. Things are still in a "move fast and break stuff" phase.  Please report any issues. In addition, much of this project was vibe coded as an experiment. The basic idea for this has been hanging around my todo list, along with code snippets, for several years. I finally decided to use it as a proof of concept for vibe coding. If it's of interest, the vibe code per se was mostly written with GitHub Copilot using Claude Opus 4.6. Configuration questions and similar (e.g., "Why aren't location services working on my Ubuntu Linux system running in a Parallels Desktop VM?") were mostly handled with Grok 4.0.
+Things are still "moving fast", but it's getting to a stage where I'm going to try to avoid "breaking things". However, this system is still in a state of flux.  Please report any issues. In addition, much of this project was vibe coded as an experiment. The basic idea for this has been hanging around my todo list, along with code snippets, for several years. I finally decided to use it as a proof of concept for vibe coding. If it's of interest, the vibe code per se was mostly written with GitHub Copilot using Claude Opus 4.6. Configuration questions and similar (e.g., "Why aren't location services working on my Ubuntu Linux system running in a Parallels Desktop VM?") were mostly handled with Grok 4.0.
 
 While everything seems to be working fine, I'm far from an expert in all these systems and I'm sure there are numerous uglinesses and infelicities present. Again, please raise an issue if you notice anything amiss (especially security issues).
 
@@ -15,7 +15,7 @@ Supported target platforms include:
 * Android (build on macOS, Windows, or Linux)
 * Windows (build on macOS, Windows, or Linux)
 * Linux (build on Linux)
-* WWW (plain browser — build on any platform, serve with `python3 webserver.py` or any other webserver of your choice).
+* WWW (plain browser — build on any platform, serve with `python3 webserver.py` (obviously requires having python3 installed) or any other webserver of your choice).
 * Need a different target? Open an issue... all suggestions will be considered, within the limits of time and efficiency.
 
 Features:
@@ -41,9 +41,7 @@ The sample program weighs 1.5 MB when built for macOS, 1.1 MB of which is accoun
 By comparison, the same program when built for macOS using Electron/Electron Forge weighs **211 MB**. Yikes!
 
 
----
-
-Electron and Electron Forge also install 342 (!) npm packages, which generate scads of deprecation/security warnings (and, yes, I'm following the installation/compilation instructions on the Electron website that are current as of today, March 7, 2026).
+Electron and Electron Forge also install **342** (!) npm packages, which generate scads of deprecation/security warnings (and, yes, I'm following the installation/compilation instructions on the Electron website that are current as of today, March 7, 2026).
 
 
 ## Prerequisites and Building
@@ -57,7 +55,7 @@ Detailed installation, build, cross-compilation, and code signing instructions a
 ### Quick Start
 
 1. Install the prerequisites for your host system (see the guide above).
-2. Check out this repo.
+2. Check out a fresh copy of this repo.
 3. Put your HTML/JavaScript/CSS in `src/www` (making sure to leave the `passiflora` folder intact).
 4. Build:
 
@@ -71,7 +69,7 @@ make
 .\build
 ```
 
-5. There is no step 5, at least in the sense of building a functioning binary. You'll probably want to customize some of the settings to (e.g.) set your app's name and so on (see below).
+5. There is no step 5, at least in the sense of building a functioning binary. You'll probably want to customize some of the settings to (e.g.) set your app's name, icon, and so on (see below).
 
 
 ### Make/Build Targets Summary
@@ -88,14 +86,15 @@ make
 | `make android` | Build Android APK |
 | `make icons` | Generate icon sets for all platforms |
 | `make clean` | Remove all build artifacts |
-| `make www` | Build plain-browser version into `bin/WWW/` (no native compile) |
+| `make www` | Build plain-browser version into `bin/WWW/` -- useful for debugging using browser tools |
 | `make sign-macos` | Interactively sign the macOS app bundle |
 | `make sign-ios` | Interactively sign the iOS app bundle |
 | `make sign-iossim` | Interactively sign the iOS Simulator app bundle |
-| `make sign-android` | Sign the Android APK with a local keystore |
+| `make sign-android` | Sign the Android APK with a local keystore (macOS and Linux)|
 | `.\build` or `.\build windows` | Build Windows exe (Windows) |
 | `.\build android` | Build Android APK (Windows) |
 | `.\build sign-android` | Sign the Android APK (Windows) |
+| `.\build www` | Build plain-browser version into `bin\WWW\` (Windows) -- useful for debugging using browser tools |
 | `.\build icons` | Generate icon sets (Windows) |
 | `.\build clean` | Remove all build artifacts (Windows) |
 
@@ -109,29 +108,21 @@ Obviously you're gonna want to put your own HTML, JavaScript, CSS, images, and s
 
 Edit `PROGNAME` in the `Makefile` (macOS/Linux) or `build.bat` (Windows) to your preferred name for the package.
 
-### Permissions
-
-The file `src/permissions` controls which platform capabilities are compiled into the app. Each line has the form `name 0` or `name 1`. Permissions default to off (0) if omitted. By default, all permissions are turned on. For apps you're planning to distribute, you should turn everything off except the ones you actually need (app stores frown on unnecessary permissions).
-
-| Permission | Affects | Description |
-|------------|---------|-------------|
-| `location` | All platforms | Enables GPS / geolocation. On iOS and macOS this links CoreLocation and adds the required `NSLocation*` plist keys. On Android it adds `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` to the manifest and enables the WebView geolocation prompt. |
-| `camera` | All platforms | Enables camera access (screenshots, image capture, video recording). On iOS / macOS this links AVFoundation and adds `NSCameraUsageDescription`. On Android it adds the `CAMERA` manifest permission. |
-| `microphone` | All platforms | Enables microphone access (audio recording, video with audio). On iOS / macOS this adds `NSMicrophoneUsageDescription`. On Android it adds `RECORD_AUDIO` to the manifest. |
-| `remotedebugging` | All platforms | When on, the embedded HTTP server listens on all network interfaces (`0.0.0.0`), allowing remote debugging connections from other devices on the same network. When off (default for production), the server binds to `127.0.0.1` (localhost only) and remote debugging is not possible. |
-
-
 ### Config
 
-The file `src/config` controls app-level settings that affect how the app behaves on each platform. Each line has the form `key value` (case-insensitive). Currently supported settings:
+The file `src/config` controls permissions, orientation, and other app-level settings. Each line has the form `key value` (case-insensitive). Permissions use `true` / `false` values and default to `false` if omitted. For apps you're planning to distribute, you should set everything to `false` except the ones you actually need (good security policy in general, plus app stores frown on unnecessary permissions).
 
 | Setting | Values | Default | Description |
 |---------|--------|---------|-------------|
+| `uselocation` | `true`, `false` | `false` | Enables GPS / geolocation. On iOS and macOS this links CoreLocation and adds the required `NSLocation*` plist keys. On Android it adds `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` to the manifest and enables the WebView geolocation prompt. |
+| `usecamera` | `true`, `false` | `false` | Enables camera access (screenshots, image capture, video recording). On iOS / macOS this links AVFoundation and adds `NSCameraUsageDescription`. On Android it adds the `CAMERA` manifest permission. |
+| `usemicrophone` | `true`, `false` | `false` | Enables microphone access (audio recording, video with audio). On iOS / macOS this adds `NSMicrophoneUsageDescription`. On Android it adds `RECORD_AUDIO` to the manifest. |
+| `allowremotedebugging` | `true`, `false` | `false` | When `true`, the embedded HTTP server listens on all network interfaces (`0.0.0.0`), allowing remote debugging connections from other devices on the same network. When `false` (default for production), the server binds to `127.0.0.1` (localhost only) and remote debugging is not possible. |
 | `orientation` | `portrait`, `landscape`, `both` | `both` | Controls whether the app is locked to portrait or landscape orientation, or rotates freely. On iOS this sets `UISupportedInterfaceOrientations` in the Info.plist. On Android it sets `android:screenOrientation` on the main activity. Desktop platforms ignore this setting. |
 
 ### Icons
 
-Change `roundicon.png` and `squareicon.png` in `src/icons` to whatever images you like. These should be pretty big — around 1,000 pixels square. More is better! The `squareicon.png` file should be square (duh!), while the `roundicon.png` should be a square image consisting of a round image on a transparent background (I realize that may sound a little confusing... look at the supplied `roundicon.png` if you need clarification).
+Change `roundicon.png` and `squareicon.png` in `src/icons` to whatever PNG images you like. These should be pretty big — around 1,000 pixels square. More is better! The `squareicon.png` file should be square (duh!), while the `roundicon.png` should be a square image consisting of a round image on a transparent background (I realize that may sound a little confusing... look at the supplied `roundicon.png` if you need clarification).
 
 All of the zillions of other icons for the various different systems are generated from these.
 
@@ -208,9 +199,9 @@ Top-level menu names (e.g. `File`, `{{progname}}`) and separators (`-`) are not 
 | Zoom | Zoom window | — |
 | Bring All to Front | Arrange in front | — |
 
-**Windows** — `*Quit` and `*Exit` close the window. All other `*`-prefixed items show a "no native handler" dialog (more may be added later)
+**Windows** — `*Quit` and `*Exit` close the window. All other `*`-prefixed items show a "no native handler" dialog (more will be added later)
 
-**Linux** — `*Quit` and `*Exit` quit the application (`gtk_main_quit`). All other `*`-prefixed items show a "no native handler" dialog (more may be added later).
+**Linux** — `*Quit` and `*Exit` quit the application (`gtk_main_quit`). All other `*`-prefixed items show a "no native handler" dialog (more will be added later).
 
 **iOS / Android** — these platforms have no native menu bar. A `*` prefix still causes items to be excluded from `PassifloraConfig.menus` and the sliding menu.
 
@@ -230,7 +221,7 @@ Passiflora includes a built-in basic sliding menu for platforms that don't have 
 
 The menu is built automatically from `PassifloraConfig.menus` at page load. It slides in from the right edge of the screen, supports arbitrarily nested submenus, and calls `PassifloraConfig.handleMenu(title)` when a leaf item is tapped.
 
-**Triggering the menu:** The hamburger button (≡) is hidden by default to keep the UI clean. To reveal it, **long-press** (hold for 500 ms) on any non-interactive area of the page. The button appears in the top-right corner and stays visible for 3 seconds before fading out again.
+**Triggering the menu:** The hamburger button (≡) is hidden by default to keep the UI clean. To reveal it, **long-press** (hold for 500 ms) on any non-interactive area of the page. The button appears in the top-right  corner and stays visible for 3 seconds before fading out again. You can make the hamburger menu appear somewhere else by changing the `.hamburgermenu` class in `src/www/menu.css`
 
 **Closing the menu:**
 
@@ -275,9 +266,9 @@ Each build generates `src/www/generated/config.js`, which defines a `PassifloraC
 
 ```javascript
 var PassifloraConfig = {
-  os_name: "iOS",     // or "macOS", "Windows", "Linux", "Android"
+  os_name: "iOS",     // or "macOS", "Windows", "Linux", "Android","WWW"...
   menus: [ ... ],     // menu structure from menu.txt (excludes *-prefixed items)
-  handleMenu: function(title) { alert("Menu item clicked: " + title); }
+  handleMenu: function(title) { alert("Menu item clicked: " + title); } // Default, just pops an alert with the menu item text.
 };
 ```
 
@@ -403,9 +394,9 @@ The current working directory starts at `"/"` on all platforms. Use `chdir()` an
 
 ## File Open and Save As Menus
 
-Passiflora provides two built-in sliding-panel file dialogs: **`menuopen`** for opening files and **`menusavas`** for Save As. These are methods on the `PassifloraIO` object. The dialogs appear as sliding panels that let the user browse the virtual file system (VFS). To bring files in from the real filesystem or save files out, use **`importFile`** and **`exportFile`** (see [Importing and Exporting Files](#importing-and-exporting-files) below).
+Passiflora provides two built-in sliding-panel file dialogs: **`menuOpen`** for opening files and **`menuSaveAs`** for Save As. These are methods on the `PassifloraIO` object. The dialogs appear as sliding panels that let the user browse the virtual file system (VFS). To bring files in from the real filesystem or save files out, use **`importFile`** and **`exportFile`** (see [Importing and Exporting Files](#importing-and-exporting-files) below).
 
-### `menuopen(extensions, defaultFolder)`
+### `menuOpen(extensions, defaultFolder)`
 
 Opens a sliding file-browser panel that lets the user navigate the VFS and pick a file.
 
@@ -417,7 +408,7 @@ Opens a sliding file-browser panel that lets the user navigate the VFS and pick 
 Returns a Promise that resolves to the chosen file's full path, or `null` if the user cancelled.
 
 ```javascript
-var path = await PassifloraIO.menuopen(['.txt', '.md'], '');
+var path = await PassifloraIO.menuOpen(['.txt', '.md'], '');
 if (path) {
     var fh = await fopen(path, 'r');
     var contents = await fgets(fh);
@@ -435,7 +426,7 @@ if (path) {
 - Long paths in the back-navigation header are truncated to the last 20 characters with a `…` prefix.
 - Pressing Escape or tapping outside the panel cancels the dialog.
 
-### `menusavas(extensions, defaultName)`
+### `menuSaveAs(extensions, defaultName)`
 
 Opens a sliding Save As panel that lets the user navigate to a directory, type a filename, and save.
 
@@ -447,7 +438,7 @@ Opens a sliding Save As panel that lets the user navigate to a directory, type a
 Returns a Promise that resolves to the chosen file's full path, or `null` if cancelled.
 
 ```javascript
-var path = await PassifloraIO.menusavas(['.txt'], 'document.txt');
+var path = await PassifloraIO.menuSaveAs(['.txt'], 'document.txt');
 if (path) {
     var fh = await fopen(path, 'w');
     await fputs(fh, 'Hello, world!\n');
@@ -458,11 +449,11 @@ if (path) {
 **UI features:**
 
 - A text field and **Save** button appear at the top of the panel, pre-filled with `defaultName`.
-- The directory listing works the same as `menuopen` (navigate folders, extension filter).
+- The directory listing works the same as `menuOpen` (navigate folders, extension filter).
 - Clicking an existing file fills the filename field with that file's name.
 - **Overwrite warning:** If a file with the entered name already exists in the current directory, a confirmation dialog asks whether to overwrite it.
 - **Extension mismatch warning:** If the entered filename doesn't match any of the specified extensions, a confirmation dialog warns the user. Both warnings can chain (extension mismatch first, then overwrite).
-- A **Create Folder** button and **long-press rename** are available, working the same as in `menuopen` (see above).
+- A **Create Folder** button and **long-press rename** are available, working the same as in `menuOpen` (see above).
 
 ### Styling
 
@@ -496,7 +487,7 @@ Since the VFS is a self-contained store, Passiflora provides methods to move fil
 
 | Function | Description |
 |----------|-------------|
-| `PassifloraIO.importFile(extensions)` | Shows the browser/OS file picker (`<input type="file">`). The selected file is read and stored in the VFS at `/<filename>`, and persisted to IndexedDB. Returns a Promise resolving to the VFS path, or `null` if cancelled. |
+| `PassifloraIO.importFile(extensions, path)` | Shows the browser/OS file picker (`<input type="file">`). The selected file is read and stored in the VFS at `path/filename`, and persisted to IndexedDB. `path` defaults to `"/"` if omitted. Returns a Promise resolving to the VFS path, or `null` if cancelled. |
 | `PassifloraIO.exportFile(vfsPath, suggestedName)` | Saves a VFS file to the real filesystem. On Chrome/Edge uses `showSaveFilePicker()`; on other browsers triggers a download. Returns a Promise resolving to the VFS path exported, or `null` if cancelled. |
 
 ### Bulk VFS Export / Import
@@ -528,14 +519,21 @@ await PassifloraIO.resetVFS();   // clears VFS + IndexedDB, reloads preload data
 ### Limitations
 
 - **Explicit directories are optional:** The VFS is fundamentally a flat key-value store. Directories are inferred from path separators in file paths. You can also create explicit empty directories with `mkdir()`, which are persisted to IndexedDB and appear in directory listings.
-- **No native recording on WWW:** `startRecording` / `stopRecording` are not available on the WWW target. On native platforms the recording bridge still works.
+- **No native recording on WWW:** `startRecording` / `stopRecording` are not available on the WWW target. On native platforms, `stopRecording()` returns the recording data as a `Uint8Array` that can be stored directly in the VFS.
 - **IndexedDB quotas:** Browsers limit IndexedDB storage (Chrome: ~80% of disk, Firefox: ~5%, Safari: ~1 GB). Very large datasets may hit these limits.
 
 ### Building and Running the WWW Target
 
+**macOS / Linux:**
 ```bash
 make www                   # copies src/www/ → bin/WWW/ with WWW config
 python3 webserver.py       # serves bin/WWW/ on http://localhost:8000
+```
+
+**Windows:**
+```bat
+.\build www                REM copies src\www\ → bin\WWW\ with WWW config
+python webserver.py        REM serves bin\WWW\ on http://localhost:8000
 ```
 
 The `webserver.py` script is a minimal Python HTTP server that serves `bin/WWW/` on port 8000 (pass a different port as a command-line argument if needed).
@@ -550,12 +548,16 @@ These are methods on `PassifloraIO` (not available as bare globals).
 | `PassifloraIO.getCurrentPosition(successCb, errorCb)` | Get the device's current GPS position. On macOS/iOS uses the native CLLocationManager bridge; on other platforms delegates to `navigator.geolocation`. Callbacks follow the standard Geolocation API signature. |
 | `PassifloraIO.webDownload(path, mimeType)` | Trigger a browser download for a VFS file. On macOS/iOS uses the native save panel via `passifloraSaveFile`; on other platforms creates a temporary download link. `mimeType` defaults to `"application/octet-stream"` if omitted. |
 | `PassifloraIO.patchLinks()` | Scan the DOM for `<a href>` elements with `http://` or `https://` URLs and attach click handlers that route them through `openExternal()` instead of navigating the webview. Called automatically on `DOMContentLoaded`. |
+| `PassifloraIO.hasNativeRecording()` | Returns a Promise resolving to `true` if GStreamer-based native recording is available (Linux with `usecamera` or `usemicrophone` enabled in `src/config`), `false` otherwise. |
+| `PassifloraIO.startRecording(hasVideo, hasAudio)` | Start native recording via GStreamer. `hasVideo` and `hasAudio` are booleans selecting which tracks to capture. The recording is written to a temporary file on the native filesystem automatically. Returns a Promise. Not available on the WWW target. |
+| `PassifloraIO.stopRecording()` | Stop a native recording in progress. Returns a Promise resolving to a `Uint8Array` containing the recorded WebM data (or `null` if no data). The temporary native file is deleted automatically. Not available on the WWW target. |
+| `PassifloraIO.diagnoseNativeAudio()` | Run GStreamer audio diagnostics. Returns a Promise resolving to a diagnostic string. Not available on the WWW target. |
 
 ## Remote Debugging
 
 Passiflora includes a built-in remote debugging facility that lets you execute JavaScript in a running app from an external browser. This is useful for inspecting app state, testing code snippets, and diagnosing issues on platforms where browser DevTools aren't available (iOS, Android, etc.).
 
-Remote debugging is compile-gated — set `remotedebugging` to `1` in `src/permissions` to enable it. When enabled, a setup overlay appears at app startup where you enter a shared passphrase and copy the debugger URL. Open that URL in a browser on another device to send JavaScript commands to the running app.
+Remote debugging is compile-gated — set `allowremotedebugging` to `true` in `src/config` to enable it. When enabled, a setup overlay appears at app startup where you enter a shared passphrase and copy the debugger URL. Open that URL in a browser on another device to send JavaScript commands to the running app.
 
 For the full protocol details, security notes, and usage tips, see **[DEBUGGING.md](DEBUGGING.md)**.
 

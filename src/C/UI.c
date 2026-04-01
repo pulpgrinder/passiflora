@@ -1994,6 +1994,7 @@ static WebKitWebView *g_linux_webview = NULL;
 
 static GstElement *g_recording_pipeline = NULL;
 static pthread_mutex_t g_rec_lock = PTHREAD_MUTEX_INITIALIZER;
+static char g_recording_path[2048] = "";
 
 /* Start recording to a file using GStreamer.
  * Returns NULL on success, or a malloc'd error string on failure.  */
@@ -2128,14 +2129,18 @@ char *gst_start_recording(const char *path, int has_video, int has_audio)
     fprintf(stderr, "[passiflora] GStreamer recording pipeline PLAYING "
                     "(video=%d audio=%d path=%s)\n", has_video, has_audio, path);
 
+    snprintf(g_recording_path, sizeof g_recording_path, "%s", path);
+
     pthread_mutex_unlock(&g_rec_lock);
     return NULL;
 }
 
-/* Stop recording.
- * Returns NULL on success, or a malloc'd error string on failure.  */
-char *gst_stop_recording(void)
+/* Stop recording.  Reads the recorded file and returns it as a
+ * base64-encoded string (caller frees).  On error returns a malloc'd
+ * error string via *out_err and NULL data.                             */
+char *gst_stop_recording(char **out_b64)
 {
+    *out_b64 = NULL;
     pthread_mutex_lock(&g_rec_lock);
     if (!g_recording_pipeline) {
         pthread_mutex_unlock(&g_rec_lock);
@@ -2157,8 +2162,40 @@ char *gst_stop_recording(void)
     gst_object_unref(g_recording_pipeline);
     g_recording_pipeline = NULL;
 
+    /* Read the recorded file into memory and base64-encode it */
+    char *errmsg = NULL;
+    if (g_recording_path[0]) {
+        FILE *fp = fopen(g_recording_path, "rb");
+        if (fp) {
+            fseek(fp, 0, SEEK_END);
+            long fsize = ftell(fp);
+            fseek(fp, 0, SEEK_SET);
+            if (fsize > 0) {
+                unsigned char *fbuf = malloc((size_t)fsize);
+                if (fbuf) {
+                    size_t nread = fread(fbuf, 1, (size_t)fsize, fp);
+                    fclose(fp);
+                    *out_b64 = g_base64_encode(fbuf, nread);
+                    free(fbuf);
+                } else {
+                    fclose(fp);
+                    errmsg = strdup("Out of memory reading recording");
+                }
+            } else {
+                fclose(fp);
+                errmsg = strdup("Recording file is empty");
+            }
+        } else {
+            errmsg = strdup("Cannot open recording file");
+        }
+        unlink(g_recording_path);
+        g_recording_path[0] = '\0';
+    } else {
+        errmsg = strdup("No recording path stored");
+    }
+
     pthread_mutex_unlock(&g_rec_lock);
-    return NULL;
+    return errmsg;
 }
 
 /* Comprehensive GStreamer audio diagnostics.

@@ -9,50 +9,50 @@
  * Clicking an item with children slides the child screen into view.
  * Each child screen has a "Back" header that slides back.
  */
-var PassifloraMenu = (function () {
+const PassifloraMenu = (function () {
     "use strict";
 
-    var overlay = null;   // dark backdrop
-    var wrapper = null;   // contains all screens, clips overflow
-    var screens = [];     // array of screen elements
-    var depth = 0;        // current screen index
+    let overlay = null;   // dark backdrop
+    let wrapper = null;   // contains all screens, clips overflow
+    let screens = [];     // array of screen elements
+    let depth = 0;        // current screen index
 
     /* ── DOM helpers ──────────────────────────────────────────── */
     function buildScreen(items, title) {
-        var screen = document.createElement("div");
+        const screen = document.createElement("div");
         screen.className = "passiflora_menu_screen";
         screen.addEventListener("click", function (e) {
             if (e.target === screen) deactivate();
         });
 
         if (title) {
-            var back = document.createElement("div");
+            const back = document.createElement("div");
             back.className = "passiflora_menu_back";
             back.textContent = title;
             back.addEventListener("click", function () { slideBack(); });
             screen.appendChild(back);
         }
 
-        var ul = document.createElement("ul");
+        const ul = document.createElement("ul");
         ul.className = "passiflora_menu";
 
-        for (var i = 0; i < items.length; i++) {
+        for (let i = 0; i < items.length; i++) {
             (function (item) {
                 if (item.separator) {
-                    var sep = document.createElement("li");
+                    const sep = document.createElement("li");
                     sep.className = "passiflora_menu_separator";
                     ul.appendChild(sep);
                     return;
                 }
 
-                var li = document.createElement("li");
-                var hasChildren = item.items && item.items.length > 0;
+                const li = document.createElement("li");
+                const hasChildren = item.items && item.items.length > 0;
 
-                var label = document.createTextNode(item.title);
+                const label = document.createTextNode(item.title);
                 li.appendChild(label);
 
                 if (hasChildren) {
-                    var arrow = document.createElement("span");
+                    const arrow = document.createElement("span");
                     arrow.className = "passiflora_menu_arrow";
                     arrow.textContent = "\u276F";
                     li.appendChild(arrow);
@@ -78,9 +78,9 @@ var PassifloraMenu = (function () {
 
     /* Build the top-level list: one entry per menu, each with children */
     function topLevelItems() {
-        var menus = (PassifloraConfig && PassifloraConfig.menus) || [];
-        var out = [];
-        for (var i = 0; i < menus.length; i++) {
+        const menus = (PassifloraConfig && PassifloraConfig.menus) || [];
+        const out = [];
+        for (let i = 0; i < menus.length; i++) {
             out.push({
                 title: menus[i].title,
                 items: menus[i].items || []
@@ -91,8 +91,8 @@ var PassifloraMenu = (function () {
 
     /* ── Slide navigation ────────────────────────────────────── */
     function positionScreens() {
-        for (var i = 0; i < screens.length; i++) {
-            var offset = (i - depth) * 100;
+        for (let i = 0; i < screens.length; i++) {
+            const offset = (i - depth) * 100;
             screens[i].style.transform = "translateX(" + offset + "%)";
         }
     }
@@ -100,11 +100,11 @@ var PassifloraMenu = (function () {
     function slideForward(items, title) {
         /* Remove any screens beyond the current depth */
         while (screens.length > depth + 1) {
-            var old = screens.pop();
+            const old = screens.pop();
             old.parentNode.removeChild(old);
         }
 
-        var screen = buildScreen(items, title);
+        const screen = buildScreen(items, title);
         screen.style.transform = "translateX(100%)";
         wrapper.querySelector(".passiflora_menu_track").appendChild(screen);
         screens.push(screen);
@@ -120,7 +120,7 @@ var PassifloraMenu = (function () {
         depth--;
         positionScreens();
         /* Remove the off-screen panel after the transition */
-        var removed = screens.pop();
+        const removed = screens.pop();
         setTimeout(function () {
             if (removed.parentNode) removed.parentNode.removeChild(removed);
         }, 300);
@@ -139,7 +139,7 @@ var PassifloraMenu = (function () {
             wrapper = document.createElement("div");
             wrapper.className = "passiflora_menu_wrapper";
 
-            var track = document.createElement("div");
+            const track = document.createElement("div");
             track.className = "passiflora_menu_track";
             track.addEventListener("click", function (e) {
                 if (e.target === track) deactivate();
@@ -150,12 +150,12 @@ var PassifloraMenu = (function () {
         }
 
         /* Reset */
-        var track = wrapper.querySelector(".passiflora_menu_track");
+        const track = wrapper.querySelector(".passiflora_menu_track");
         track.innerHTML = "";
         screens = [];
         depth = 0;
 
-        var root = buildScreen(topLevelItems(), null);
+        const root = buildScreen(topLevelItems(), null);
         root.style.transform = "translateX(0)";
         track.appendChild(root);
         screens.push(root);
@@ -180,13 +180,13 @@ var PassifloraMenu = (function () {
     }
 
     /* ── Long-press to reveal hamburger ────────────────────── */
-    var LONG_PRESS_MS = 500;   // hold duration to trigger
-    var VISIBLE_MS   = 3000;   // how long hamburger stays visible
-    var pressTimer   = null;
-    var hideTimer    = null;
-    var hamburgers   = [];
+    const LONG_PRESS_MS = 500;   // hold duration to trigger
+    const VISIBLE_MS   = 3000;   // how long hamburger stays visible
+    let pressTimer   = null;
+    let hideTimer    = null;
+    let hamburgers   = [];
 
-    var INTERACTIVE = "A,BUTTON,INPUT,SELECT,TEXTAREA,LABEL";
+    const INTERACTIVE = "A,BUTTON,INPUT,SELECT,TEXTAREA,LABEL";
     function isInteractive(el) {
         while (el && el !== document.body) {
             if (el.matches && el.matches(INTERACTIVE)) return true;
@@ -199,13 +199,13 @@ var PassifloraMenu = (function () {
 
     function showHamburgers() {
         if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
-        for (var i = 0; i < hamburgers.length; i++)
+        for (let i = 0; i < hamburgers.length; i++)
             hamburgers[i].classList.add("visible");
         hideTimer = setTimeout(hideHamburgers, VISIBLE_MS);
     }
 
     function hideHamburgers() {
-        for (var i = 0; i < hamburgers.length; i++)
+        for (let i = 0; i < hamburgers.length; i++)
             hamburgers[i].classList.remove("visible");
         hideTimer = null;
     }
@@ -215,7 +215,7 @@ var PassifloraMenu = (function () {
     }
 
     function onPressStart(e) {
-        var target = e.target || e.srcElement;
+        const target = e.target || e.srcElement;
         if (isInteractive(target)) return;
         cancelPress();
         pressTimer = setTimeout(showHamburgers, LONG_PRESS_MS);
@@ -229,7 +229,7 @@ var PassifloraMenu = (function () {
     document.addEventListener("DOMContentLoaded", function () {
         hamburgers = [].slice.call(
             document.querySelectorAll(".hamburgermenu"));
-        for (var i = 0; i < hamburgers.length; i++) {
+        for (let i = 0; i < hamburgers.length; i++) {
             hamburgers[i].addEventListener("click", function () {
                 hideHamburgers();
                 activate();

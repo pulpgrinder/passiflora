@@ -22,24 +22,24 @@ android {
         }
 
         // Permission flags: use -P Gradle properties (set by mkandroid.sh)
-        // with fallback to reading src/permissions directly (Android Studio).
-        def permFile = rootProject.file("../../src/permissions")
-        def permMap = [:]
-        if (permFile.exists()) {
-            permFile.eachLine { line ->
+        // with fallback to reading src/config directly (Android Studio).
+        def configFile = rootProject.file("../../src/config")
+        def configMap = [:]
+        if (configFile.exists()) {
+            configFile.eachLine { line ->
                 def parts = line.trim().split(/\s+/)
-                if (parts.length >= 2) permMap[parts[0]] = parts[1]
+                if (parts.length >= 2) configMap[parts[0]] = parts[1]
             }
         }
         def perm = { String name ->
             def val = project.findProperty("PERM_${name.toUpperCase()}")
-            if (val == null) val = permMap.get(name, '0')
-            return (val == '1') ? 'true' : 'false'
+            if (val == null) val = configMap.get(name, 'false')
+            return (val == 'true') ? 'true' : 'false'
         }
-        buildConfigField "boolean", "PERM_LOCATION",    perm('location')
-        buildConfigField "boolean", "PERM_CAMERA",       perm('camera')
-        buildConfigField "boolean", "PERM_MICROPHONE",   perm('microphone')
-        buildConfigField "boolean", "PERM_REMOTEDEBUGGING",   perm('remotedebugging')
+        buildConfigField "boolean", "PERM_LOCATION",    perm('uselocation')
+        buildConfigField "boolean", "PERM_CAMERA",       perm('usecamera')
+        buildConfigField "boolean", "PERM_MICROPHONE",   perm('usemicrophone')
+        buildConfigField "boolean", "PERM_REMOTEDEBUGGING",   perm('allowremotedebugging')
     }
 
     buildFeatures {

@@ -118,24 +118,26 @@ fi
 
 # ── Sign ───────────────────────────────────────────────────────────
 
-# Read permissions file for entitlements
-_perm_camera=0
-_perm_microphone=0
-_permfile="$(dirname "$0")/../src/permissions"
-if [ -f "$_permfile" ]; then
+# Read config file for entitlements
+_perm_camera=false
+_perm_microphone=false
+_cfgfile="$(dirname "$0")/../src/config"
+if [ -f "$_cfgfile" ]; then
     while read -r _name _val; do
+        _name="$(echo "$_name" | tr '[:upper:]' '[:lower:]')"
+        _val="$(echo "$_val" | tr '[:upper:]' '[:lower:]')"
         case "$_name" in
-            camera)     _perm_camera="$_val" ;;
-            microphone) _perm_microphone="$_val" ;;
+            usecamera)     _perm_camera="$_val" ;;
+            usemicrophone) _perm_microphone="$_val" ;;
         esac
-    done < "$_permfile"
+    done < "$_cfgfile"
 fi
 
 case "$PLATFORM" in
     macos)
         # Generate entitlements for camera/microphone access
         ENTITLEMENTS_FLAG=""
-        if [ "$_perm_camera" = "1" ] || [ "$_perm_microphone" = "1" ]; then
+        if [ "$_perm_camera" = "true" ] || [ "$_perm_microphone" = "true" ]; then
             ENT_FILE=$(mktemp /tmp/signapp-ent.XXXXXX.plist)
             cat > "$ENT_FILE" <<ENTEOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -144,13 +146,13 @@ case "$PLATFORM" in
 <plist version="1.0">
 <dict>
 ENTEOF
-            if [ "$_perm_camera" = "1" ]; then
+            if [ "$_perm_camera" = "true" ]; then
                 cat >> "$ENT_FILE" <<ENTEOF
     <key>com.apple.security.device.camera</key>
     <true/>
 ENTEOF
             fi
-            if [ "$_perm_microphone" = "1" ]; then
+            if [ "$_perm_microphone" = "true" ]; then
                 cat >> "$ENT_FILE" <<ENTEOF
     <key>com.apple.security.device.audio-input</key>
     <true/>

@@ -1,1 +1,5 @@
+uselocation true
+usecamera true
+usemicrophone true
+allowremotedebugging true
 orientation both

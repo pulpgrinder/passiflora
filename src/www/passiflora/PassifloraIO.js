@@ -38,6 +38,15 @@ PassifloraIO = {
         }
     },
 
+    /* Decode a base64 string to a Uint8Array */
+    _base64ToUint8Array: function (b64) {
+        const binary = atob(b64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++)
+            bytes[i] = binary.charCodeAt(i);
+        return bytes;
+    },
+
     getCurrentPosition: function (successCb, errorCb) {
         /* WKWebView bridge (macOS/iOS) */
         if (window.webkit && window.webkit.messageHandlers &&
@@ -47,6 +56,15 @@ PassifloraIO = {
                 resolve: successCb || function () {},
                 reject: errorCb || function () {}
             };
+            setTimeout(function () {
+                const cb = PassifloraIO._geoCallbacks[id];
+                if (cb) {
+                    delete PassifloraIO._geoCallbacks[id];
+                    const err = new Error("Geolocation request timed out");
+                    err.code = 3;
+                    cb.reject(err);
+                }
+            }, 30000);
             window.webkit.messageHandlers.passifloraGeolocation.postMessage(id);
             return;
         }
@@ -171,11 +189,7 @@ PassifloraIO = {
             handle: handle, size: size
         }).then(function (b64) {
             if (b64 === null || b64 === undefined) return null;
-            const binary = atob(b64);
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++)
-                bytes[i] = binary.charCodeAt(i);
-            return bytes;
+            return PassifloraIO._base64ToUint8Array(b64);
         });
     },
 
@@ -256,16 +270,18 @@ PassifloraIO = {
             .catch(function () { return false; });
     },
 
-    startRecording: function (path, hasVideo, hasAudio) {
+    startRecording: function (hasVideo, hasAudio) {
         return PassifloraIO._posixCall("startRecording", {
-            path: path,
             video: hasVideo ? "1" : "0",
             audio: hasAudio ? "1" : "0"
         });
     },
 
     stopRecording: function () {
-        return PassifloraIO._posixCall("stopRecording", {});
+        return PassifloraIO._posixCall("stopRecording", {}).then(function (b64) {
+            if (!b64 || b64 === "stopped") return null;
+            return PassifloraIO._base64ToUint8Array(b64);
+        });
     },
 
     diagnoseNativeAudio: function () {
@@ -279,15 +295,15 @@ PassifloraIO = {
     _debugKey: null,
 
     _autoDebug: function (ip, port) {
-        var url = ip + ':' + port + '/debug';
-        var overlay = document.createElement('div');
+        const url = ip + ':' + port + '/debug';
+        const overlay = document.createElement('div');
         overlay.id = '_passiflora_debug_overlay';
         overlay.style.cssText =
             'position:fixed;top:0;left:0;width:100%;height:100%;' +
             'background:rgba(0,0,0,0.7);z-index:2147483647;' +
             'display:flex;align-items:center;justify-content:center;' +
             'font-family:system-ui,sans-serif';
-        var box = document.createElement('div');
+        const box = document.createElement('div');
         box.style.cssText =
             'background:#fff;border-radius:8px;padding:24px 32px;' +
             'max-width:480px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,0.3)';
@@ -297,7 +313,7 @@ PassifloraIO = {
             '<p style="margin:0 0 8px;font-size:13px;color:#666">' +
             'Do <strong>not</strong> ship an app with remote debugging turned on. ' +
             'It allows anyone on your network to execute arbitrary code in the webview. ' +
-            'Remove <code>remotedebugging 1</code> from <code>src/permissions</code> before release.</p>' +
+            'Remove <code>allowremotedebugging true</code> from <code>src/config</code> before release.</p>' +
             '<p style="margin:0 0 8px;font-size:13px;color:#666">' +
             '<strong>iOS:</strong> The device and your computer must be on the same Wi-Fi network. ' +
             'If the debugger page won\u2019t load, check Settings \u2192 Privacy &amp; Security \u2192 ' +
@@ -322,9 +338,9 @@ PassifloraIO = {
             'OK</button></div>';
         overlay.appendChild(box);
         document.body.appendChild(overlay);
-        var keyInput = document.getElementById('_pf_dbg_key');
-        var urlInput = document.getElementById('_pf_dbg_url');
-        var copyBtn = document.getElementById('_pf_dbg_copy');
+        const keyInput = document.getElementById('_pf_dbg_key');
+        const urlInput = document.getElementById('_pf_dbg_url');
+        const copyBtn = document.getElementById('_pf_dbg_copy');
         keyInput.focus();
         copyBtn.onclick = function () {
             urlInput.select();
@@ -340,7 +356,7 @@ PassifloraIO = {
             }
         };
         document.getElementById('_pf_dbg_ok').onclick = function () {
-            var val = keyInput.value.trim();
+            const val = keyInput.value.trim();
             if (!val) { keyInput.focus(); return; }
             PassifloraIO._debugKey = val;
             document.body.removeChild(overlay);
@@ -361,7 +377,7 @@ PassifloraIO = {
     _debugExec: function (payload) {
         if (!PassifloraIO._debugKey) { PassifloraIO._debugFail('debug mode not enabled'); return; }
         try {
-            var msg = JSON.parse(payload);
+            const msg = JSON.parse(payload);
         } catch (e) { PassifloraIO._debugFail('JSON parse: ' + e.message); return; }
         if (!msg.javascript || typeof msg.javascript !== 'string') { PassifloraIO._debugFail('no javascript field'); return; }
         if (!msg.signature || typeof msg.signature !== 'string') { PassifloraIO._debugFail('no signature field'); return; }
@@ -375,7 +391,7 @@ PassifloraIO = {
         }
 
         /* Validate HMAC-SHA256 signature */
-        var expected = PassifloraIO._hmacSHA256(PassifloraIO._debugKey, msg.nonce + ':' + msg.javascript);
+        const expected = PassifloraIO._hmacSHA256(PassifloraIO._debugKey, msg.nonce + ':' + msg.javascript);
         if (expected !== msg.signature) {
             PassifloraIO._debugFail('signature mismatch');
             return;
@@ -384,8 +400,8 @@ PassifloraIO = {
         PassifloraIO._debugNonce = msg.nonce;
 
         /* Signature valid — execute via indirect eval with console capture */
-        var __out = [];
-        var __olog = console.log, __oerr = console.error, __owarn = console.warn;
+        const __out = [];
+        const __olog = console.log, __oerr = console.error, __owarn = console.warn;
         console.log = function () {
             __out.push(Array.prototype.slice.call(arguments).map(String).join(' '));
             __olog.apply(console, arguments);
@@ -398,9 +414,9 @@ PassifloraIO = {
             __out.push('WARN: ' + Array.prototype.slice.call(arguments).map(String).join(' '));
             __owarn.apply(console, arguments);
         };
-        var __err = null;
+        let __err = null;
         try {
-            var __result = (0, eval)(msg.javascript); /* indirect eval = global scope */
+            const __result = (0, eval)(msg.javascript); /* indirect eval = global scope */
             if (__result !== undefined) {
                 console.log(__result);
             }
@@ -411,7 +427,7 @@ PassifloraIO = {
         console.error = __oerr;
         console.warn = __owarn;
         /* Send result back to server for debugger to retrieve */
-        var resultObj = {};
+        const resultObj = {};
         if (__err) resultObj.error = __err;
         if (__out.length) resultObj.output = __out.join('\n');
         if (!__err && !__out.length) resultObj.output = '(no output)';
@@ -424,7 +440,7 @@ PassifloraIO = {
 
     _sha256bytes: function (bytes) {
         /* Pure-JS SHA-256 (FIPS 180-4) — input: byte array, output: 32-byte array */
-        var K = [
+        const K = [
             0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
             0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
             0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
@@ -435,41 +451,41 @@ PassifloraIO = {
             0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
         ];
         function rr(x,n){return(x>>>n)|(x<<(32-n));}
-        var b = bytes.slice();
-        var bitLen = b.length * 8;
+        const b = bytes.slice();
+        const bitLen = b.length * 8;
         b.push(0x80);
         while ((b.length % 64) !== 56) b.push(0);
-        for (var s = 56; s >= 0; s -= 8) b.push((bitLen / Math.pow(2, s)) & 0xff);
-        var H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
-        for (var off = 0; off < b.length; off += 64) {
-            var W = [];
-            for (var t = 0; t < 16; t++) W[t] = (b[off+t*4]<<24)|(b[off+t*4+1]<<16)|(b[off+t*4+2]<<8)|b[off+t*4+3];
-            for (var t = 16; t < 64; t++) {
-                var s0 = rr(W[t-15],7)^rr(W[t-15],18)^(W[t-15]>>>3);
-                var s1 = rr(W[t-2],17)^rr(W[t-2],19)^(W[t-2]>>>10);
+        for (let s = 56; s >= 0; s -= 8) b.push((bitLen / Math.pow(2, s)) & 0xff);
+        const H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+        for (let off = 0; off < b.length; off += 64) {
+            const W = [];
+            for (let t = 0; t < 16; t++) W[t] = (b[off+t*4]<<24)|(b[off+t*4+1]<<16)|(b[off+t*4+2]<<8)|b[off+t*4+3];
+            for (let t = 16; t < 64; t++) {
+                const s0 = rr(W[t-15],7)^rr(W[t-15],18)^(W[t-15]>>>3);
+                const s1 = rr(W[t-2],17)^rr(W[t-2],19)^(W[t-2]>>>10);
                 W[t] = (W[t-16]+s0+W[t-7]+s1)|0;
             }
-            var a=H[0],bb=H[1],c=H[2],d=H[3],e=H[4],f=H[5],g=H[6],h=H[7];
-            for (var t = 0; t < 64; t++) {
-                var S1=rr(e,6)^rr(e,11)^rr(e,25), ch=(e&f)^(~e&g), temp1=(h+S1+ch+K[t]+W[t])|0;
-                var S0=rr(a,2)^rr(a,13)^rr(a,22), maj=(a&bb)^(a&c)^(bb&c), temp2=(S0+maj)|0;
+            let a=H[0],bb=H[1],c=H[2],d=H[3],e=H[4],f=H[5],g=H[6],h=H[7];
+            for (let t = 0; t < 64; t++) {
+                const S1=rr(e,6)^rr(e,11)^rr(e,25), ch=(e&f)^(~e&g), temp1=(h+S1+ch+K[t]+W[t])|0;
+                const S0=rr(a,2)^rr(a,13)^rr(a,22), maj=(a&bb)^(a&c)^(bb&c), temp2=(S0+maj)|0;
                 h=g;g=f;f=e;e=(d+temp1)|0;d=c;c=bb;bb=a;a=(temp1+temp2)|0;
             }
             H[0]=(H[0]+a)|0;H[1]=(H[1]+bb)|0;H[2]=(H[2]+c)|0;H[3]=(H[3]+d)|0;
             H[4]=(H[4]+e)|0;H[5]=(H[5]+f)|0;H[6]=(H[6]+g)|0;H[7]=(H[7]+h)|0;
         }
-        var out = [];
-        for (var i = 0; i < 8; i++) {
-            var v = H[i] >>> 0;
+        const out = [];
+        for (let i = 0; i < 8; i++) {
+            const v = H[i] >>> 0;
             out.push((v>>24)&0xff,(v>>16)&0xff,(v>>8)&0xff,v&0xff);
         }
         return out;
     },
 
     _strToBytes: function (s) {
-        var bytes = [];
-        for (var i = 0; i < s.length; i++) {
-            var c = s.charCodeAt(i);
+        const bytes = [];
+        for (let i = 0; i < s.length; i++) {
+            const c = s.charCodeAt(i);
             if (c < 0x80) bytes.push(c);
             else if (c < 0x800) { bytes.push(0xc0|(c>>6), 0x80|(c&0x3f)); }
             else if (c < 0x10000) { bytes.push(0xe0|(c>>12), 0x80|((c>>6)&0x3f), 0x80|(c&0x3f)); }
@@ -480,21 +496,21 @@ PassifloraIO = {
 
     _hmacSHA256: function (key, message) {
         /* HMAC-SHA256 per RFC 2104 */
-        var blockSize = 64;
-        var keyBytes = PassifloraIO._strToBytes(key);
+        const blockSize = 64;
+        let keyBytes = PassifloraIO._strToBytes(key);
         if (keyBytes.length > blockSize)
             keyBytes = PassifloraIO._sha256bytes(keyBytes);
         while (keyBytes.length < blockSize) keyBytes.push(0);
-        var ipad = [], opad = [];
-        for (var i = 0; i < blockSize; i++) {
+        const ipad = [], opad = [];
+        for (let i = 0; i < blockSize; i++) {
             ipad.push(keyBytes[i] ^ 0x36);
             opad.push(keyBytes[i] ^ 0x5c);
         }
-        var msgBytes = PassifloraIO._strToBytes(message);
-        var inner = PassifloraIO._sha256bytes(ipad.concat(msgBytes));
-        var outer = PassifloraIO._sha256bytes(opad.concat(inner));
-        var hex = '';
-        for (var i = 0; i < outer.length; i++) hex += ('0' + outer[i].toString(16)).slice(-2);
+        const msgBytes = PassifloraIO._strToBytes(message);
+        const inner = PassifloraIO._sha256bytes(ipad.concat(msgBytes));
+        const outer = PassifloraIO._sha256bytes(opad.concat(inner));
+        let hex = '';
+        for (let i = 0; i < outer.length; i++) hex += ('0' + outer[i].toString(16)).slice(-2);
         return hex;
     },
 
@@ -503,9 +519,9 @@ PassifloraIO = {
     /* ================================================================ */
 
     _attachLongPressRename: function (nameEl, oldName, isDir, prefix, dirPath, refreshFn) {
-        var RENAME_MS = 500;
-        var timer = null;
-        var editing = false;
+        const RENAME_MS = 500;
+        let timer = null;
+        let editing = false;
 
         function cancelTimer() {
             if (timer) { clearTimeout(timer); timer = null; }
@@ -523,9 +539,9 @@ PassifloraIO = {
                 nameEl.contentEditable = "true";
             nameEl.focus();
 
-            var range = document.createRange();
+            const range = document.createRange();
             range.selectNodeContents(nameEl);
-            var sel = window.getSelection();
+            const sel = window.getSelection();
             sel.removeAllRanges();
             sel.addRange(range);
 
@@ -551,20 +567,20 @@ PassifloraIO = {
             nameEl.removeEventListener("keydown", onEditKey);
             nameEl.contentEditable = "false";
 
-            var raw = nameEl.textContent || nameEl.innerText || "";
-            var newName = raw.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+            const raw = nameEl.textContent || nameEl.innerText || "";
+            const newName = raw.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
 
             nameEl.textContent = (prefix || "") + (newName || oldName);
 
             if (!newName || newName === oldName) return;
 
-            var sep = "/";
+            const sep = "/";
             function joinPath(dir, name) {
                 if (dir.charAt(dir.length - 1) === sep) return dir + name;
                 return dir + sep + name;
             }
-            var oldPath = joinPath(dirPath, oldName);
-            var newPath = joinPath(dirPath, newName);
+            const oldPath = joinPath(dirPath, oldName);
+            const newPath = joinPath(dirPath, newName);
 
             PassifloraIO.rename(oldPath, newPath).then(function () {
                 if (refreshFn) refreshFn();
@@ -597,56 +613,114 @@ PassifloraIO = {
     },
 
     /* ================================================================ */
-    /*  File-open sliding menu                                          */
+    /*  Shared file-dialog helpers (used by menuOpen & menuSaveAs)      */
     /* ================================================================ */
 
-    menuopen: function (extensions, defaultFolder) {
-        /* Normalise arguments */
+    _prepareExts: function (extensions) {
         if (!extensions) extensions = [];
-        if (!defaultFolder) defaultFolder = "";
-
-        /* Lowercase copy of extensions for matching */
-        var extsLower = [];
-        for (var i = 0; i < extensions.length; i++)
+        const extsLower = [];
+        for (let i = 0; i < extensions.length; i++)
             extsLower.push(extensions[i].toLowerCase().replace(/^\./, ""));
-
-        /* Build the label for the extension filter */
-        var extLabel = "";
+        let extLabel = "";
         if (extensions.length > 0) {
-            var parts = [];
-            for (var i = 0; i < extensions.length; i++)
+            const parts = [];
+            for (let i = 0; i < extensions.length; i++)
                 parts.push("*." + extsLower[i]);
             extLabel = parts.join(", ");
         } else {
             extLabel = "All files (*.*)";
         }
+        return { extsLower: extsLower, extLabel: extLabel };
+    },
 
-        /* ---- helpers ---- */
-        function fileMatches(name, filterAll, exts) {
-            if (filterAll) return true;
-            if (exts.length === 0) return true;
-            var dot = name.lastIndexOf(".");
-            if (dot < 0) return false;
-            var ext = name.substring(dot + 1).toLowerCase();
-            for (var i = 0; i < exts.length; i++)
-                if (ext === exts[i]) return true;
-            return false;
+    _fileMatchesExt: function (name, filterAll, exts) {
+        if (filterAll) return true;
+        if (exts.length === 0) return true;
+        const dot = name.lastIndexOf(".");
+        if (dot < 0) return false;
+        const ext = name.substring(dot + 1).toLowerCase();
+        for (let i = 0; i < exts.length; i++)
+            if (ext === exts[i]) return true;
+        return false;
+    },
+
+    _joinPath: function (dir, name) {
+        if (dir.charAt(dir.length - 1) === "/") return dir + name;
+        return dir + "/" + name;
+    },
+
+    _shortPath: function (p) {
+        return p.length > 20 ? "\u2026" + p.slice(-20) : p;
+    },
+
+    _initFileDialogDOM: function (finish) {
+        /* Remove any leftover elements from a previous call */
+        const stale = document.querySelectorAll(
+            ".passiflora_fo_overlay, .passiflora_fo_wrapper");
+        for (let si = 0; si < stale.length; si++)
+            stale[si].parentNode.removeChild(stale[si]);
+
+        const prevOverflow = document.documentElement.style.overflowY;
+        document.documentElement.style.overflowY = "scroll";
+
+        const overlay = document.createElement("div");
+        overlay.className = "passiflora_fo_overlay";
+        overlay.addEventListener("click", function () { finish(null); });
+        document.body.appendChild(overlay);
+
+        const wrapper = document.createElement("div");
+        wrapper.className = "passiflora_fo_wrapper";
+
+        function onKey(e) {
+            if (e.key === "Escape" || e.keyCode === 27) {
+                finish(null);
+            }
         }
 
-        var SEP = "/";
-
-        function joinPath(dir, name) {
-            if (dir.charAt(dir.length - 1) === SEP) return dir + name;
-            return dir + SEP + name;
+        function teardown() {
+            if (overlay && overlay.parentNode) {
+                overlay.classList.remove("active");
+                setTimeout(function () {
+                    if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                }, 300);
+            }
+            if (wrapper && wrapper.parentNode) {
+                wrapper.classList.remove("active");
+                setTimeout(function () {
+                    if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
+                }, 300);
+            }
+            document.removeEventListener("keydown", onKey);
+            document.documentElement.style.overflowY = prevOverflow;
         }
 
-        function parentPath(dir) {
-            var idx = dir.lastIndexOf(SEP);
-            if (idx <= 0) return null;
-            /* Windows drive root like C:\ */
-            if (SEP === "\\" && idx <= 2) return dir.substring(0, idx + 1);
-            return dir.substring(0, idx);
+        return {
+            overlay: overlay,
+            wrapper: wrapper,
+            teardown: teardown,
+            onKey: onKey
+        };
+    },
+
+    _slidePositionScreens: function (screens, depth) {
+        for (let i = 0; i < screens.length; i++) {
+            const off = (i - depth) * 100;
+            screens[i].style.transform = "translateX(" + off + "%)";
         }
+    },
+
+    /* ================================================================ */
+    /*  File-open sliding menu                                          */
+    /* ================================================================ */
+
+    menuOpen: function (extensions, defaultFolder) {
+        /* Normalise arguments */
+        if (!extensions) extensions = [];
+        if (!defaultFolder) defaultFolder = "";
+
+        const extInfo = PassifloraIO._prepareExts(extensions);
+        const extsLower = extInfo.extsLower;
+        const extLabel = extInfo.extLabel;
 
         /* ---- DOM builder ---- */
         return (defaultFolder
@@ -656,13 +730,13 @@ PassifloraIO = {
 
             return new Promise(function (resolve) {
 
-                var overlay = null;
-                var wrapper = null;
-                var screens = [];
-                var depth = 0;
-                var initialDepth = 0;   /* depth of the very first screen */
-                var filterAll = false;   /* true when "All files" selected */
-                var resolved = false;
+                let overlay = null;
+                let wrapper = null;
+                const screens = [];
+                let depth = 0;
+                let initialDepth = 0;   /* depth of the very first screen */
+                let filterAll = false;   /* true when "All files" selected */
+                let resolved = false;
 
                 function finish(value) {
                     if (resolved) return;
@@ -671,17 +745,14 @@ PassifloraIO = {
                     resolve(value);
                 }
 
-                /* -- slide helpers (mirror PassifloraMenu) -- */
+                /* -- slide helpers -- */
                 function positionScreens() {
-                    for (var i = 0; i < screens.length; i++) {
-                        var off = (i - depth) * 100;
-                        screens[i].style.transform = "translateX(" + off + "%)";
-                    }
+                    PassifloraIO._slidePositionScreens(screens, depth);
                 }
 
                 function slideForward(screen) {
                     while (screens.length > depth + 1) {
-                        var old = screens.pop();
+                        const old = screens.pop();
                         if (old.parentNode) old.parentNode.removeChild(old);
                     }
                     screen.style.transform = "translateX(100%)";
@@ -694,55 +765,49 @@ PassifloraIO = {
 
                 function slideBack() {
                     if (depth <= initialDepth) {
-                        /* navigated back past first level — cancel */
                         finish(null);
                         return;
                     }
                     depth--;
                     positionScreens();
-                    var removed = screens.pop();
+                    const removed = screens.pop();
                     setTimeout(function () {
                         if (removed.parentNode) removed.parentNode.removeChild(removed);
                     }, 300);
                 }
 
-                /* -- build a screen for a directory -- */
-                function shortPath(p) {
-                    return p.length > 20 ? "\u2026" + p.slice(-20) : p;
-                }
-
                 function buildDirScreen(dirPath, title) {
-                    var screen = document.createElement("div");
+                    const screen = document.createElement("div");
                     screen.className = "passiflora_fo_screen";
 
                     /* Back header */
-                    var back = document.createElement("div");
+                    const back = document.createElement("div");
                     back.className = "passiflora_fo_back";
-                    back.textContent = title || shortPath(dirPath);
+                    back.textContent = title || PassifloraIO._shortPath(dirPath);
                     back.addEventListener("click", function () { slideBack(); });
                     screen.appendChild(back);
 
                     /* File list (placeholder while loading) */
-                    var listWrap = document.createElement("div");
+                    const listWrap = document.createElement("div");
                     listWrap.className = "passiflora_fo_list";
-                    var loadingMsg = document.createElement("div");
+                    const loadingMsg = document.createElement("div");
                     loadingMsg.className = "passiflora_fo_loading";
                     loadingMsg.textContent = "Loading\u2026";
                     listWrap.appendChild(loadingMsg);
                     screen.appendChild(listWrap);
 
                     /* Extension filter select */
-                    var filterRow = document.createElement("div");
+                    const filterRow = document.createElement("div");
                     filterRow.className = "passiflora_fo_filterbar";
-                    var sel = document.createElement("select");
+                    const sel = document.createElement("select");
                     sel.className = "passiflora_fo_select";
                     if (extensions.length > 0) {
-                        var opt1 = document.createElement("option");
+                        const opt1 = document.createElement("option");
                         opt1.value = "ext";
                         opt1.textContent = extLabel;
                         sel.appendChild(opt1);
                     }
-                    var opt2 = document.createElement("option");
+                    const opt2 = document.createElement("option");
                     opt2.value = "all";
                     opt2.textContent = "All files (*.*)";
                     sel.appendChild(opt2);
@@ -754,21 +819,21 @@ PassifloraIO = {
                     });
                     filterRow.appendChild(sel);
 
-                    var newDirBtn = document.createElement("button");
+                    const newDirBtn = document.createElement("button");
                     newDirBtn.className = "passiflora_fo_newdir";
                     newDirBtn.textContent = "\uD83D\uDCC1+";
                     newDirBtn.title = "Create Folder";
                     newDirBtn.addEventListener("click", function () {
-                        var base = "Untitled";
-                        var taken = {};
+                        const base = "Untitled";
+                        const taken = {};
                         if (entries) {
-                            for (var ti = 0; ti < entries.length; ti++)
+                            for (let ti = 0; ti < entries.length; ti++)
                                 taken[entries[ti].name] = true;
                         }
-                        var name = base;
-                        var n = 2;
+                        let name = base;
+                        let n = 2;
                         while (taken[name]) { name = base + " " + n; n++; }
-                        var newPath = dirPath === "/" ? "/" + name : dirPath + "/" + name;
+                        const newPath = dirPath === "/" ? "/" + name : dirPath + "/" + name;
                         PassifloraIO.mkdir(newPath).then(function () {
                             return PassifloraIO.listDirectory(dirPath);
                         }).then(function (list) {
@@ -780,12 +845,12 @@ PassifloraIO = {
                     screen.appendChild(filterRow);
 
                     /* Fetch directory listing and populate */
-                    var entries = null;
+                    let entries = null;
 
                     function populateList() {
                         if (!entries) return;
                         listWrap.innerHTML = "";
-                        var ul = document.createElement("ul");
+                        const ul = document.createElement("ul");
                         ul.className = "passiflora_fo_ul";
 
                         function refreshDir() {
@@ -797,10 +862,10 @@ PassifloraIO = {
 
                         /* ".." entry — go up a folder (only if not at root) */
                         if (dirPath !== "/") {
-                            var upLi = document.createElement("li");
+                            const upLi = document.createElement("li");
                             upLi.className = "passiflora_fo_item passiflora_fo_dir";
                             upLi.textContent = "\uD83D\uDCC1 ..";
-                            var upArrow = document.createElement("span");
+                            const upArrow = document.createElement("span");
                             upArrow.className = "passiflora_fo_arrow";
                             upArrow.textContent = "\u276E";
                             upLi.appendChild(upArrow);
@@ -809,8 +874,8 @@ PassifloraIO = {
                         }
 
                         /* Sort: directories first, then alphabetical */
-                        var dirs = [], files = [];
-                        for (var i = 0; i < entries.length; i++) {
+                        const dirs = [], files = [];
+                        for (let i = 0; i < entries.length; i++) {
                             if (entries[i].name === "..") continue;
                             if (entries[i].isDir) dirs.push(entries[i]);
                             else files.push(entries[i]);
@@ -818,20 +883,20 @@ PassifloraIO = {
                         dirs.sort(function (a, b) { return a.name.localeCompare(b.name); });
                         files.sort(function (a, b) { return a.name.localeCompare(b.name); });
 
-                        for (var i = 0; i < dirs.length; i++) {
+                        for (let i = 0; i < dirs.length; i++) {
                             (function (ent) {
-                                var li = document.createElement("li");
+                                const li = document.createElement("li");
                                 li.className = "passiflora_fo_item passiflora_fo_dir";
-                                var nameSpan = document.createElement("span");
+                                const nameSpan = document.createElement("span");
                                 nameSpan.textContent = "\uD83D\uDCC1 " + ent.name;
                                 li.appendChild(nameSpan);
-                                var arrow = document.createElement("span");
+                                const arrow = document.createElement("span");
                                 arrow.className = "passiflora_fo_arrow";
                                 arrow.textContent = "\u276F";
                                 li.appendChild(arrow);
                                 li.addEventListener("click", function () {
-                                    var sub = joinPath(dirPath, ent.name);
-                                    var newScreen = buildDirScreen(sub, ent.name);
+                                    const sub = PassifloraIO._joinPath(dirPath, ent.name);
+                                    const newScreen = buildDirScreen(sub, ent.name);
                                     slideForward(newScreen);
                                 });
                                 PassifloraIO._attachLongPressRename(
@@ -841,19 +906,19 @@ PassifloraIO = {
                             })(dirs[i]);
                         }
 
-                        for (var i = 0; i < files.length; i++) {
+                        for (let i = 0; i < files.length; i++) {
                             (function (ent) {
-                                var li = document.createElement("li");
-                                var matches = fileMatches(
+                                const li = document.createElement("li");
+                                const matches = PassifloraIO._fileMatchesExt(
                                     ent.name, filterAll, extsLower);
                                 li.className = "passiflora_fo_item passiflora_fo_file" +
                                     (matches ? " passiflora_fo_match" : " passiflora_fo_dim");
-                                var nameSpan = document.createElement("span");
+                                const nameSpan = document.createElement("span");
                                 nameSpan.textContent = ent.name;
                                 li.appendChild(nameSpan);
                                 if (matches) {
                                     li.addEventListener("click", function () {
-                                        finish(joinPath(dirPath, ent.name));
+                                        finish(PassifloraIO._joinPath(dirPath, ent.name));
                                     });
                                 }
                                 PassifloraIO._attachLongPressRename(
@@ -871,7 +936,7 @@ PassifloraIO = {
                         populateList();
                     }).catch(function () {
                         listWrap.innerHTML = "";
-                        var err = document.createElement("div");
+                        const err = document.createElement("div");
                         err.className = "passiflora_fo_loading";
                         err.textContent = "Cannot read directory.";
                         listWrap.appendChild(err);
@@ -880,55 +945,19 @@ PassifloraIO = {
                     return screen;
                 }
 
-                /* -- teardown -- */
-                function teardown() {
-                    if (overlay && overlay.parentNode) {
-                        overlay.classList.remove("active");
-                        setTimeout(function () {
-                            if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-                        }, 300);
-                    }
-                    if (wrapper && wrapper.parentNode) {
-                        wrapper.classList.remove("active");
-                        setTimeout(function () {
-                            if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
-                        }, 300);
-                    }
-                    document.removeEventListener("keydown", onKey);
-                    document.documentElement.style.overflowY = prevOverflow;
-                }
+                /* -- init DOM via shared helper -- */
+                const dom = PassifloraIO._initFileDialogDOM(finish);
+                overlay = dom.overlay;
+                wrapper = dom.wrapper;
+                const teardown = dom.teardown;
 
-                function onKey(e) {
-                    if (e.key === "Escape" || e.keyCode === 27) {
-                        finish(null);
-                    }
-                }
-
-                /* -- create overlay & wrapper -- */
-                /* Remove any leftover elements from a previous call */
-                var stale = document.querySelectorAll(
-                    ".passiflora_fo_overlay, .passiflora_fo_wrapper");
-                for (var si = 0; si < stale.length; si++)
-                    stale[si].parentNode.removeChild(stale[si]);
-
-                /* Force vertical scrollbar so its width doesn't shift layout */
-                var prevOverflow = document.documentElement.style.overflowY;
-                document.documentElement.style.overflowY = "scroll";
-
-                overlay = document.createElement("div");
-                overlay.className = "passiflora_fo_overlay";
-                overlay.addEventListener("click", function () { finish(null); });
-                document.body.appendChild(overlay);
-
-                wrapper = document.createElement("div");
-                wrapper.className = "passiflora_fo_wrapper";
-                var track = document.createElement("div");
+                const track = document.createElement("div");
                 track.className = "passiflora_fo_track";
                 wrapper.appendChild(track);
                 document.body.appendChild(wrapper);
 
                 /* Build and show the root screen */
-                var rootScreen = buildDirScreen(startDir, null);
+                const rootScreen = buildDirScreen(startDir, null);
                 rootScreen.style.transform = "translateX(0)";
                 track.appendChild(rootScreen);
                 screens.push(rootScreen);
@@ -938,7 +967,7 @@ PassifloraIO = {
                 wrapper.offsetWidth; /* reflow */
                 overlay.classList.add("active");
                 wrapper.classList.add("active");
-                document.addEventListener("keydown", onKey);
+                document.addEventListener("keydown", dom.onKey);
             });
         });
     },
@@ -947,61 +976,17 @@ PassifloraIO = {
     /*  Save-As sliding menu                                            */
     /* ================================================================ */
 
-    menusavas: function (extensions, defaultName) {
+    menuSaveAs: function (extensions, defaultName) {
         /* Normalise arguments */
         if (!extensions) extensions = [];
         if (!defaultName) defaultName = "";
 
-        /* Lowercase copy of extensions for matching */
-        var extsLower = [];
-        for (var i = 0; i < extensions.length; i++)
-            extsLower.push(extensions[i].toLowerCase().replace(/^\./, ""));
-
-        /* Build the label for the extension filter */
-        var extLabel = "";
-        if (extensions.length > 0) {
-            var parts = [];
-            for (var i = 0; i < extensions.length; i++)
-                parts.push("*." + extsLower[i]);
-            extLabel = parts.join(", ");
-        } else {
-            extLabel = "All files (*.*)";
-        }
-
-        /* ---- helpers ---- */
-        function fileMatches(name, showAll, exts) {
-            if (showAll) return true;
-            if (exts.length === 0) return true;
-            var dot = name.lastIndexOf(".");
-            if (dot < 0) return false;
-            var ext = name.substring(dot + 1).toLowerCase();
-            for (var i = 0; i < exts.length; i++)
-                if (ext === exts[i]) return true;
-            return false;
-        }
+        const extInfo = PassifloraIO._prepareExts(extensions);
+        const extsLower = extInfo.extsLower;
+        const extLabel = extInfo.extLabel;
 
         function nameHasMatchingExt(name, exts) {
-            if (exts.length === 0) return true;
-            var dot = name.lastIndexOf(".");
-            if (dot < 0) return false;
-            var ext = name.substring(dot + 1).toLowerCase();
-            for (var i = 0; i < exts.length; i++)
-                if (ext === exts[i]) return true;
-            return false;
-        }
-
-        var SEP = "/";
-
-        function joinPath(dir, name) {
-            if (dir.charAt(dir.length - 1) === SEP) return dir + name;
-            return dir + SEP + name;
-        }
-
-        function parentPath(dir) {
-            var idx = dir.lastIndexOf(SEP);
-            if (idx <= 0) return null;
-            if (SEP === "\\" && idx <= 2) return dir.substring(0, idx + 1);
-            return dir.substring(0, idx);
+            return PassifloraIO._fileMatchesExt(name, false, exts);
         }
 
         /* ---- DOM builder ---- */
@@ -1009,16 +994,14 @@ PassifloraIO = {
 
             return new Promise(function (resolve) {
 
-                var overlay = null;
-                var wrapper = null;
-                var screens = [];
-                var depth = 0;
-                var initialDepth = 0;
-                var filterAll = false;
-                var resolved = false;
-                var currentDir = startDir;
-                var currentFiles = [];       /* file names in the visible directory */
-                var nameInput = null;        /* the filename text field */
+                const screens = [];
+                let depth = 0;
+                let initialDepth = 0;
+                let filterAll = false;
+                let resolved = false;
+                let currentDir = startDir;
+                let currentFiles = [];       /* file names in the visible directory */
+                let nameInput = null;        /* the filename text field */
 
                 function finish(value) {
                     if (resolved) return;
@@ -1027,24 +1010,30 @@ PassifloraIO = {
                     resolve(value);
                 }
 
+                /* -- init DOM via shared helper -- */
+                const dom = PassifloraIO._initFileDialogDOM(finish);
+                const overlay = dom.overlay;
+                const wrapper = dom.wrapper;
+                const teardown = dom.teardown;
+
                 /* -- confirm dialog -- */
                 function showConfirm(message) {
                     return new Promise(function (yes) {
-                        var box = document.createElement("div");
+                        const box = document.createElement("div");
                         box.className = "passiflora_fo_confirm_overlay";
 
-                        var card = document.createElement("div");
+                        const card = document.createElement("div");
                         card.className = "passiflora_fo_confirm_card";
 
-                        var msg = document.createElement("div");
+                        const msg = document.createElement("div");
                         msg.className = "passiflora_fo_confirm_msg";
                         msg.textContent = message;
                         card.appendChild(msg);
 
-                        var btns = document.createElement("div");
+                        const btns = document.createElement("div");
                         btns.className = "passiflora_fo_confirm_btns";
 
-                        var cancelBtn = document.createElement("button");
+                        const cancelBtn = document.createElement("button");
                         cancelBtn.className = "passiflora_fo_confirm_btn";
                         cancelBtn.textContent = "Cancel";
                         cancelBtn.addEventListener("click", function () {
@@ -1053,7 +1042,7 @@ PassifloraIO = {
                         });
                         btns.appendChild(cancelBtn);
 
-                        var okBtn = document.createElement("button");
+                        const okBtn = document.createElement("button");
                         okBtn.className = "passiflora_fo_confirm_btn passiflora_fo_confirm_ok";
                         okBtn.textContent = "OK";
                         okBtn.addEventListener("click", function () {
@@ -1070,16 +1059,16 @@ PassifloraIO = {
 
                 /* -- attempt to save -- */
                 function trySave() {
-                    var name = (nameInput.value || "").trim();
+                    const name = (nameInput.value || "").trim();
                     if (!name) return;
-                    var fullPath = joinPath(currentDir, name);
+                    const fullPath = PassifloraIO._joinPath(currentDir, name);
 
                     /* Does the file already exist in the current listing? */
-                    var exists = false;
-                    for (var ei = 0; ei < currentFiles.length; ei++) {
+                    let exists = false;
+                    for (let ei = 0; ei < currentFiles.length; ei++) {
                         if (currentFiles[ei] === name) { exists = true; break; }
                     }
-                    var badExt = !nameHasMatchingExt(name, extsLower);
+                    const badExt = !nameHasMatchingExt(name, extsLower);
 
                     if (badExt && exists) {
                         showConfirm(
@@ -1117,16 +1106,14 @@ PassifloraIO = {
                 }
 
                 /* -- slide helpers -- */
+                /* -- slide helpers -- */
                 function positionScreens() {
-                    for (var i = 0; i < screens.length; i++) {
-                        var off = (i - depth) * 100;
-                        screens[i].style.transform = "translateX(" + off + "%)";
-                    }
+                    PassifloraIO._slidePositionScreens(screens, depth);
                 }
 
                 function slideForward(screen) {
                     while (screens.length > depth + 1) {
-                        var old = screens.pop();
+                        const old = screens.pop();
                         if (old.parentNode) old.parentNode.removeChild(old);
                     }
                     screen.style.transform = "translateX(100%)";
@@ -1144,49 +1131,45 @@ PassifloraIO = {
                     }
                     depth--;
                     positionScreens();
-                    var removed = screens.pop();
+                    const removed = screens.pop();
                     setTimeout(function () {
                         if (removed.parentNode) removed.parentNode.removeChild(removed);
                     }, 300);
                 }
 
-                function shortPath(p) {
-                    return p.length > 20 ? "\u2026" + p.slice(-20) : p;
-                }
-
                 /* -- build a screen for a directory -- */
                 function buildDirScreen(dirPath, title) {
-                    var screen = document.createElement("div");
+                    const screen = document.createElement("div");
                     screen.className = "passiflora_fo_screen";
 
                     /* Back header */
-                    var back = document.createElement("div");
+                    const back = document.createElement("div");
                     back.className = "passiflora_fo_back";
-                    back.textContent = title || shortPath(dirPath);
+                    back.textContent = title || PassifloraIO._shortPath(dirPath);
                     back.addEventListener("click", function () { slideBack(); });
                     screen.appendChild(back);
 
                     /* File list */
-                    var listWrap = document.createElement("div");
+                    const listWrap = document.createElement("div");
                     listWrap.className = "passiflora_fo_list";
-                    var loadingMsg = document.createElement("div");
+                    const loadingMsg = document.createElement("div");
                     loadingMsg.className = "passiflora_fo_loading";
                     loadingMsg.textContent = "Loading\u2026";
                     listWrap.appendChild(loadingMsg);
                     screen.appendChild(listWrap);
 
                     /* Extension filter select */
-                    var filterRow = document.createElement("div");
+                    const filterRow = document.createElement("div");
                     filterRow.className = "passiflora_fo_filterbar";
-                    var sel = document.createElement("select");
+                    const sel = document.createElement("select");
                     sel.className = "passiflora_fo_select";
                     if (extensions.length > 0) {
-                        var opt1 = document.createElement("option");
+                        const opt1 = document.createElement("option");
                         opt1.value = "ext";
                         opt1.textContent = extLabel;
                         sel.appendChild(opt1);
                     }
-                    var opt2 = document.createElement("option");
+                    const opt2 = document.createElement("option");
                     opt2.value = "all";
                     opt2.textContent = "All files (*.*)";
                     sel.appendChild(opt2);
@@ -1198,27 +1181,27 @@ PassifloraIO = {
                     });
                     filterRow.appendChild(sel);
 
-                    var newDirBtn = document.createElement("button");
+                    const newDirBtn = document.createElement("button");
                     newDirBtn.className = "passiflora_fo_newdir";
                     newDirBtn.textContent = "\uD83D\uDCC1+";
                     newDirBtn.title = "Create Folder";
                     newDirBtn.addEventListener("click", function () {
-                        var base = "Untitled";
-                        var taken = {};
+                        const base = "Untitled";
+                        const taken = {};
                         if (entries) {
-                            for (var ti = 0; ti < entries.length; ti++)
+                            for (let ti = 0; ti < entries.length; ti++)
                                 taken[entries[ti].name] = true;
                         }
-                        var name = base;
-                        var n = 2;
+                        let name = base;
+                        let n = 2;
                         while (taken[name]) { name = base + " " + n; n++; }
-                        var newPath = dirPath === "/" ? "/" + name : dirPath + "/" + name;
+                        const newPath = dirPath === "/" ? "/" + name : dirPath + "/" + name;
                         PassifloraIO.mkdir(newPath).then(function () {
                             return PassifloraIO.listDirectory(dirPath);
                         }).then(function (list) {
                             entries = list;
                             currentFiles = [];
-                            for (var fi = 0; fi < list.length; fi++) {
+                            for (let fi = 0; fi < list.length; fi++) {
                                 if (!list[fi].isDir) currentFiles.push(list[fi].name);
                             }
                             populateList();
@@ -1228,19 +1211,19 @@ PassifloraIO = {
                     screen.appendChild(filterRow);
 
                     /* Fetch directory listing and populate */
-                    var entries = null;
+                    let entries = null;
 
                     function populateList() {
                         if (!entries) return;
                         listWrap.innerHTML = "";
-                        var ul = document.createElement("ul");
+                        const ul = document.createElement("ul");
                         ul.className = "passiflora_fo_ul";
 
                         function refreshDir() {
                             PassifloraIO.listDirectory(dirPath).then(function (list) {
                                 entries = list;
                                 currentFiles = [];
-                                for (var fi = 0; fi < list.length; fi++) {
+                                for (let fi = 0; fi < list.length; fi++) {
                                     if (!list[fi].isDir) currentFiles.push(list[fi].name);
                                 }
                                 populateList();
@@ -1249,10 +1232,10 @@ PassifloraIO = {
 
                         /* ".." entry (only if not at root) */
                         if (dirPath !== "/") {
-                            var upLi = document.createElement("li");
+                            const upLi = document.createElement("li");
                             upLi.className = "passiflora_fo_item passiflora_fo_dir";
                             upLi.textContent = "\uD83D\uDCC1 ..";
-                            var upArrow = document.createElement("span");
+                            const upArrow = document.createElement("span");
                             upArrow.className = "passiflora_fo_arrow";
                             upArrow.textContent = "\u276E";
                             upLi.appendChild(upArrow);
@@ -1261,8 +1244,8 @@ PassifloraIO = {
                         }
 
                         /* Sort: directories first, then alphabetical */
-                        var dirs = [], files = [];
-                        for (var i = 0; i < entries.length; i++) {
+                        const dirs = [], files = [];
+                        for (let i = 0; i < entries.length; i++) {
                             if (entries[i].name === "..") continue;
                             if (entries[i].isDir) dirs.push(entries[i]);
                             else files.push(entries[i]);
@@ -1270,21 +1253,21 @@ PassifloraIO = {
                         dirs.sort(function (a, b) { return a.name.localeCompare(b.name); });
                         files.sort(function (a, b) { return a.name.localeCompare(b.name); });
 
-                        for (var i = 0; i < dirs.length; i++) {
+                        for (let i = 0; i < dirs.length; i++) {
                             (function (ent) {
-                                var li = document.createElement("li");
+                                const li = document.createElement("li");
                                 li.className = "passiflora_fo_item passiflora_fo_dir";
-                                var nameSpan = document.createElement("span");
+                                const nameSpan = document.createElement("span");
                                 nameSpan.textContent = "\uD83D\uDCC1 " + ent.name;
                                 li.appendChild(nameSpan);
-                                var arrow = document.createElement("span");
+                                const arrow = document.createElement("span");
                                 arrow.className = "passiflora_fo_arrow";
                                 arrow.textContent = "\u276F";
                                 li.appendChild(arrow);
                                 li.addEventListener("click", function () {
-                                    var sub = joinPath(dirPath, ent.name);
+                                    const sub = PassifloraIO._joinPath(dirPath, ent.name);
                                     currentDir = sub;
-                                    var newScreen = buildDirScreen(sub, ent.name);
+                                    const newScreen = buildDirScreen(sub, ent.name);
                                     slideForward(newScreen);
                                 });
                                 PassifloraIO._attachLongPressRename(
@@ -1294,21 +1277,21 @@ PassifloraIO = {
                             })(dirs[i]);
                         }
 
-                        for (var i = 0; i < files.length; i++) {
+                        for (let i = 0; i < files.length; i++) {
                             (function (ent) {
-                                var li = document.createElement("li");
-                                var matches = fileMatches(
+                                const li = document.createElement("li");
+                                const matches = PassifloraIO._fileMatchesExt(
                                     ent.name, filterAll, extsLower);
                                 li.className = "passiflora_fo_item passiflora_fo_file" +
                                     (matches ? " passiflora_fo_match" : " passiflora_fo_dim");
-                                var nameSpan = document.createElement("span");
+                                const nameSpan = document.createElement("span");
                                 nameSpan.textContent = ent.name;
                                 li.appendChild(nameSpan);
                                 /* Clicking an existing file = overwrite + extension confirm */
                                 li.addEventListener("click", function () {
                                     nameInput.value = ent.name;
-                                    var badExt = !nameHasMatchingExt(ent.name, extsLower);
-                                    var p = Promise.resolve(true);
+                                    const badExt = !nameHasMatchingExt(ent.name, extsLower);
+                                    let p = Promise.resolve(true);
                                     if (badExt) {
                                         p = showConfirm(
                                             "\"" + ent.name + "\" does not have one of the expected extensions (" +
@@ -1321,7 +1304,7 @@ PassifloraIO = {
                                             "\"" + ent.name + "\" already exists. Overwrite?"
                                         );
                                     }).then(function (ok) {
-                                        if (ok) finish(joinPath(dirPath, ent.name));
+                                        if (ok) finish(PassifloraIO._joinPath(dirPath, ent.name));
                                     });
                                 });
                                 PassifloraIO._attachLongPressRename(
@@ -1336,7 +1319,7 @@ PassifloraIO = {
 
                     /* Track the current directory when this screen becomes active */
                     screen.addEventListener("transitionend", function () {
-                        var r = screen.getBoundingClientRect();
+                        const r = screen.getBoundingClientRect();
                         if (r.left >= 0 && r.left < 5) currentDir = dirPath;
                     });
 
@@ -1345,13 +1328,13 @@ PassifloraIO = {
                         entries = list;
                         /* Update shared file-name list for trySave's overwrite check */
                         currentFiles = [];
-                        for (var fi = 0; fi < list.length; fi++) {
+                        for (let fi = 0; fi < list.length; fi++) {
                             if (!list[fi].isDir) currentFiles.push(list[fi].name);
                         }
                         populateList();
                     }).catch(function () {
                         listWrap.innerHTML = "";
-                        var err = document.createElement("div");
+                        const err = document.createElement("div");
                         err.className = "passiflora_fo_loading";
                         err.textContent = "Cannot read directory.";
                         listWrap.appendChild(err);
@@ -1360,49 +1343,8 @@ PassifloraIO = {
                     return screen;
                 }
 
-                /* -- teardown -- */
-                function teardown() {
-                    if (overlay && overlay.parentNode) {
-                        overlay.classList.remove("active");
-                        setTimeout(function () {
-                            if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-                        }, 300);
-                    }
-                    if (wrapper && wrapper.parentNode) {
-                        wrapper.classList.remove("active");
-                        setTimeout(function () {
-                            if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
-                        }, 300);
-                    }
-                    document.removeEventListener("keydown", onKey);
-                    document.documentElement.style.overflowY = prevOverflow;
-                }
-
-                function onKey(e) {
-                    if (e.key === "Escape" || e.keyCode === 27) {
-                        finish(null);
-                    }
-                }
-
-                /* -- create overlay & wrapper -- */
-                var stale = document.querySelectorAll(
-                    ".passiflora_fo_overlay, .passiflora_fo_wrapper");
-                for (var si = 0; si < stale.length; si++)
-                    stale[si].parentNode.removeChild(stale[si]);
-
-                var prevOverflow = document.documentElement.style.overflowY;
-                document.documentElement.style.overflowY = "scroll";
-
-                overlay = document.createElement("div");
-                overlay.className = "passiflora_fo_overlay";
-                overlay.addEventListener("click", function () { finish(null); });
-                document.body.appendChild(overlay);
-
-                wrapper = document.createElement("div");
-                wrapper.className = "passiflora_fo_wrapper";
-
                 /* Filename input bar at the top */
-                var nameBar = document.createElement("div");
+                const nameBar = document.createElement("div");
                 nameBar.className = "passiflora_fo_namebar";
 
                 nameInput = document.createElement("input");
@@ -1412,7 +1354,7 @@ PassifloraIO = {
                 nameInput.value = defaultName;
                 nameBar.appendChild(nameInput);
 
-                var saveBtn = document.createElement("button");
+                const saveBtn = document.createElement("button");
                 saveBtn.className = "passiflora_fo_savebtn";
                 saveBtn.textContent = "Save";
                 saveBtn.addEventListener("click", function () { trySave(); });
@@ -1420,13 +1362,13 @@ PassifloraIO = {
 
                 wrapper.appendChild(nameBar);
 
-                var track = document.createElement("div");
+                const track = document.createElement("div");
                 track.className = "passiflora_fo_track";
                 wrapper.appendChild(track);
                 document.body.appendChild(wrapper);
 
                 /* Build and show the root screen */
-                var rootScreen = buildDirScreen(startDir, null);
+                const rootScreen = buildDirScreen(startDir, null);
                 rootScreen.style.transform = "translateX(0)";
                 track.appendChild(rootScreen);
                 screens.push(rootScreen);
@@ -1436,7 +1378,7 @@ PassifloraIO = {
                 wrapper.offsetWidth;
                 overlay.classList.add("active");
                 wrapper.classList.add("active");
-                document.addEventListener("keydown", onKey);
+                document.addEventListener("keydown", dom.onKey);
 
                 /* Enter key in the filename field triggers Save */
                 nameInput.addEventListener("keydown", function (e) {
@@ -1486,23 +1428,23 @@ PassifloraIO = {
     if (typeof PassifloraConfig === "undefined") return;
 
     /* ---------- In-memory virtual file system ---------- */
-    var _vfs = {};               /* path -> Uint8Array */
-    var _dirs = {};              /* path -> true (explicitly created directories) */
-    var _cwd = "/";              /* current working directory */
-    var _handles = {};           /* handle_id -> { path, mode, pos } */
-    var _handleCounter = 0;
+    const _vfs = {};               /* path -> Uint8Array */
+    const _dirs = {};              /* path -> true (explicitly created directories) */
+    let _cwd = "/";              /* current working directory */
+    let _handles = {};           /* handle_id -> { path, mode, pos } */
+    let _handleCounter = 0;
 
     function _nextHandle() { return "vfsfh_" + (++_handleCounter); }
 
     /* ---------- IndexedDB persistence layer ---------- */
-    var _db = null;
+    let _db = null;
 
-    var _dbReady = new Promise(function (resolve) {
+    const _dbReady = new Promise(function (resolve) {
         if (typeof indexedDB === "undefined") { resolve(); return; }
         try {
-            var req = indexedDB.open("PassifloraVFS", 2);
+            const req = indexedDB.open("PassifloraVFS", 2);
             req.onupgradeneeded = function (e) {
-                var db = e.target.result;
+                const db = e.target.result;
                 if (!db.objectStoreNames.contains("files"))
                     db.createObjectStore("files");
                 if (!db.objectStoreNames.contains("dirs"))
@@ -1511,22 +1453,22 @@ PassifloraIO = {
             req.onsuccess = function (e) {
                 _db = e.target.result;
                 /* Hydrate VFS from IndexedDB */
-                var tx = _db.transaction(["files", "dirs"], "readonly");
-                var store = tx.objectStore("files");
-                var keysReq = store.getAllKeys();
-                var valsReq = store.getAll();
-                var dirStore = tx.objectStore("dirs");
-                var dirKeysReq = dirStore.getAllKeys();
+                const tx = _db.transaction(["files", "dirs"], "readonly");
+                const store = tx.objectStore("files");
+                const keysReq = store.getAllKeys();
+                const valsReq = store.getAll();
+                const dirStore = tx.objectStore("dirs");
+                const dirKeysReq = dirStore.getAllKeys();
                 keysReq.onsuccess = function () {
                     valsReq.onsuccess = function () {
-                        var keys = keysReq.result;
-                        var vals = valsReq.result;
-                        for (var i = 0; i < keys.length; i++)
+                        const keys = keysReq.result;
+                        const vals = valsReq.result;
+                        for (let i = 0; i < keys.length; i++)
                             _vfs[keys[i]] = vals[i] instanceof Uint8Array
                                 ? vals[i] : new Uint8Array(vals[i]);
                         dirKeysReq.onsuccess = function () {
-                            var dk = dirKeysReq.result;
-                            for (var i = 0; i < dk.length; i++)
+                            const dk = dirKeysReq.result;
+                            for (let i = 0; i < dk.length; i++)
                                 _dirs[dk[i]] = true;
                             /* Preload compiled-in data on first run */
                             if (Object.keys(_vfs).length === 0)
@@ -1547,17 +1489,14 @@ PassifloraIO = {
     function _loadPreloadData() {
         if (typeof _PASSIFLORA_VFS_PRELOAD === "undefined" ||
             !_PASSIFLORA_VFS_PRELOAD.length) return;
-        for (var i = 0; i < _PASSIFLORA_VFS_PRELOAD.length; i++) {
-            var entry = _PASSIFLORA_VFS_PRELOAD[i];
-            var raw = atob(entry.data);
-            var arr = new Uint8Array(raw.length);
-            for (var j = 0; j < raw.length; j++) arr[j] = raw.charCodeAt(j);
-            _vfs[entry.path] = arr;
-            _dbPut(entry.path, arr);
+        for (let i = 0; i < _PASSIFLORA_VFS_PRELOAD.length; i++) {
+            const entry = _PASSIFLORA_VFS_PRELOAD[i];
+            _vfs[entry.path] = PassifloraIO._base64ToUint8Array(entry.data);
+            _dbPut(entry.path, _vfs[entry.path]);
             /* Create parent directories */
-            var parts = entry.path.split("/");
-            for (var k = 2; k < parts.length; k++) {
-                var dir = parts.slice(0, k).join("/");
+            const parts = entry.path.split("/");
+            for (let k = 2; k < parts.length; k++) {
+                const dir = parts.slice(0, k).join("/");
                 if (!_dirs[dir]) { _dirs[dir] = true; _dbPutDir(dir); }
             }
         }
@@ -1566,7 +1505,7 @@ PassifloraIO = {
     function _dbPut(path, data) {
         if (!_db) return;
         try {
-            var tx = _db.transaction("files", "readwrite");
+            const tx = _db.transaction("files", "readwrite");
             tx.objectStore("files").put(data, path);
         } catch (e) { /* IndexedDB unavailable or quota exceeded */ }
     }
@@ -1574,7 +1513,7 @@ PassifloraIO = {
     function _dbDelete(path) {
         if (!_db) return;
         try {
-            var tx = _db.transaction("files", "readwrite");
+            const tx = _db.transaction("files", "readwrite");
             tx.objectStore("files").delete(path);
         } catch (e) { /* IndexedDB unavailable */ }
     }
@@ -1582,7 +1521,7 @@ PassifloraIO = {
     function _dbPutDir(path) {
         if (!_db) return;
         try {
-            var tx = _db.transaction("dirs", "readwrite");
+            const tx = _db.transaction("dirs", "readwrite");
             tx.objectStore("dirs").put(true, path);
         } catch (e) { /* IndexedDB unavailable */ }
     }
@@ -1590,7 +1529,7 @@ PassifloraIO = {
     function _dbDeleteDir(path) {
         if (!_db) return;
         try {
-            var tx = _db.transaction("dirs", "readwrite");
+            const tx = _db.transaction("dirs", "readwrite");
             tx.objectStore("dirs").delete(path);
         } catch (e) { /* IndexedDB unavailable */ }
     }
@@ -1601,9 +1540,9 @@ PassifloraIO = {
             p = (_cwd === "/" ? "/" : _cwd + "/") + p;
         }
         /* Normalise . and .. */
-        var parts = p.split("/");
-        var out = [];
-        for (var i = 0; i < parts.length; i++) {
+        const parts = p.split("/");
+        const out = [];
+        for (let i = 0; i < parts.length; i++) {
             if (parts[i] === "" || parts[i] === ".") continue;
             if (parts[i] === "..") { if (out.length) out.pop(); }
             else out.push(parts[i]);
@@ -1624,15 +1563,15 @@ PassifloraIO = {
     /* -- Directory listing (from VFS) -- */
     PassifloraIO.listDirectory = function (path) {
         return _dbReady.then(function () {
-            var prefix = path;
+            let prefix = path;
             if (prefix !== "/" && prefix.charAt(prefix.length - 1) !== "/")
                 prefix += "/";
-            var entries = [];
-            var seen = {};
-            var keys = Object.keys(_vfs);
-            for (var i = 0; i < keys.length; i++) {
-                var p = keys[i];
-                var rest;
+            const entries = [];
+            const seen = {};
+            const keys = Object.keys(_vfs);
+            for (let i = 0; i < keys.length; i++) {
+                const p = keys[i];
+                let rest;
                 if (prefix === "/") {
                     rest = p.substring(1);
                 } else if (p.indexOf(prefix) === 0) {
@@ -1640,18 +1579,18 @@ PassifloraIO = {
                 } else {
                     continue;
                 }
-                var slash = rest.indexOf("/");
-                var name = slash < 0 ? rest : rest.substring(0, slash);
+                const slash = rest.indexOf("/");
+                const name = slash < 0 ? rest : rest.substring(0, slash);
                 if (name && !seen[name]) {
                     seen[name] = true;
                     entries.push({ name: name, isDir: slash >= 0 });
                 }
             }
             /* Include explicitly-created (possibly empty) directories */
-            var dirKeys = Object.keys(_dirs);
-            for (var i = 0; i < dirKeys.length; i++) {
-                var d = dirKeys[i];
-                var rest;
+            const dirKeys = Object.keys(_dirs);
+            for (let i = 0; i < dirKeys.length; i++) {
+                const d = dirKeys[i];
+                let rest;
                 if (prefix === "/") {
                     rest = d.substring(1);
                 } else if (d.indexOf(prefix) === 0) {
@@ -1659,8 +1598,8 @@ PassifloraIO = {
                 } else {
                     continue;
                 }
-                var slash = rest.indexOf("/");
-                var name = slash < 0 ? rest : rest.substring(0, slash);
+                const slash = rest.indexOf("/");
+                const name = slash < 0 ? rest : rest.substring(0, slash);
                 if (name && !seen[name]) {
                     seen[name] = true;
                     entries.push({ name: name, isDir: true });
@@ -1683,18 +1622,18 @@ PassifloraIO = {
             if (mode.indexOf("a") >= 0 && !_vfs[path]) {
                 _vfs[path] = new Uint8Array(0);
             }
-            var data = _vfs[path] || new Uint8Array(0);
-            var pos = mode.indexOf("a") >= 0 ? data.length : 0;
-            var h = _nextHandle();
+            const data = _vfs[path] || new Uint8Array(0);
+            const pos = mode.indexOf("a") >= 0 ? data.length : 0;
+            const h = _nextHandle();
             _handles[h] = { path: path, mode: mode, pos: pos };
             return h;
         });
     };
 
     PassifloraIO.fclose = function (handle) {
-        var fh = _handles[handle];
+        const fh = _handles[handle];
         if (!fh) { delete _handles[handle]; return Promise.resolve(0); }
-        var path = fh.path;
+        const path = fh.path;
         delete _handles[handle];
         /* Persist to IndexedDB */
         if (_vfs[path]) _dbPut(path, _vfs[path]);
@@ -1702,29 +1641,29 @@ PassifloraIO = {
     };
 
     PassifloraIO.fread = function (handle, size) {
-        var fh = _handles[handle];
+        const fh = _handles[handle];
         if (!fh) return Promise.reject(new Error("Invalid file handle"));
-        var data = _vfs[fh.path] || new Uint8Array(0);
-        var end = Math.min(fh.pos + size, data.length);
+        const data = _vfs[fh.path] || new Uint8Array(0);
+        const end = Math.min(fh.pos + size, data.length);
         if (fh.pos >= data.length) return Promise.resolve(null);
-        var slice = data.slice(fh.pos, end);
+        const slice = data.slice(fh.pos, end);
         fh.pos = end;
         return Promise.resolve(slice);
     };
 
     PassifloraIO.fwrite = function (handle, inputData) {
-        var fh = _handles[handle];
+        const fh = _handles[handle];
         if (!fh) return Promise.reject(new Error("Invalid file handle"));
-        var bytes;
+        let bytes;
         if (typeof inputData === "string") {
             bytes = new TextEncoder().encode(inputData);
         } else {
             bytes = inputData;
         }
-        var existing = _vfs[fh.path] || new Uint8Array(0);
-        var needed = fh.pos + bytes.length;
+        let existing = _vfs[fh.path] || new Uint8Array(0);
+        const needed = fh.pos + bytes.length;
         if (needed > existing.length) {
-            var bigger = new Uint8Array(needed);
+            const bigger = new Uint8Array(needed);
             bigger.set(existing);
             existing = bigger;
             _vfs[fh.path] = existing;
@@ -1735,14 +1674,14 @@ PassifloraIO = {
     };
 
     PassifloraIO.fgets = function (handle) {
-        var fh = _handles[handle];
+        const fh = _handles[handle];
         if (!fh) return Promise.reject(new Error("Invalid file handle"));
-        var data = _vfs[fh.path] || new Uint8Array(0);
+        const data = _vfs[fh.path] || new Uint8Array(0);
         if (fh.pos >= data.length) return Promise.resolve(null);
-        var end = fh.pos;
+        let end = fh.pos;
         while (end < data.length && data[end] !== 10) end++;
         if (end < data.length) end++; /* include newline */
-        var slice = data.slice(fh.pos, end);
+        const slice = data.slice(fh.pos, end);
         fh.pos = end;
         return Promise.resolve(new TextDecoder().decode(slice));
     };
@@ -1752,9 +1691,9 @@ PassifloraIO = {
     };
 
     PassifloraIO.fseek = function (handle, offset, whence) {
-        var fh = _handles[handle];
+        const fh = _handles[handle];
         if (!fh) return Promise.reject(new Error("Invalid file handle"));
-        var data = _vfs[fh.path] || new Uint8Array(0);
+        const data = _vfs[fh.path] || new Uint8Array(0);
         if (whence === 0) fh.pos = offset;
         else if (whence === 1) fh.pos += offset;
         else if (whence === 2) fh.pos = data.length + offset;
@@ -1763,15 +1702,15 @@ PassifloraIO = {
     };
 
     PassifloraIO.ftell = function (handle) {
-        var fh = _handles[handle];
+        const fh = _handles[handle];
         if (!fh) return Promise.reject(new Error("Invalid file handle"));
         return Promise.resolve(fh.pos);
     };
 
     PassifloraIO.feof = function (handle) {
-        var fh = _handles[handle];
+        const fh = _handles[handle];
         if (!fh) return Promise.reject(new Error("Invalid file handle"));
-        var data = _vfs[fh.path] || new Uint8Array(0);
+        const data = _vfs[fh.path] || new Uint8Array(0);
         return Promise.resolve(fh.pos >= data.length ? 1 : 0);
     };
 
@@ -1793,12 +1732,12 @@ PassifloraIO = {
             newpath = _resolvePath(newpath);
             /* Rename a directory — move all files under it */
             if (_dirs[oldpath]) {
-                var oldPrefix = oldpath + "/";
-                var newPrefix = newpath + "/";
-                var keys = Object.keys(_vfs);
-                for (var i = 0; i < keys.length; i++) {
+                const oldPrefix = oldpath + "/";
+                const newPrefix = newpath + "/";
+                const keys = Object.keys(_vfs);
+                for (let i = 0; i < keys.length; i++) {
                     if (keys[i].indexOf(oldPrefix) === 0) {
-                        var suffix = keys[i].substring(oldPrefix.length);
+                        const suffix = keys[i].substring(oldPrefix.length);
                         _vfs[newPrefix + suffix] = _vfs[keys[i]];
                         _dbPut(newPrefix + suffix, _vfs[keys[i]]);
                         delete _vfs[keys[i]];
@@ -1806,10 +1745,10 @@ PassifloraIO = {
                     }
                 }
                 /* Move sub-directories */
-                var dk = Object.keys(_dirs);
-                for (var i = 0; i < dk.length; i++) {
+                const dk = Object.keys(_dirs);
+                for (let i = 0; i < dk.length; i++) {
                     if (dk[i] === oldpath || dk[i].indexOf(oldPrefix) === 0) {
-                        var newDir = newpath + dk[i].substring(oldpath.length);
+                        const newDir = newpath + dk[i].substring(oldpath.length);
                         _dirs[newDir] = true;
                         _dbPutDir(newDir);
                         delete _dirs[dk[i]];
@@ -1836,18 +1775,18 @@ PassifloraIO = {
 
     PassifloraIO.chdir = function (path) {
         return _dbReady.then(function () {
-            var resolved = _resolvePath(path);
+            const resolved = _resolvePath(path);
             if (resolved === "/") { _cwd = "/"; return 0; }
             /* Check if the directory exists (has files under it or is explicit) */
             if (_dirs[resolved]) { _cwd = resolved; return 0; }
-            var prefix = resolved + "/";
-            var keys = Object.keys(_vfs);
-            for (var i = 0; i < keys.length; i++) {
+            const prefix = resolved + "/";
+            const keys = Object.keys(_vfs);
+            for (let i = 0; i < keys.length; i++) {
                 if (keys[i].indexOf(prefix) === 0) { _cwd = resolved; return 0; }
             }
             /* Also check sub-directories */
-            var dk = Object.keys(_dirs);
-            for (var i = 0; i < dk.length; i++) {
+            const dk = Object.keys(_dirs);
+            for (let i = 0; i < dk.length; i++) {
                 if (dk[i].indexOf(prefix) === 0) { _cwd = resolved; return 0; }
             }
             throw new Error("Directory not found: " + resolved);
@@ -1856,7 +1795,7 @@ PassifloraIO = {
 
     PassifloraIO.mkdir = function (path) {
         return _dbReady.then(function () {
-            var resolved = _resolvePath(path);
+            const resolved = _resolvePath(path);
             if (resolved === "/") return 0;
             if (_dirs[resolved]) throw new Error("Directory already exists: " + resolved);
             /* Check if a file has this exact path */
@@ -1869,17 +1808,17 @@ PassifloraIO = {
 
     PassifloraIO.rmdir = function (path) {
         return _dbReady.then(function () {
-            var resolved = _resolvePath(path);
+            const resolved = _resolvePath(path);
             if (resolved === "/") throw new Error("Cannot remove root directory");
             /* Check the directory is empty */
-            var prefix = resolved + "/";
-            var keys = Object.keys(_vfs);
-            for (var i = 0; i < keys.length; i++) {
+            const prefix = resolved + "/";
+            const keys = Object.keys(_vfs);
+            for (let i = 0; i < keys.length; i++) {
                 if (keys[i].indexOf(prefix) === 0)
                     throw new Error("Directory not empty: " + resolved);
             }
-            var dk = Object.keys(_dirs);
-            for (var i = 0; i < dk.length; i++) {
+            const dk = Object.keys(_dirs);
+            for (let i = 0; i < dk.length; i++) {
                 if (dk[i] !== resolved && dk[i].indexOf(prefix) === 0)
                     throw new Error("Directory not empty: " + resolved);
             }
@@ -1907,22 +1846,25 @@ PassifloraIO = {
     }
 
     /* -- importFile: pick a file from the real filesystem into VFS -- */
-    PassifloraIO.importFile = function (extensions) {
+    PassifloraIO.importFile = function (extensions, path) {
+        if (!path) path = "/";
+        /* Ensure path ends with / for directory prefix */
+        if (path.charAt(path.length - 1) !== "/") path += "/";
         return new Promise(function (resolve) {
-            var input = document.createElement("input");
+            const input = document.createElement("input");
             input.type = "file";
             if (extensions && extensions.length > 0)
                 input.accept = extensions.join(",");
             input.style.display = "none";
             document.body.appendChild(input);
             input.addEventListener("change", function () {
-                var file = input.files[0];
+                const file = input.files[0];
                 document.body.removeChild(input);
                 if (!file) { resolve(null); return; }
-                var reader = new FileReader();
+                const reader = new FileReader();
                 reader.onload = function () {
-                    var bytes = new Uint8Array(reader.result);
-                    var vpath = "/" + file.name;
+                    const bytes = new Uint8Array(reader.result);
+                    const vpath = path + file.name;
                     _vfs[vpath] = bytes;
                     _dbPut(vpath, bytes);
                     resolve(vpath);
@@ -1941,7 +1883,7 @@ PassifloraIO = {
     /* -- exportFile: save a VFS file to the real filesystem -- */
     PassifloraIO.exportFile = function (vfsPath, suggestedName) {
         return _dbReady.then(function () {
-            var data = _vfs[vfsPath];
+            const data = _vfs[vfsPath];
             if (!data) throw new Error("File not found in VFS: " + vfsPath);
             suggestedName = suggestedName ||
                 vfsPath.substring(vfsPath.lastIndexOf("/") + 1);
@@ -1968,14 +1910,14 @@ PassifloraIO = {
 
     /* -- webDownload: trigger browser download for a VFS path -- */
     PassifloraIO.webDownload = function (path, mimeType) {
-        var data = _vfs[path];
+        const data = _vfs[path];
         if (!data) return;
-        var filename = path.substring(path.lastIndexOf("/") + 1);
+        const filename = path.substring(path.lastIndexOf("/") + 1);
         /* Native WKWebView save panel (macOS / iOS) */
         if (window.webkit && window.webkit.messageHandlers &&
             window.webkit.messageHandlers.passifloraSaveFile) {
-            var binary = "";
-            for (var j = 0; j < data.length; j++)
+            let binary = "";
+            for (let j = 0; j < data.length; j++)
                 binary += String.fromCharCode(data[j]);
             window.webkit.messageHandlers.passifloraSaveFile.postMessage({
                 filename: filename,
@@ -1984,11 +1926,11 @@ PassifloraIO = {
             return;
         }
         /* Browser download fallback */
-        var blob = new Blob([data], {
+        const blob = new Blob([data], {
             type: mimeType || "application/octet-stream"
         });
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
         a.href = url;
         a.download = filename;
         document.body.appendChild(a);
@@ -2000,16 +1942,16 @@ PassifloraIO = {
     /* -- exportVFS: serialise the entire VFS to a JSON download -- */
     PassifloraIO.exportVFS = function () {
         return _dbReady.then(function () {
-            var obj = {};
-            var keys = Object.keys(_vfs);
-            for (var i = 0; i < keys.length; i++) {
-                var data = _vfs[keys[i]];
-                var binary = "";
-                for (var j = 0; j < data.length; j++)
+            const obj = {};
+            const keys = Object.keys(_vfs);
+            for (let i = 0; i < keys.length; i++) {
+                const data = _vfs[keys[i]];
+                let binary = "";
+                for (let j = 0; j < data.length; j++)
                     binary += String.fromCharCode(data[j]);
                 obj[keys[i]] = btoa(binary);
             }
-            var json = JSON.stringify(obj, null, 2);
+            const json = JSON.stringify(obj, null, 2);
             /* Native WKWebView save panel (macOS / iOS) */
             if (window.webkit && window.webkit.messageHandlers &&
                 window.webkit.messageHandlers.passifloraSaveFile) {
@@ -2020,9 +1962,9 @@ PassifloraIO = {
                 return keys.length;
             }
             /* Browser download fallback */
-            var blob = new Blob([json], { type: "application/json" });
-            var url = URL.createObjectURL(blob);
-            var a = document.createElement("a");
+            const blob = new Blob([json], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
             a.href = url;
             a.download = "passiflora_vfs.json";
             document.body.appendChild(a);
@@ -2036,28 +1978,24 @@ PassifloraIO = {
     /* -- importVFS: load a previously-exported VFS JSON file -- */
     PassifloraIO.importVFS = function () {
         return new Promise(function (resolve, reject) {
-            var input = document.createElement("input");
+            const input = document.createElement("input");
             input.type = "file";
             input.accept = ".json";
             input.style.display = "none";
             document.body.appendChild(input);
             input.addEventListener("change", function () {
-                var file = input.files[0];
+                const file = input.files[0];
                 document.body.removeChild(input);
                 if (!file) { resolve(0); return; }
-                var reader = new FileReader();
+                const reader = new FileReader();
                 reader.onload = function () {
                     try {
-                        var obj = JSON.parse(reader.result);
-                        var count = 0;
-                        var keys = Object.keys(obj);
-                        for (var i = 0; i < keys.length; i++) {
-                            var binary = atob(obj[keys[i]]);
-                            var bytes = new Uint8Array(binary.length);
-                            for (var j = 0; j < binary.length; j++)
-                                bytes[j] = binary.charCodeAt(j);
-                            _vfs[keys[i]] = bytes;
-                            _dbPut(keys[i], bytes);
+                        const obj = JSON.parse(reader.result);
+                        let count = 0;
+                        const keys = Object.keys(obj);
+                        for (let i = 0; i < keys.length; i++) {
+                            _vfs[keys[i]] = PassifloraIO._base64ToUint8Array(obj[keys[i]]);
+                            _dbPut(keys[i], _vfs[keys[i]]);
                             count++;
                         }
                         resolve(count);
@@ -2087,23 +2025,23 @@ PassifloraIO = {
             /* Close any open file handles */
             _handles = {};
             /* Count files before clearing */
-            var count = Object.keys(_vfs).length;
+            const count = Object.keys(_vfs).length;
             /* Clear the in-memory VFS */
-            var keys = Object.keys(_vfs);
-            for (var i = 0; i < keys.length; i++) {
+            const keys = Object.keys(_vfs);
+            for (let i = 0; i < keys.length; i++) {
                 delete _vfs[keys[i]];
             }
             /* Clear directories */
-            var dk = Object.keys(_dirs);
-            for (var i = 0; i < dk.length; i++) {
+            const dk = Object.keys(_dirs);
+            for (let i = 0; i < dk.length; i++) {
                 delete _dirs[dk[i]];
             }
             _cwd = "/";
             /* Clear the IndexedDB object stores */
             return new Promise(function (resolve, reject) {
-                var tx = _db.transaction(["files", "dirs"], "readwrite");
-                var req1 = tx.objectStore("files").clear();
-                var req2 = tx.objectStore("dirs").clear();
+                const tx = _db.transaction(["files", "dirs"], "readwrite");
+                const req1 = tx.objectStore("files").clear();
+                const req2 = tx.objectStore("dirs").clear();
                 tx.oncomplete = function () { resolve(count); };
                 tx.onerror = function () {
                     reject(new Error("Failed to clear IndexedDB: " + tx.error));
@@ -2118,19 +2056,19 @@ PassifloraIO = {
             /* Close any open file handles */
             _handles = {};
             /* Clear the in-memory VFS */
-            var keys = Object.keys(_vfs);
-            for (var i = 0; i < keys.length; i++) {
+            const keys = Object.keys(_vfs);
+            for (let i = 0; i < keys.length; i++) {
                 delete _vfs[keys[i]];
             }
             /* Clear directories */
-            var dk = Object.keys(_dirs);
-            for (var i = 0; i < dk.length; i++) {
+            const dk = Object.keys(_dirs);
+            for (let i = 0; i < dk.length; i++) {
                 delete _dirs[dk[i]];
             }
             _cwd = "/";
             /* Clear the IndexedDB object stores, then reload preload data */
             return new Promise(function (resolve, reject) {
-                var tx = _db.transaction(["files", "dirs"], "readwrite");
+                const tx = _db.transaction(["files", "dirs"], "readwrite");
                 tx.objectStore("files").clear();
                 tx.objectStore("dirs").clear();
                 tx.oncomplete = function () {
@@ -2145,16 +2083,16 @@ PassifloraIO = {
     };
 
     /* -- _posixCall: intercept closeAllFileHandles, pass through others -- */
-    var _origPosixCall = (PassifloraConfig.os_name !== "WWW" &&
+    const _origPosixCall = (PassifloraConfig.os_name !== "WWW" &&
         typeof PassifloraIO._posixCall === "function")
         ? PassifloraIO._posixCall.bind(PassifloraIO) : null;
 
     PassifloraIO._posixCall = function (fn, params) {
         if (fn === "closeAllFileHandles") {
             /* Best-effort flush of open files to IndexedDB */
-            var keys = Object.keys(_handles);
-            for (var i = 0; i < keys.length; i++) {
-                var fh = _handles[keys[i]];
+            const keys = Object.keys(_handles);
+            for (let i = 0; i < keys.length; i++) {
+                const fh = _handles[keys[i]];
                 if (fh && _vfs[fh.path]) _dbPut(fh.path, _vfs[fh.path]);
             }
             _handles = {};

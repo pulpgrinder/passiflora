@@ -4,22 +4,22 @@ CFLAGS  ?= -Wall -Wextra -O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2
 LDFLAGS ?= -lpthread
 CONTENT ?= src/www
 
-# ── Permissions (read from src/permissions) ─────────────────────────
-PERM_LOCATION   := $(shell awk '/^location /   {print $$2}' src/permissions 2>/dev/null)
-PERM_CAMERA     := $(shell awk '/^camera /     {print $$2}' src/permissions 2>/dev/null)
-PERM_MICROPHONE := $(shell awk '/^microphone / {print $$2}' src/permissions 2>/dev/null)
-PERM_REMOTEDEBUGGING := $(shell awk '/^remotedebugging / {print $$2}' src/permissions 2>/dev/null)
+# ── Permissions (read from src/config) ──────────────────────────────
+PERM_LOCATION   := $(shell awk '/^uselocation /          {print $$2}' src/config 2>/dev/null)
+PERM_CAMERA     := $(shell awk '/^usecamera /            {print $$2}' src/config 2>/dev/null)
+PERM_MICROPHONE := $(shell awk '/^usemicrophone /        {print $$2}' src/config 2>/dev/null)
+PERM_REMOTEDEBUGGING := $(shell awk '/^allowremotedebugging / {print $$2}' src/config 2>/dev/null)
 PERM_DEFS := -DPROGNAME_STR=\"$(PROGNAME)\"
-ifeq ($(PERM_LOCATION),1)
+ifeq ($(PERM_LOCATION),true)
   PERM_DEFS += -DPERM_LOCATION
 endif
-ifeq ($(PERM_CAMERA),1)
+ifeq ($(PERM_CAMERA),true)
   PERM_DEFS += -DPERM_CAMERA
 endif
-ifeq ($(PERM_MICROPHONE),1)
+ifeq ($(PERM_MICROPHONE),true)
   PERM_DEFS += -DPERM_MICROPHONE
 endif
-ifeq ($(PERM_REMOTEDEBUGGING),1)
+ifeq ($(PERM_REMOTEDEBUGGING),true)
   PERM_DEFS += -DPERM_REMOTEDEBUGGING
 endif
 
@@ -31,7 +31,7 @@ ifeq ($(UNAME_S),Darwin)
   OS_NAME        = macOS
   UI_CFLAGS      = -x objective-c -fobjc-arc $(PERM_DEFS)
   UI_LDFLAGS     = -framework Cocoa -framework WebKit
-  ifeq ($(PERM_LOCATION),1)
+  ifeq ($(PERM_LOCATION),true)
     UI_LDFLAGS  += -framework CoreLocation
   endif
   MENU_TEMPLATE  = src/macOS/menus/menu.txt
@@ -51,10 +51,10 @@ ifeq ($(UNAME_S),Darwin)
   IOS_LDFLAGS    = -arch $(IOS_ARCH) -isysroot $(IOS_SDK) \
                    -miphoneos-version-min=$(IOS_MIN) \
                    -framework UIKit -framework WebKit -framework CoreGraphics -lpthread
-  ifeq ($(PERM_LOCATION),1)
+  ifeq ($(PERM_LOCATION),true)
     IOS_LDFLAGS += -framework CoreLocation
   endif
-  ifeq ($(PERM_REMOTEDEBUGGING),1)
+  ifeq ($(PERM_REMOTEDEBUGGING),true)
     IOS_LDFLAGS += -framework Network
   endif
   IOS_BINDIR     = bin/iOS
@@ -71,10 +71,10 @@ ifeq ($(UNAME_S),Darwin)
   SIMOS_LDFLAGS  = -arch $(SIMOS_ARCH) -isysroot $(SIMOS_SDK) \
                    -mios-simulator-version-min=$(IOS_MIN) \
                    -framework UIKit -framework WebKit -framework CoreGraphics -lpthread
-  ifeq ($(PERM_LOCATION),1)
+  ifeq ($(PERM_LOCATION),true)
     SIMOS_LDFLAGS += -framework CoreLocation
   endif
-  ifeq ($(PERM_REMOTEDEBUGGING),1)
+  ifeq ($(PERM_REMOTEDEBUGGING),true)
     SIMOS_LDFLAGS += -framework Network
   endif
   SIMOS_BINDIR   = bin/iOS-sim
@@ -86,7 +86,7 @@ else ifeq ($(UNAME_S),Linux)
   UI_CFLAGS      = $(shell pkg-config --cflags gtk+-3.0 $(WEBKIT_PKG) 2>/dev/null) $(PERM_DEFS)
   UI_LDFLAGS     = $(shell pkg-config --libs gtk+-3.0 $(WEBKIT_PKG) 2>/dev/null)
   # GStreamer for native recording (when camera or microphone enabled)
-  ifneq (,$(filter 1,$(PERM_CAMERA) $(PERM_MICROPHONE)))
+  ifneq (,$(filter true,$(PERM_CAMERA) $(PERM_MICROPHONE)))
     UI_CFLAGS   += $(shell pkg-config --cflags gstreamer-1.0 2>/dev/null)
     UI_LDFLAGS  += $(shell pkg-config --libs gstreamer-1.0 2>/dev/null)
   endif

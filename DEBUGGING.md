@@ -2,7 +2,7 @@
 
 Passiflora includes a built-in remote debugging facility that lets you execute JavaScript in a running app from an external browser. This is useful for inspecting app state, testing code snippets, and diagnosing issues on platforms where browser DevTools aren't available (iOS, Android, etc.).
 
-Remote debugging is compile-gated. It is only available when `remotedebugging` is set to `1` in `src/permissions`.
+Remote debugging is compile-gated. It is only available when `allowremotedebugging` is set to `true` in `src/config`.
 
 ## Enabling Debug Mode
 
@@ -37,9 +37,9 @@ console.log(document.title)
 
 ## Security Notes
 
-- By default, the embedded server listens only on `127.0.0.1` (localhost). Remote debugging connections are blocked unless `remotedebugging` is set to `1` in `src/permissions`, which makes the server listen on all network interfaces (`0.0.0.0`).
+- By default, the embedded server listens only on `127.0.0.1` (localhost). Remote debugging connections are blocked unless `allowremotedebugging` is set to `true` in `src/config`, which makes the server listen on all network interfaces (`0.0.0.0`).
 - Every command must be signed with HMAC-SHA256 using the shared passphrase and an incrementing nonce. Commands with invalid signatures or replayed nonces are rejected.
 - The passphrase input in the app overlay is masked (`type="password"`).
-- Debug mode is compile-gated: it is completely absent from the binary unless `remotedebugging 1` is set in `src/permissions`.
+- Debug mode is compile-gated: it is completely absent from the binary unless `allowremotedebugging true` is set in `src/config`.
 - Use a strong passphrase, especially when debugging over a network.
-- For production releases, set `remotedebugging 0` in `src/permissions`.
+- For production releases, set `allowremotedebugging false` in `src/config` (or remove the line entirely).

@@ -1,5 +1,9 @@
 /* PassifloraMenu styles */
 
+:root {
+    --passiflora-font: -apple-system, system-ui, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
 *, *::before, *::after {
     box-sizing: border-box;
 }
@@ -36,7 +40,8 @@ img, video, canvas {
     pointer-events: auto;
 }
 
-.passiflora_menu_overlay {
+.passiflora_menu_overlay,
+.passiflora_fo_overlay {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, .45);
@@ -46,7 +51,8 @@ img, video, canvas {
     transition: opacity .25s;
 }
 
-.passiflora_menu_overlay.active {
+.passiflora_menu_overlay.active,
+.passiflora_fo_overlay.active {
     opacity: 1;
     pointer-events: auto;
 }
@@ -62,7 +68,7 @@ img, video, canvas {
     background: #fff;
     transform: translateX(100%);
     transition: transform .25s ease;
-    font-family: -apple-system, system-ui, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-family: var(--passiflora-font);
     display: flex;
     flex-direction: column;
 }
@@ -130,12 +136,6 @@ ul.passiflora_menu li {
     user-select: none;
 }
 
-
-/*
-ul.passiflora_menu li:active {
-    background: #f0f0f0;
-} */
-
 ul.passiflora_menu li .passiflora_menu_arrow {
     color: #999;
     font-size: 17px;
@@ -163,22 +163,8 @@ ul.passiflora_menu li:has(+ li.passiflora_menu_separator) {
 }
 
 /* ================================================================ */
-/*  File-open sliding menu (PassifloraIO.menuopen)                   */
+/*  File-open sliding menu (PassifloraIO.menuOpen)                   */
 /* ================================================================ */
-
-.passiflora_fo_overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, .45);
-    z-index: 99998;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity .25s;
-}
-.passiflora_fo_overlay.active {
-    opacity: 1;
-    pointer-events: auto;
-}
 
 .passiflora_fo_wrapper {
     position: fixed;
@@ -191,7 +177,7 @@ ul.passiflora_menu li:has(+ li.passiflora_menu_separator) {
     background: #fff;
     transform: translateX(100%);
     transition: transform .25s ease;
-    font-family: -apple-system, system-ui, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-family: var(--passiflora-font);
     display: flex;
     flex-direction: column;
 }
