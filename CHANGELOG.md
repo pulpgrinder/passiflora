@@ -25,7 +25,9 @@ All notable changes to this project will be documented in this file.
 
 - **Create Folder button**: Both `menuOpen` and `menuSaveAs` panels include a 📁+ button that creates a new directory named "Untitled", "Untitled 2", etc. in the current directory.
 
-- **Long-press rename**: Long-pressing (500 ms) a file or directory name in `menuOpen` or `menuSaveAs` makes it editable inline. HTML, newlines, and extra whitespace are stripped. Enter confirms; Escape cancels. Normal click behavior is suppressed while editing.
+- **Long-press rename**: Long-pressing (500 ms) a file or directory name in `menuOpen`, `menuSaveAs`, or `fileBrowser` makes it editable inline. HTML, newlines, and extra whitespace are stripped. Enter confirms; Escape cancels. Normal click behavior is suppressed while editing.
+
+- **File Browser** (`PassifloraIO.fileBrowser`): Sliding-panel file browser for browsing and managing files in the VFS. Clicking a file highlights it without closing the dialog. Supports drag-and-drop to move files into subfolders or the parent directory, extension filtering, Create Folder, long-press rename, and a Done button to close. Remembers the current directory between invocations.
 
 - **WWW browser target** (`make www`): Builds a plain-browser version of the app into `bin/WWW/` with no native compilation needed.
 

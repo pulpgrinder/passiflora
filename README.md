@@ -146,7 +146,7 @@ This file is auto-generated on every build and should not be edited by hand.
 
 ## File I/O
 
-Passiflora includes POSIX-style file functions, Open/Save As dialogs, and a virtual file system backed by IndexedDB. Full documentation is in **[FILE_IO.md](FILE_IO.md)**.
+Passiflora includes POSIX-style file functions, Open/Save As/File Browser dialogs, and a virtual file system backed by IndexedDB. Full documentation is in **[FILE_IO.md](FILE_IO.md)**.
 
 ## Utility Functions
 

@@ -28,6 +28,7 @@
         <button onclick="testFileSystem()">Test File System</button>
         <button onclick="testMenuOpen()">Test Menu Open</button>
         <button onclick="testMenuSaveAs()">Test Save As</button>
+        <button onclick="testFileBrowser()">Test File Browser</button>
     </p>
     <p>
         <button onclick="testImportFile()">Import File</button>
@@ -286,6 +287,16 @@
             }
         } catch(e) {
             logResult('menuSaveAs error: ' + e.message);
+        }
+    }
+
+    async function testFileBrowser() {
+        logResult('Opening file browser for .txt files...');
+        try {
+            await PassifloraIO.fileBrowser(['.txt'], '');
+            logResult('File browser closed.');
+        } catch(e) {
+            logResult('fileBrowser error: ' + e.message);
         }
     }
 

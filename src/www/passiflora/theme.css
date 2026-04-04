@@ -296,6 +296,24 @@ ul.passiflora_menu li:has(+ li.passiflora_menu_separator) {
     transition: transform .25s ease;
 }
 
+/* ── File Browser drag-and-drop & selection styles ──────────────── */
+.passiflora_fb_selected {
+    outline: 2px solid var(--accent-color);
+    outline-offset: -2px;
+    background-color: var(--accent-color) !important;
+    color: var(--menu-color) !important;
+}
+
+.passiflora_fb_dragover {
+    outline: 2px dashed var(--accent-color);
+    outline-offset: -2px;
+    background-color: var(--menu-background-color) !important;
+}
+
+.passiflora_fb_dragging {
+    opacity: 0.4;
+}
+
 /* ── Panel screens (menu-item-triggered sliding panels) ────────── */
 .passiflora_panel_overlay {
     position: fixed;

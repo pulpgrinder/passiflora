@@ -1395,6 +1395,365 @@ PassifloraIO = {
     },
 
     /* ================================================================ */
+    /*  File Browser                                                    */
+    /* ================================================================ */
+
+    _fileBrowserDir: null,   /* remembered across invocations */
+
+    fileBrowser: function (extensions, defaultFolder) {
+        if (!extensions) extensions = [];
+        if (!defaultFolder) defaultFolder = "";
+
+        var extInfo = PassifloraIO._prepareExts(extensions);
+        var extsLower = extInfo.extsLower;
+        var extLabel  = extInfo.extLabel;
+
+        /* Determine start directory: remembered > supplied > home */
+        var startPromise;
+        if (PassifloraIO._fileBrowserDir) {
+            startPromise = Promise.resolve(PassifloraIO._fileBrowserDir);
+        } else if (defaultFolder) {
+            startPromise = Promise.resolve(defaultFolder);
+        } else {
+            startPromise = PassifloraIO.getHomeFolder();
+        }
+
+        return startPromise.then(function (startDir) {
+
+            return new Promise(function (resolve) {
+
+                var overlay  = null;
+                var wrapper  = null;
+                var screens  = [];
+                var depth    = 0;
+                var initialDepth = 0;
+                var filterAll = false;
+                var resolved  = false;
+                var currentDir = startDir;
+                var selectedLi = null;          /* currently highlighted <li> */
+
+                function finish(value) {
+                    if (resolved) return;
+                    resolved = true;
+                    PassifloraIO._fileBrowserDir = currentDir;
+                    teardown();
+                    resolve(value);
+                }
+
+                /* -- slide helpers -- */
+                function positionScreens() {
+                    PassifloraIO._slidePositionScreens(screens, depth);
+                }
+
+                function slideForward(screen) {
+                    while (screens.length > depth + 1) {
+                        var old = screens.pop();
+                        if (old.parentNode) old.parentNode.removeChild(old);
+                    }
+                    screen.style.transform = "translateX(100%)";
+                    wrapper.querySelector(".passiflora_fo_track").appendChild(screen);
+                    screens.push(screen);
+                    screen.offsetWidth; /* reflow */
+                    depth++;
+                    positionScreens();
+                }
+
+                function slideBack() {
+                    if (depth <= initialDepth) {
+                        finish(null);
+                        return;
+                    }
+                    depth--;
+                    positionScreens();
+                    var removed = screens.pop();
+                    setTimeout(function () {
+                        if (removed.parentNode) removed.parentNode.removeChild(removed);
+                    }, 300);
+                }
+
+                /* -- highlight helper -- */
+                function highlightItem(li) {
+                    if (selectedLi) selectedLi.classList.remove("passiflora_fb_selected");
+                    selectedLi = li;
+                    if (li) li.classList.add("passiflora_fb_selected");
+                }
+
+                /* -- move a file into a directory via the file system -- */
+                function moveFile(fileName, fromDir, toDir, refreshFn) {
+                    var oldPath = PassifloraIO._joinPath(fromDir, fileName);
+                    var newPath = PassifloraIO._joinPath(toDir, fileName);
+                    PassifloraIO.rename(oldPath, newPath).then(function () {
+                        if (refreshFn) refreshFn();
+                    }).catch(function () {
+                        /* rename failed — silently ignore */
+                    });
+                }
+
+                /* -- build a screen for a directory -- */
+                function buildDirScreen(dirPath, title) {
+                    var screen = document.createElement("div");
+                    screen.className = "passiflora_fo_screen";
+
+                    /* Back header */
+                    var back = document.createElement("div");
+                    back.className = "passiflora_fo_back";
+                    back.textContent = title || PassifloraIO._shortPath(dirPath);
+                    back.addEventListener("click", function () { slideBack(); });
+                    screen.appendChild(back);
+
+                    /* File list */
+                    var listWrap = document.createElement("div");
+                    listWrap.className = "passiflora_fo_list";
+                    var loadingMsg = document.createElement("div");
+                    loadingMsg.className = "passiflora_fo_loading";
+                    loadingMsg.textContent = "Loading\u2026";
+                    listWrap.appendChild(loadingMsg);
+                    screen.appendChild(listWrap);
+
+                    /* Filter bar + Create Folder + Done */
+                    var filterRow = document.createElement("div");
+                    filterRow.className = "passiflora_fo_filterbar";
+
+                    var sel = document.createElement("select");
+                    sel.className = "passiflora_fo_select";
+                    if (extensions.length > 0) {
+                        var opt1 = document.createElement("option");
+                        opt1.value = "ext";
+                        opt1.textContent = extLabel;
+                        sel.appendChild(opt1);
+                    }
+                    var opt2 = document.createElement("option");
+                    opt2.value = "all";
+                    opt2.textContent = "All files (*.*)";
+                    sel.appendChild(opt2);
+                    if (extensions.length === 0) sel.value = "all";
+                    else sel.value = filterAll ? "all" : "ext";
+                    sel.addEventListener("change", function () {
+                        filterAll = (sel.value === "all");
+                        populateList();
+                    });
+                    filterRow.appendChild(sel);
+
+                    var newDirBtn = document.createElement("button");
+                    newDirBtn.className = "passiflora_fo_newdir";
+                    newDirBtn.textContent = "\uD83D\uDCC1+";
+                    newDirBtn.title = "Create Folder";
+                    newDirBtn.addEventListener("click", function () {
+                        var base = "Untitled";
+                        var taken = {};
+                        if (entries) {
+                            for (var ti = 0; ti < entries.length; ti++)
+                                taken[entries[ti].name] = true;
+                        }
+                        var name = base;
+                        var n = 2;
+                        while (taken[name]) { name = base + " " + n; n++; }
+                        var newPath = dirPath === "/" ? "/" + name : dirPath + "/" + name;
+                        PassifloraIO.mkdir(newPath).then(function () {
+                            return PassifloraIO.listDirectory(dirPath);
+                        }).then(function (list) {
+                            entries = list;
+                            populateList();
+                        });
+                    });
+                    filterRow.appendChild(newDirBtn);
+
+                    var doneBtn = document.createElement("button");
+                    doneBtn.className = "passiflora_fo_savebtn";
+                    doneBtn.textContent = "Done";
+                    doneBtn.addEventListener("click", function () { finish(null); });
+                    filterRow.appendChild(doneBtn);
+
+                    screen.appendChild(filterRow);
+
+                    /* Fetch directory listing and populate */
+                    var entries = null;
+
+                    function populateList() {
+                        if (!entries) return;
+                        listWrap.innerHTML = "";
+                        var ul = document.createElement("ul");
+                        ul.className = "passiflora_fo_ul";
+
+                        function refreshDir() {
+                            PassifloraIO.listDirectory(dirPath).then(function (list) {
+                                entries = list;
+                                populateList();
+                            });
+                        }
+
+                        /* ".." entry — go up (doubles as drop target for parent) */
+                        if (dirPath !== "/") {
+                            var upLi = document.createElement("li");
+                            upLi.className = "passiflora_fo_item passiflora_fo_dir";
+                            upLi.textContent = "\uD83D\uDCC1 ..";
+                            var upArrow = document.createElement("span");
+                            upArrow.className = "passiflora_fo_arrow";
+                            upArrow.textContent = "\u276E";
+                            upLi.appendChild(upArrow);
+                            upLi.addEventListener("click", function () { slideBack(); });
+
+                            /* Drop target: move file to parent directory */
+                            upLi.addEventListener("dragover", function (e) {
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = "move";
+                                upLi.classList.add("passiflora_fb_dragover");
+                            });
+                            upLi.addEventListener("dragleave", function () {
+                                upLi.classList.remove("passiflora_fb_dragover");
+                            });
+                            upLi.addEventListener("drop", function (e) {
+                                e.preventDefault();
+                                upLi.classList.remove("passiflora_fb_dragover");
+                                var fileName = e.dataTransfer.getData("text/plain");
+                                if (!fileName) return;
+                                var parentDir = dirPath.replace(/\/[^\/]+$/, "") || "/";
+                                moveFile(fileName, dirPath, parentDir, refreshDir);
+                            });
+
+                            ul.appendChild(upLi);
+                        }
+
+                        /* Sort: directories first, then alphabetical */
+                        var dirs = [], files = [];
+                        for (var i = 0; i < entries.length; i++) {
+                            if (entries[i].name === "..") continue;
+                            if (entries[i].isDir) dirs.push(entries[i]);
+                            else files.push(entries[i]);
+                        }
+                        dirs.sort(function (a, b) { return a.name.localeCompare(b.name); });
+                        files.sort(function (a, b) { return a.name.localeCompare(b.name); });
+
+                        for (var di = 0; di < dirs.length; di++) {
+                            (function (ent) {
+                                var li = document.createElement("li");
+                                li.className = "passiflora_fo_item passiflora_fo_dir";
+                                var nameSpan = document.createElement("span");
+                                nameSpan.textContent = "\uD83D\uDCC1 " + ent.name;
+                                li.appendChild(nameSpan);
+                                var arrow = document.createElement("span");
+                                arrow.className = "passiflora_fo_arrow";
+                                arrow.textContent = "\u276F";
+                                li.appendChild(arrow);
+                                li.addEventListener("click", function () {
+                                    var sub = PassifloraIO._joinPath(dirPath, ent.name);
+                                    currentDir = sub;
+                                    var newScreen = buildDirScreen(sub, ent.name);
+                                    slideForward(newScreen);
+                                });
+
+                                /* Drop target: move file into this subfolder */
+                                li.addEventListener("dragover", function (e) {
+                                    e.preventDefault();
+                                    e.dataTransfer.dropEffect = "move";
+                                    li.classList.add("passiflora_fb_dragover");
+                                });
+                                li.addEventListener("dragleave", function () {
+                                    li.classList.remove("passiflora_fb_dragover");
+                                });
+                                li.addEventListener("drop", function (e) {
+                                    e.preventDefault();
+                                    li.classList.remove("passiflora_fb_dragover");
+                                    var fileName = e.dataTransfer.getData("text/plain");
+                                    if (!fileName) return;
+                                    var targetDir = PassifloraIO._joinPath(dirPath, ent.name);
+                                    moveFile(fileName, dirPath, targetDir, refreshDir);
+                                });
+
+                                PassifloraIO._attachLongPressRename(
+                                    nameSpan, ent.name, true,
+                                    "\uD83D\uDCC1 ", dirPath, refreshDir);
+                                ul.appendChild(li);
+                            })(dirs[di]);
+                        }
+
+                        for (var fi = 0; fi < files.length; fi++) {
+                            (function (ent) {
+                                var li = document.createElement("li");
+                                var matches = PassifloraIO._fileMatchesExt(
+                                    ent.name, filterAll, extsLower);
+                                li.className = "passiflora_fo_item passiflora_fo_file" +
+                                    (matches ? " passiflora_fo_match" : " passiflora_fo_dim");
+
+                                /* Make file items draggable */
+                                li.draggable = true;
+                                li.addEventListener("dragstart", function (e) {
+                                    e.dataTransfer.setData("text/plain", ent.name);
+                                    e.dataTransfer.effectAllowed = "move";
+                                    li.classList.add("passiflora_fb_dragging");
+                                });
+                                li.addEventListener("dragend", function () {
+                                    li.classList.remove("passiflora_fb_dragging");
+                                });
+
+                                var nameSpan = document.createElement("span");
+                                nameSpan.textContent = ent.name;
+                                li.appendChild(nameSpan);
+
+                                /* Click just highlights — no callback, no close */
+                                li.addEventListener("click", function () {
+                                    highlightItem(li);
+                                });
+
+                                PassifloraIO._attachLongPressRename(
+                                    nameSpan, ent.name, false,
+                                    "", dirPath, refreshDir);
+                                ul.appendChild(li);
+                            })(files[fi]);
+                        }
+
+                        listWrap.appendChild(ul);
+                    }
+
+                    /* Track the current directory when this screen becomes visible */
+                    screen.addEventListener("transitionend", function () {
+                        var r = screen.getBoundingClientRect();
+                        if (r.left >= 0 && r.left < 5) currentDir = dirPath;
+                    });
+
+                    PassifloraIO.listDirectory(dirPath).then(function (list) {
+                        currentDir = dirPath;
+                        entries = list;
+                        populateList();
+                    }).catch(function () {
+                        listWrap.innerHTML = "";
+                        var err = document.createElement("div");
+                        err.className = "passiflora_fo_loading";
+                        err.textContent = "Cannot read directory.";
+                        listWrap.appendChild(err);
+                    });
+
+                    return screen;
+                }
+
+                /* -- init DOM via shared helper -- */
+                var dom = PassifloraIO._initFileDialogDOM(finish);
+                overlay = dom.overlay;
+                wrapper = dom.wrapper;
+                var teardown = dom.teardown;
+
+                var track = document.createElement("div");
+                track.className = "passiflora_fo_track";
+                wrapper.appendChild(track);
+                document.body.appendChild(wrapper);
+
+                /* Build and show the root screen */
+                var rootScreen = buildDirScreen(startDir, null);
+                rootScreen.style.transform = "translateX(0)";
+                track.appendChild(rootScreen);
+                screens.push(rootScreen);
+                initialDepth = 0;
+
+                /* Trigger transitions */
+                wrapper.offsetWidth; /* reflow */
+                overlay.classList.add("active");
+                wrapper.classList.add("active");
+                document.addEventListener("keydown", dom.onKey);
+            });
+        });
+    },
+
+    /* ================================================================ */
     /*  VFS Export / Import / File Transfer                             */
     /*  Overridden by the VFS+IndexedDB IIFE below.                    */
     /* ================================================================ */

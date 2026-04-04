@@ -114,9 +114,9 @@ The current working directory starts at `"/"` on all platforms. Use `chdir()` an
 * There is no hard limit on the number of simultaneously open files.
 * The `beforeunload` handler automatically flushes and closes all open file handles.
 
-## File Open and Save As Menus
+## File Open, Save As, and File Browser
 
-Passiflora provides two built-in sliding-panel file dialogs: **`menuOpen`** for opening files and **`menuSaveAs`** for Save As. These are methods on the `PassifloraIO` object. The dialogs appear as sliding panels that let the user browse the virtual file system (VFS). To bring files in from the real filesystem or save files out, use **`importFile`** and **`exportFile`** (see [Importing and Exporting Files](#importing-and-exporting-files) below).
+Passiflora provides three built-in sliding-panel file dialogs: **`menuOpen`** for opening files, **`menuSaveAs`** for Save As, and **`fileBrowser`** for browsing and managing files. These are methods on the `PassifloraIO` object. The dialogs appear as sliding panels that let the user browse the virtual file system (VFS). To bring files in from the real filesystem or save files out, use **`importFile`** and **`exportFile`** (see [Importing and Exporting Files](#importing-and-exporting-files) below).
 
 ### `menuOpen(extensions, defaultFolder)`
 
@@ -177,9 +177,34 @@ if (path) {
 - **Extension mismatch warning:** If the entered filename doesn't match any of the specified extensions, a confirmation dialog warns the user. Both warnings can chain (extension mismatch first, then overwrite).
 - A **Create Folder** button and **long-press rename** are available, working the same as in `menuOpen` (see above).
 
+### `fileBrowser(extensions, defaultFolder)`
+
+Opens a sliding file-browser panel for browsing and managing files in the VFS. Unlike `menuOpen` and `menuSaveAs`, clicking a file only highlights it — it does not trigger a callback or close the dialog.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `extensions` | `string[]` | File extensions to filter by (e.g. `['.txt', '.md']`). Pass `[]` or `null` for all files. |
+| `defaultFolder` | `string` | Starting directory. If empty/null, uses the remembered directory from the last invocation, or the home folder on first use. |
+
+Returns a Promise that resolves to `null` when the user closes the browser.
+
+```javascript
+await PassifloraIO.fileBrowser(['.txt', '.md'], '');
+// The user has finished browsing.
+```
+
+**UI features:**
+
+- The layout and theme match `menuOpen` and `menuSaveAs` — same sliding panels, extension filter dropdown, 📁+ Create Folder button, and long-press rename.
+- **Remembers the current directory** between invocations. Re-opening the file browser returns to wherever the user last navigated.
+- **Click to highlight:** Clicking a file highlights it (accent-color outline) but does not close the dialog or fire any callback.
+- **Drag and drop:** Files are draggable. Drag a file onto a subfolder row to move it into that folder. Drag a file onto the "📁 .." row to move it to the parent directory.
+- **Done button:** A "Done" button in the filter bar closes the browser.
+- **Escape or navigate past root:** Pressing Escape, tapping the overlay, or sliding back past the initial directory all close the browser.
+
 ### Styling
 
-Both dialogs are styled via `src/www/passiflora/theme.css` using the `passiflora_fo_*` CSS class prefix. The confirm dialogs use `passiflora_fo_confirm_*` classes. The dialogs respect iOS safe-area insets (`env(safe-area-inset-top)`).
+All three dialogs are styled via `src/www/passiflora/theme.css` using the `passiflora_fo_*` CSS class prefix. The file browser adds `passiflora_fb_*` classes for selection highlighting (`passiflora_fb_selected`), drag-over feedback (`passiflora_fb_dragover`), and drag-in-progress opacity (`passiflora_fb_dragging`). The confirm dialogs use `passiflora_fo_confirm_*` classes. The dialogs respect iOS safe-area insets (`env(safe-area-inset-top)`).
 
 ## Virtual File System + IndexedDB
 
