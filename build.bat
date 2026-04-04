@@ -40,8 +40,10 @@ if exist "%SCRIPT_DIR%\src\config" (
         if /I "%%A"=="usecamera"            if /I "%%B"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_CAMERA
         if /I "%%A"=="usemicrophone"        if /I "%%B"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_MICROPHONE
         if /I "%%A"=="allowremotedebugging" if /I "%%B"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_REMOTEDEBUGGING
+        if /I "%%A"=="theme" set THEME=%%B
     )
 )
+if "%THEME%"=="" set THEME=default
 
 set WV2_NUGET_VER=1.0.2903.40
 set WV2_NUGET_URL=https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/%WV2_NUGET_VER%
@@ -101,10 +103,13 @@ REM ================================================================
 mkdir src\www\generated 2>nul
 mkdir src\C\generated 2>nul
 echo [android] Generating config.js from src\android\menus\menu.txt...
-call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\android\menus\menu.txt %PROGNAME% Android src\www\generated\config.js
+call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\android\menus\menu.txt %PROGNAME% Android src\www\generated\config.js %THEME% src\config
 if errorlevel 1 exit /b 1
 echo [android] Generating vfspreload.js...
 call "%SCRIPT_DIR%\winscripts\mkvfspreload.bat" src\vfs src\www\generated\vfspreload.js
+if errorlevel 1 exit /b 1
+echo [android] Generating panels.js...
+call "%SCRIPT_DIR%\winscripts\mkpanels.bat" src\www\passiflora\panels src\www\generated\panels.js
 if errorlevel 1 exit /b 1
 echo [android] Generating zipdata.h...
 call "%SCRIPT_DIR%\winscripts\mkzipfile.bat" %CONTENT% src\C\generated\zipdata.h
@@ -205,7 +210,7 @@ set WWW_BINDIR=%SCRIPT_DIR%\bin\WWW
 mkdir src\www\generated 2>nul
 
 echo [www] Generating config.js from src\www\menus\menu.txt...
-call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\www\menus\menu.txt %PROGNAME% WWW src\www\generated\config.js
+call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\www\menus\menu.txt %PROGNAME% WWW src\www\generated\config.js %THEME% src\config
 if errorlevel 1 (
     echo [ERROR] mkmenu_json.bat failed >&2
     exit /b 1
@@ -215,6 +220,13 @@ echo [www] Generating vfspreload.js...
 call "%SCRIPT_DIR%\winscripts\mkvfspreload.bat" src\vfs src\www\generated\vfspreload.js
 if errorlevel 1 (
     echo [ERROR] mkvfspreload.bat failed >&2
+    exit /b 1
+)
+
+echo [www] Generating panels.js...
+call "%SCRIPT_DIR%\winscripts\mkpanels.bat" src\www\passiflora\panels src\www\generated\panels.js
+if errorlevel 1 (
+    echo [ERROR] mkpanels.bat failed >&2
     exit /b 1
 )
 
@@ -254,7 +266,7 @@ mkdir src\C\generated 2>nul
 
 REM ── Step 1: Generate config.js for Windows (before zip!) ──
 echo [windows] Generating config.js from src\Windows\menus\menu.txt...
-call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\Windows\menus\menu.txt %PROGNAME% Windows src\www\generated\config.js
+call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\Windows\menus\menu.txt %PROGNAME% Windows src\www\generated\config.js %THEME% src\config
 if errorlevel 1 (
     echo [ERROR] mkmenu_json.bat failed >&2
     exit /b 1
@@ -265,6 +277,13 @@ echo [windows] Generating vfspreload.js...
 call "%SCRIPT_DIR%\winscripts\mkvfspreload.bat" src\vfs src\www\generated\vfspreload.js
 if errorlevel 1 (
     echo [ERROR] mkvfspreload.bat failed >&2
+    exit /b 1
+)
+
+echo [windows] Generating panels.js...
+call "%SCRIPT_DIR%\winscripts\mkpanels.bat" src\www\passiflora\panels src\www\generated\panels.js
+if errorlevel 1 (
+    echo [ERROR] mkpanels.bat failed >&2
     exit /b 1
 )
 

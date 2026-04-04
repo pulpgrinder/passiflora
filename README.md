@@ -80,16 +80,13 @@ make
 | `make macos` | Build macOS binary and app bundle (macOS only) |
 | `make windows` | Cross-compile Windows exe (from macOS or Linux) |
 | `make linux` | Build Linux binary (Linux only) |
-| `make ios` | Cross-compile iOS binary (macOS only) |
-| `make iossim` | Build, install, launch in iOS Simulator (macOS only) |
-| `make iosipa` | Build, sign, and package iOS .ipa (macOS only) |
+| `make sim-ios` | Build, install, launch in iOS Simulator (macOS only) |
+| `make sign-ios` | Build, sign, and package iOS .ipa (macOS only) |
 | `make android` | Build Android APK |
 | `make icons` | Generate icon sets for all platforms |
 | `make clean` | Remove all build artifacts |
 | `make www` | Build plain-browser version into `bin/WWW/` -- useful for debugging using browser tools |
 | `make sign-macos` | Interactively sign the macOS app bundle |
-| `make sign-ios` | Interactively sign the iOS app bundle |
-| `make sign-iossim` | Interactively sign the iOS Simulator app bundle |
 | `make sign-android` | Sign the Android APK with a local keystore (macOS and Linux)|
 | `.\build` or `.\build windows` | Build Windows exe (Windows) |
 | `.\build android` | Build Android APK (Windows) |
@@ -119,6 +116,10 @@ The file `src/config` controls permissions, orientation, and other app-level set
 | `usemicrophone` | `true`, `false` | `false` | Enables microphone access (audio recording, video with audio). On iOS / macOS this adds `NSMicrophoneUsageDescription`. On Android it adds `RECORD_AUDIO` to the manifest. |
 | `allowremotedebugging` | `true`, `false` | `false` | When `true`, the embedded HTTP server listens on all network interfaces (`0.0.0.0`), allowing remote debugging connections from other devices on the same network. When `false` (default for production), the server binds to `127.0.0.1` (localhost only) and remote debugging is not possible. |
 | `orientation` | `portrait`, `landscape`, `both` | `both` | Controls whether the app is locked to portrait or landscape orientation, or rotates freely. On iOS this sets `UISupportedInterfaceOrientations` in the Info.plist. On Android it sets `android:screenOrientation` on the main activity. Desktop platforms ignore this setting. |
+| `theme` | theme name | `Default` | The color theme applied on startup. Must match a key in `PassifloraThemes.themeData`. See [MENUS-AND-THEMES.md](MENUS-AND-THEMES.md) for the full list of built-in themes. |
+| `body-font-stack` | font stack name | `System UI` | Default font stack for body text. Must match a key in `PassifloraThemes.baseFontStackOptions`. See [MENUS-AND-THEMES.md](MENUS-AND-THEMES.md#font-stacks). |
+| `heading-font-stack` | font stack name | `System UI` | Default font stack for headings. Same values as `body-font-stack`. |
+| `code-font-stack` | font stack name | `Monospace Code` | Default font stack for code blocks. Same values as `body-font-stack`. |
 
 ### Icons
 
@@ -138,127 +139,9 @@ to generate a new icon set.
 
 Note that these may need some manual tweaking for legibility, particularly at the smaller sizes, but it's still a substantial time savings over generating them all individually. Icons are *not* regenerated automatically during a normal build (not even after `make clean`). This is so any hand-tuned versions you've created won't be overwritten. If you *do* want to wipe out all existing icons and start over, run `make icons` or `.\build icons` again.
 
-### Menus
+### Menus, Themes, and Font Stacks
 
-Underneath `src`, each platform has a folder which contains a `menu.txt` file. These are used to generate menus on two levels:
-
-1. **Native menu bar** — on platforms that have one (macOS, Windows, Linux), the entries produce a real OS menu bar.
-2. **JavaScript sliding menu** — on all platforms, non-native entries are available in `PassifloraConfig.menus` and in the (optional) built-in sliding menu UI (see [Sliding Menu](#sliding-menu) below).
-
-#### menu.txt format
-
-Menu hierarchy is expressed with simple four-space indentation. Submenus can be nested to any depth. Blank lines and separators (`-`) are supported.
-
-```
-{{progname}}
-    *About
-    -
-    *Quit
-File
-    Open
-Misc
-    More stuff
-    Still more stuff
-        Stuff at an even lower level
-```
-
-`{{progname}}` is replaced with the program name at build time.
-
-#### Native vs. JavaScript routing (`*` prefix)
-
-Each leaf menu item is either **native** or **JavaScript**, controlled by an optional `*` prefix:
-
-| Prefix | Behavior |
-|--------|----------|
-| `*Quit` | Handled by the **native** platform. The `*` is stripped from the display title. If the platform recognises the item (e.g. "Quit" on macOS maps to `⌘Q`), the native action runs. If not, a dialog says "No native handler for this item on this platform." The item is **never** passed to JavaScript and does **not** appear in `PassifloraConfig.menus` or the sliding menu. |
-| `Quit` | Always passed to **JavaScript** via `PassifloraConfig.handleMenu("Quit")`. The native platform does not intercept it, and it **does** appear in `PassifloraConfig.menus` and the sliding menu. |
-
-Matching is **exact** — `*Quit` matches the native "Quit" handler, but `*Quite` does not (it will show the "no native handler" dialog).
-
-Top-level menu names (e.g. `File`, `{{progname}}`) and separators (`-`) are not affected by the `*` prefix.
-
-#### Recognised native items by platform
-
-**macOS** — the following items have built-in native handlers when prefixed with `*`:
-
-| Item | Action | Shortcut |
-|------|--------|----------|
-| About | Standard About panel | — |
-| Hide | Hide application | ⌘H |
-| Hide Others | Hide other applications | ⌥⌘H |
-| Show All | Unhide all applications | — |
-| Quit | Terminate | ⌘Q |
-| Undo | Undo | ⌘Z |
-| Redo | Redo | ⇧⌘Z |
-| Cut | Cut | ⌘X |
-| Copy | Copy | ⌘C |
-| Paste | Paste | ⌘V |
-| Select All | Select all | ⌘A |
-| Close | Close window | ⌘W |
-| Minimize | Minimize window | ⌘M |
-| Zoom | Zoom window | — |
-| Bring All to Front | Arrange in front | — |
-
-**Windows** — `*Quit` and `*Exit` close the window. All other `*`-prefixed items show a "no native handler" dialog (more will be added later)
-
-**Linux** — `*Quit` and `*Exit` quit the application (`gtk_main_quit`). All other `*`-prefixed items show a "no native handler" dialog (more will be added later).
-
-**iOS / Android** — these platforms have no native menu bar. A `*` prefix still causes items to be excluded from `PassifloraConfig.menus` and the sliding menu.
-
-#### JavaScript menu handler
-
-For items without the `*` prefix, choosing them from the native menu bar calls `PassifloraConfig.handleMenu(title)` in your JavaScript. The default handler just pops an alert. Override it in your `app.js`:
-
-```javascript
-PassifloraConfig.handleMenu = function(title) {
-    // your code here
-};
-```
-
-### Sliding Menu (optional)
-
-Passiflora includes a built-in basic sliding menu for platforms that don't have a native menu bar (iOS, Android), or for web-style navigation on any platform. **This is entirely optional** — you can use it as-is, customise it, or remove it and replace it with your own menu package.
-
-The menu is built automatically from `PassifloraConfig.menus` at page load. It slides in from the right edge of the screen, supports arbitrarily nested submenus, and calls `PassifloraConfig.handleMenu(title)` when a leaf item is tapped.
-
-**Triggering the menu:** The hamburger button (≡) is hidden by default to keep the UI clean. To reveal it, **long-press** (hold for 500 ms) on any non-interactive area of the page. The button appears in the top-right  corner and stays visible for 3 seconds before fading out again. You can make the hamburger menu appear somewhere else by changing the `.hamburgermenu` class in `src/www/menu.css`
-
-**Closing the menu:**
-
-You can close the sliding menu without choosing an item in three ways:
-
-* Tap/click outside the menu panels
-* Press **Escape**
-* Navigate back through all levels
- 
-
-**Files:**
-
-* `src/www/passiflora/buildmenu.js` — menu logic (the `PassifloraMenu` IIFE)
-* `src/www/passiflora/menu.css` — menu styling. You can customize colours, sizes, transitions, etc. by editing this file.
-
-Items prefixed with `*` in `menu.txt` are excluded from the sliding menu entirely — they only exist in the native menu bar (if there is one).
-
-#### Removing the sliding menu
-
-If you'd rather use your own menu UI (or no menu UI at all), remove these three things from `src/www/index.html`:
-
-1. The CSS link in `<head>`:
-   ```html
-   <link rel="stylesheet" href="passiflora/menu.css">
-   ```
-2. The hamburger element in `<body>`:
-   ```html
-   <div class="hamburgermenu">≡</div>
-   ```
-3. The script tag:
-   ```html
-   <script src="passiflora/buildmenu.js"></script>
-   ```
-
-You can also delete `src/www/passiflora/buildmenu.js` and `src/www/passiflora/menu.css` if you like, but leaving them in place is harmless — they won't do anything without the above references.
-
-The `PassifloraConfig.menus` array and `PassifloraConfig.handleMenu` callback are still available regardless. You can use them to build your own menu and handle selections however you wish, or ignore them entirely.
+Passiflora includes a menu system (native menu bar + sliding menu + panel screens), 122 built-in color themes, and a curated set of font stacks. Full documentation is in **[MENUS-AND-THEMES.md](MENUS-AND-THEMES.md)**.
 
 ## PassifloraConfig
 
@@ -266,13 +149,19 @@ Each build generates `src/www/generated/config.js`, which defines a `PassifloraC
 
 ```javascript
 var PassifloraConfig = {
-  os_name: "iOS",     // or "macOS", "Windows", "Linux", "Android","WWW"...
-  menus: [ ... ],     // menu structure from menu.txt (excludes *-prefixed items)
-  handleMenu: function(title) { alert("Menu item clicked: " + title); } // Default, just pops an alert with the menu item text.
+  os_name: "iOS",          // or "macOS", "Windows", "Linux", "Android", "WWW"
+  theme: "Graustark",      // default theme from src/config
+  "body-font-stack": "System UI",     // default body font stack name
+  "heading-font-stack": "Antique",    // default heading font stack name
+  "code-font-stack": "Monospace Code", // default code font stack name
+  menus: [ ... ],          // menu structure from menu.txt (excludes *-prefixed items)
+  handleMenu: function(title) { alert("Menu item clicked: " + title); }
 };
 ```
 
 - **`PassifloraConfig.os_name`** — the target platform, useful when your JavaScript needs to do different things on different platforms.
+- **`PassifloraConfig.theme`** — the default theme name from `src/config`. Applied on startup; may be overridden by VFS-persisted choice.
+- **`PassifloraConfig["body-font-stack"]`**, **`PassifloraConfig["heading-font-stack"]`**, **`PassifloraConfig["code-font-stack"]`** — default font stack names from `src/config`. Must match keys in `PassifloraThemes.baseFontStackOptions`.
 - **`PassifloraConfig.menus`** — the menu structure as a nested JSON array, useful for building custom menus. Items prefixed with `*` in `menu.txt` are excluded — they are native-only and never reach JavaScript.
 - **`PassifloraConfig.handleMenu`** — called by both the native menu bar and the built-in sliding menu when a (non-native) menu item is selected. Override this in your `app.js` to handle menu actions.
 
@@ -457,7 +346,7 @@ if (path) {
 
 ### Styling
 
-Both dialogs are styled via `src/www/passiflora/menu.css` using the `passiflora_fo_*` CSS class prefix. The confirm dialogs use `passiflora_fo_confirm_*` classes. The dialogs respect iOS safe-area insets (`env(safe-area-inset-top)`).
+Both dialogs are styled via `src/www/passiflora/theme.css` using the `passiflora_fo_*` CSS class prefix. The confirm dialogs use `passiflora_fo_confirm_*` classes. The dialogs respect iOS safe-area insets (`env(safe-area-inset-top)`).
 
 ## Virtual File System + IndexedDB
 

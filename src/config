@@ -3,3 +3,7 @@ usecamera true
 usemicrophone true
 allowremotedebugging true
 orientation both
+theme Graustark
+body-font-stack System UI
+heading-font-stack Antique
+code-font-stack Monospace Code

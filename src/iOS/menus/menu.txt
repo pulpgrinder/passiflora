@@ -1,5 +1,6 @@
 {{progname}}
     About
+    Settings
     *Quit
 File
     Open

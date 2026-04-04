@@ -69,7 +69,7 @@ Pick your bundle identifier early — changing it later means the OS treats it a
 
 ## Cross-Compiling for iOS
 
-Builds a `.app` bundle for physical iPhones and iPads.
+Builds a signed `.ipa` for physical iPhones and iPads.
 
 ### Additional Prerequisites
 
@@ -86,10 +86,18 @@ xcrun --sdk iphoneos --show-sdk-path
 ### Build
 
 ```
-make ios
+make sign-ios
 ```
 
-Produces `bin/iOS/<progname>.app`.
+This compiles the iOS binary, creates the `.app` bundle, then walks you through signing and IPA packaging (see [Code Signing for iOS](#code-signing-for-ios) below).
+
+To skip the provisioning-profile prompt, set the environment variable:
+
+```
+IOS_PROVISIONING_PROFILE=/path/to/MyApp.mobileprovision make sign-ios
+```
+
+Produces `bin/iOS/<progname>.ipa`.
 
 ---
 
@@ -110,7 +118,7 @@ xcodebuild -downloadPlatform iOS
 ### Build
 
 ```
-make iossim
+make sim-ios
 ```
 
 This builds the binary, creates the `.app` bundle, boots a Simulator (if needed), installs the app, and launches it.
@@ -280,28 +288,14 @@ iOS apps must be signed and include an **embedded provisioning profile** to run 
 
   The profile must match your bundle identifier, certificate, and (for development) your registered device UDIDs.
 
-#### Interactive signing (`.app` bundle only)
-
-```
-make sign-ios
-```
-
-Same interactive flow as macOS signing. Suitable for on-device testing via Xcode or Apple Configurator.
-
 #### Building a release-ready `.ipa`
 
-An IPA is the format required for App Store submission, TestFlight, OTA distribution, and Apple Configurator.
-
-```
-make iosipa
-```
-
-This will:
+The `make sign-ios` target (described above) performs the full build-sign-package workflow:
 
 1. Build the iOS binary and `.app` bundle.
 2. Prompt for a provisioning profile (`.mobileprovision`) — or set the `IOS_PROVISIONING_PROFILE` environment variable to skip the prompt:
    ```
-   IOS_PROVISIONING_PROFILE=/path/to/MyApp.mobileprovision make iosipa
+   IOS_PROVISIONING_PROFILE=/path/to/MyApp.mobileprovision make sign-ios
    ```
 3. Embed the profile in the app bundle.
 4. Extract entitlements from the profile automatically.
@@ -343,14 +337,6 @@ xcrun altool --upload-app -f bin/iOS/HeckinChonker.ipa -t ios -u your@apple.id -
 Testers will receive the build through the TestFlight app.
 
 > **Note:** The device's UDID must be registered in the provisioning profile for ad-hoc and development builds. App Store and enterprise profiles do not have this restriction.
-
-#### iOS Simulator signing
-
-```
-make sign-iossim
-```
-
-Usually ad-hoc signing is sufficient for Simulator use.
 
 ---
 

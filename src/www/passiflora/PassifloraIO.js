@@ -321,7 +321,7 @@ PassifloraIO = {
             '<label style="display:block;margin:12px 0 4px;font-weight:bold;font-size:14px">' +
             'Debugger URL (open in a browser on your computer):</label>' +
             '<input id="_pf_dbg_url" type="text" readonly value="http://' + url + '" ' +
-            'style="width:calc(100% - 64px);box-sizing:border-box;padding:6px 8px;font:14px monospace;' +
+            'style="width:calc(100% - 64px);box-sizing:border-box;padding:6px 8px;font-size:16px;font-family:monospace;' +
             'border:1px solid #ccc;border-radius:4px 0 0 4px;background:#f8f8f8;cursor:text;' +
             'vertical-align:middle" onclick="this.select()">' +
             '<button id="_pf_dbg_copy" style="width:60px;padding:6px 0;font-size:13px;' +
@@ -330,7 +330,7 @@ PassifloraIO = {
             '<label style="display:block;margin:12px 0 4px;font-weight:bold;font-size:14px">' +
             'Passphrase:</label>' +
             '<input id="_pf_dbg_key" type="password" placeholder="Enter a passphrase" ' +
-            'style="width:100%;box-sizing:border-box;padding:6px 8px;font:14px monospace;' +
+            'style="width:100%;box-sizing:border-box;padding:6px 8px;font-size:16px;font-family:monospace;' +
             'border:1px solid #ccc;border-radius:4px">' +
             '<div style="text-align:right;margin-top:16px">' +
             '<button id="_pf_dbg_ok" style="padding:8px 16px;font-size:14px;' +
@@ -359,7 +359,9 @@ PassifloraIO = {
             const val = keyInput.value.trim();
             if (!val) { keyInput.focus(); return; }
             PassifloraIO._debugKey = val;
+            keyInput.blur();
             document.body.removeChild(overlay);
+            window.scrollTo(0, 0);
         };
         keyInput.addEventListener('keydown', function (e) {
             if (e.key === 'Enter') document.getElementById('_pf_dbg_ok').click();
@@ -2126,7 +2128,7 @@ function rmdir(path)               { return PassifloraIO.rmdir(path); }
 function chdir(path)               { return PassifloraIO.chdir(path); }
 function getcwd()                  { return PassifloraIO.getcwd(); }
 
-/* Auto-patch remote links once the DOM is ready */
+/* Auto-patch remote links and load theme once the DOM is ready */
 document.addEventListener("DOMContentLoaded", function () {
     PassifloraIO.patchLinks();
 });

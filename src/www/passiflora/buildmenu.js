@@ -61,9 +61,13 @@ const PassifloraMenu = (function () {
                     });
                 } else {
                     li.addEventListener("click", function () {
-                        deactivate();
-                        if (PassifloraConfig && typeof PassifloraConfig.handleMenu === "function") {
-                            PassifloraConfig.handleMenu(item.title);
+                        if (showPanel(item.title)) {
+                            deactivateInstant();
+                        } else {
+                            deactivate();
+                            if (PassifloraConfig && typeof PassifloraConfig.handleMenu === "function") {
+                                PassifloraConfig.handleMenu(item.title);
+                            }
                         }
                     });
                 }
@@ -173,82 +177,115 @@ const PassifloraMenu = (function () {
         document.removeEventListener("keydown", onKeyDown);
     }
 
+    /* Hide menu instantly (no transition) — used when handing off to a panel */
+    function deactivateInstant() {
+        document.removeEventListener("keydown", onKeyDown);
+        if (wrapper) {
+            wrapper.style.transition = "none";
+            wrapper.classList.remove("active");
+            wrapper.offsetWidth; // jshint ignore:line
+            wrapper.style.transition = "";
+        }
+        if (overlay) {
+            overlay.style.transition = "none";
+            overlay.classList.remove("active");
+            overlay.offsetWidth; // jshint ignore:line
+            overlay.style.transition = "";
+        }
+    }
+
     function onKeyDown(e) {
         if (e.key === "Escape" || e.keyCode === 27) {
             deactivate();
         }
     }
 
-    /* ── Long-press to reveal hamburger ────────────────────── */
-    const LONG_PRESS_MS = 500;   // hold duration to trigger
-    const VISIBLE_MS   = 3000;   // how long hamburger stays visible
-    let pressTimer   = null;
-    let hideTimer    = null;
-    let hamburgers   = [];
-
-    const INTERACTIVE = "A,BUTTON,INPUT,SELECT,TEXTAREA,LABEL";
-    function isInteractive(el) {
-        while (el && el !== document.body) {
-            if (el.matches && el.matches(INTERACTIVE)) return true;
-            if (el.getAttribute && el.getAttribute("onclick")) return true;
-            if (el.classList && el.classList.contains("hamburgermenu")) return true;
-            el = el.parentNode;
-        }
-        return false;
-    }
-
-    function showHamburgers() {
-        if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
-        for (let i = 0; i < hamburgers.length; i++)
-            hamburgers[i].classList.add("visible");
-        hideTimer = setTimeout(hideHamburgers, VISIBLE_MS);
-    }
-
-    function hideHamburgers() {
-        for (let i = 0; i < hamburgers.length; i++)
-            hamburgers[i].classList.remove("visible");
-        hideTimer = null;
-    }
-
-    function cancelPress() {
-        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
-    }
-
-    function onPressStart(e) {
-        const target = e.target || e.srcElement;
-        if (isInteractive(target)) return;
-        cancelPress();
-        pressTimer = setTimeout(showHamburgers, LONG_PRESS_MS);
-    }
-
-    function onPressEnd() {
-        cancelPress();
-    }
-
-    /* Wire up hamburger click + long-press listeners */
+    /* Wire up hamburger click listener */
     document.addEventListener("DOMContentLoaded", function () {
-        hamburgers = [].slice.call(
+        var hamburgers = [].slice.call(
             document.querySelectorAll(".hamburgermenu"));
         for (let i = 0; i < hamburgers.length; i++) {
             hamburgers[i].addEventListener("click", function () {
-                hideHamburgers();
                 activate();
             });
         }
-
-        /* Mouse long-press */
-        document.addEventListener("mousedown",  onPressStart);
-        document.addEventListener("mouseup",    onPressEnd);
-        document.addEventListener("mouseleave", onPressEnd);
-
-        /* Touch long-press */
-        document.addEventListener("touchstart", onPressStart, {passive: true});
-        document.addEventListener("touchend",   onPressEnd);
-        document.addEventListener("touchcancel", onPressEnd);
     });
+
+    /* ── Panel screens (menu-item → sliding full-screen panel) ─── */
+    let panelOverlay = null;
+    let panelWrapper = null;
+    let panelBody = null;
+    let activePanelSrc = null;
+
+    function showPanel(id) {
+        var src = document.getElementById(id);
+        if (!src || !src.classList.contains("passiflora_menu_screen")) return false;
+
+        if (!panelOverlay) {
+            panelOverlay = document.createElement("div");
+            panelOverlay.className = "passiflora_panel_overlay";
+            panelOverlay.addEventListener("click", hidePanel);
+            document.body.appendChild(panelOverlay);
+        }
+
+        if (!panelWrapper) {
+            panelWrapper = document.createElement("div");
+            panelWrapper.className = "passiflora_panel_wrapper";
+
+            var back = document.createElement("div");
+            back.className = "passiflora_menu_back";
+            back.addEventListener("click", hidePanel);
+            panelWrapper.appendChild(back);
+
+            panelBody = document.createElement("div");
+            panelBody.className = "passiflora_panel_body";
+            panelWrapper.appendChild(panelBody);
+
+            document.body.appendChild(panelWrapper);
+        }
+
+        /* Move live DOM nodes from the hidden source div into the panel
+         * so that event listeners and populated content are preserved,
+         * and duplicate element IDs are avoided. */
+        panelWrapper.querySelector(".passiflora_menu_back").textContent = id;
+        while (src.firstChild) {
+            panelBody.appendChild(src.firstChild);
+        }
+        activePanelSrc = src;
+
+        /* Force reflow then slide in */
+        panelWrapper.offsetWidth; // jshint ignore:line
+        panelOverlay.classList.add("active");
+        panelWrapper.classList.add("active");
+
+        document.addEventListener("keydown", onPanelKeyDown);
+        return true;
+    }
+
+    function hidePanel() {
+        if (panelOverlay) panelOverlay.classList.remove("active");
+        if (panelWrapper) panelWrapper.classList.remove("active");
+
+        /* Move nodes back to the hidden source div */
+        if (activePanelSrc && panelBody) {
+            while (panelBody.firstChild) {
+                activePanelSrc.appendChild(panelBody.firstChild);
+            }
+        }
+        activePanelSrc = null;
+        document.removeEventListener("keydown", onPanelKeyDown);
+    }
+
+    function onPanelKeyDown(e) {
+        if (e.key === "Escape" || e.keyCode === 27) {
+            hidePanel();
+        }
+    }
 
     return {
         activate: activate,
-        deactivate: deactivate
+        deactivate: deactivate,
+        showPanel: showPanel,
+        hidePanel: hidePanel
     };
 })();

@@ -55,7 +55,7 @@ The first time you run the Linux binary, it automatically installs its icon and 
 
 If you move the binary, the next launch updates the `Exec=` path automatically. No manual steps are needed.
 
-> **Note:** After the first run, the file manager (Nautilus/Files) may not display the custom icon until you navigate away from the directory and back. This is a Nautilus caching behaviour.
+> **Note:** After the first run, the file manager (Nautilus/Files) may not display the custom icon until you navigate away from the directory and back. This is a Nautilus caching behavior.
 
 ---
 

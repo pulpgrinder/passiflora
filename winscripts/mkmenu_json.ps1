@@ -4,8 +4,22 @@ param(
     [string]$template,
     [string]$progname,
     [string]$osName,
-    [string]$output
+    [string]$output,
+    [string]$theme = "Default",
+    [string]$configFile = "src\config"
 )
+
+# Read font stacks from config file
+$bodyFont = "System-UI"
+$headingFont = "System-UI"
+$codeFont = "Monospace Code"
+if (Test-Path $configFile) {
+    foreach ($cfgLine in (Get-Content $configFile -Encoding UTF8)) {
+        if ($cfgLine -match '^body-font-stack\s+(.+)$') { $bodyFont = $Matches[1].Trim() }
+        if ($cfgLine -match '^heading-font-stack\s+(.+)$') { $headingFont = $Matches[1].Trim() }
+        if ($cfgLine -match '^code-font-stack\s+(.+)$') { $codeFont = $Matches[1].Trim() }
+    }
+}
 
 $lines = Get-Content $template -Encoding UTF8
 
@@ -72,6 +86,10 @@ $header = "// Auto-generated file `u{2014} DO NOT EDIT. This file is overwritten
 $content = $header + "var PassifloraConfig = {`n"
 $content += "  progname: `"$progName`",`n"
 $content += "  os_name: `"$osName`",`n"
+$content += "  theme: `"$theme`",`n"
+$content += "  `"body-font-stack`": `"$bodyFont`",`n"
+$content += "  `"heading-font-stack`": `"$headingFont`",`n"
+$content += "  `"code-font-stack`": `"$codeFont`",`n"
 $content += "  menus: " + $json + ",`n"
 $content += "  handleMenu: function(title) { alert(`"Menu item clicked: `" + title); }`n"
 $content += "};`n"

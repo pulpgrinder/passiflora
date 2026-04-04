@@ -20,6 +20,21 @@ TEMPLATE="$1"
 PROGNAME="${2:-passiflora}"
 OS_NAME="${3:-unknown}"
 OUTPUT="${4:-src/www/generated/config.js}"
+THEME="${5:-Default}"
+CONFIGFILE="${6:-src/config}"
+
+# Read font stacks from config file (everything after the key)
+BODY_FONT_STACK="System UI"
+HEADING_FONT_STACK="System UI"
+CODE_FONT_STACK="Monospace Code"
+if [ -f "$CONFIGFILE" ]; then
+    _val=$(awk '/^body-font-stack / {sub(/^body-font-stack /, ""); print}' "$CONFIGFILE")
+    [ -n "$_val" ] && BODY_FONT_STACK="$_val"
+    _val=$(awk '/^heading-font-stack / {sub(/^heading-font-stack /, ""); print}' "$CONFIGFILE")
+    [ -n "$_val" ] && HEADING_FONT_STACK="$_val"
+    _val=$(awk '/^code-font-stack / {sub(/^code-font-stack /, ""); print}' "$CONFIGFILE")
+    [ -n "$_val" ] && CODE_FONT_STACK="$_val"
+fi
 
 if [ -z "$TEMPLATE" ] || [ ! -f "$TEMPLATE" ]; then
     echo "Usage: $0 <template> <progname> <os_name> [output]" >&2
@@ -30,7 +45,8 @@ fi
 # Ensure output directory exists
 mkdir -p "$(dirname "$OUTPUT")"
 
-awk -v progname="$PROGNAME" -v os_name="$OS_NAME" '
+awk -v progname="$PROGNAME" -v os_name="$OS_NAME" -v theme="$THEME" \
+    -v body_font="$BODY_FONT_STACK" -v heading_font="$HEADING_FONT_STACK" -v code_font="$CODE_FONT_STACK" '
 function pad(n,    s, k) { s = ""; for (k = 0; k < n; k++) s = s "  "; return s }
 {
     line = $0
@@ -78,6 +94,10 @@ END {
     printf "var PassifloraConfig = {\n"
     printf "  progname: \"%s\",\n", progname
     printf "  os_name: \"%s\",\n", os_name
+    printf "  theme: \"%s\",\n", theme
+    printf "  \"body-font-stack\": \"%s\",\n", body_font
+    printf "  \"heading-font-stack\": \"%s\",\n", heading_font
+    printf "  \"code-font-stack\": \"%s\",\n", code_font
     printf "  menus: ["
 
     # open_depth tracks how many "items": [ arrays are open.
@@ -137,4 +157,4 @@ END {
 }
 ' "$TEMPLATE" > "$OUTPUT"
 
-echo "mkmenu_json: $OUTPUT generated from $TEMPLATE (progname=$PROGNAME, os=$OS_NAME)"
+echo "mkmenu_json: $OUTPUT generated from $TEMPLATE (progname=$PROGNAME, os=$OS_NAME, theme=$THEME)"

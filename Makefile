@@ -4,11 +4,19 @@ CFLAGS  ?= -Wall -Wextra -O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2
 LDFLAGS ?= -lpthread
 CONTENT ?= src/www
 
+# All web content files (excluding build-generated ones) — used as
+# dependencies so that changes to HTML, CSS, or JS trigger a rebuild.
+WEB_SOURCES := $(shell find $(CONTENT) -type f -not -path '*/generated/*' 2>/dev/null)
+
 # ── Permissions (read from src/config) ──────────────────────────────
 PERM_LOCATION   := $(shell awk '/^uselocation /          {print $$2}' src/config 2>/dev/null)
 PERM_CAMERA     := $(shell awk '/^usecamera /            {print $$2}' src/config 2>/dev/null)
 PERM_MICROPHONE := $(shell awk '/^usemicrophone /        {print $$2}' src/config 2>/dev/null)
 PERM_REMOTEDEBUGGING := $(shell awk '/^allowremotedebugging / {print $$2}' src/config 2>/dev/null)
+THEME := $(shell awk '/^theme / {print $$2}' src/config 2>/dev/null)
+ifeq ($(THEME),)
+  THEME := Default
+endif
 PERM_DEFS := -DPROGNAME_STR=\"$(PROGNAME)\"
 ifeq ($(PERM_LOCATION),true)
   PERM_DEFS += -DPERM_LOCATION
@@ -123,9 +131,10 @@ else
 	@echo "macos target requires macOS." >&2
 endif
 
-$(GENDIR)/zipdata.h: $(CONTENT)
+$(GENDIR)/zipdata.h: $(WEB_SOURCES)
 	@mkdir -p $(GENDIR)
 	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
+	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 
 $(GENDIR)/menu.h: $(MENU_TEMPLATE) nixscripts/mkmenu.sh
@@ -136,10 +145,11 @@ $(GENDIR)/win_menu.h: src/Windows/menus/menu.txt nixscripts/mkmenu.sh
 	@mkdir -p $(GENDIR)
 	sh nixscripts/mkmenu.sh src/Windows/menus/menu.txt "$(PROGNAME)" "$(GENDIR)/win_menu.h"
 
-$(BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/menu.h
+$(BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/menu.h $(WEB_SOURCES)
 	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh "$(MENU_TEMPLATE)" "$(PROGNAME)" "$(OS_NAME)" "$(CONFIG_JS)"
+	sh nixscripts/mkmenu_json.sh "$(MENU_TEMPLATE)" "$(PROGNAME)" "$(OS_NAME)" "$(CONFIG_JS)" "$(THEME)" src/config
 	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
+	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
 	sh nixscripts/mkzipfile.sh "$(CONTENT)" "$(GENDIR)/zipdata.h"
 ifeq ($(UNAME_S),Linux)
 	@# Generate linux_icon.h with embedded icon (or stub if no icon available)
@@ -178,13 +188,12 @@ else
 endif
 
 # ── iOS (cross-compile from macOS) ──────────────────────────────────
-ios: $(IOS_BINARY) ios-bundle
-
-$(IOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/menu.h
+$(IOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/menu.h $(WEB_SOURCES)
 ifeq ($(UNAME_S),Darwin)
 	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt "$(PROGNAME)" iOS "$(CONFIG_JS)"
+	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt "$(PROGNAME)" iOS "$(CONFIG_JS)" "$(THEME)" src/config
 	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
+	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
 	sh nixscripts/mkzipfile.sh "$(CONTENT)" "$(GENDIR)/zipdata.h"
 	mkdir -p $(IOS_BINDIR)
 	$(IOS_CC) $(IOS_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(IOS_LDFLAGS)
@@ -192,46 +201,35 @@ else
 	@echo "iOS target requires macOS with Xcode." >&2; exit 1
 endif
 
-ios-bundle: $(IOS_BINARY)
-ifeq ($(UNAME_S),Darwin)
-	sh nixscripts/mkiosbundle.sh "$(PROGNAME)" "$(IOS_BINARY)" src/icons/builticons/ios/AppIcon-1024.png "$(BUNDLE_ID)" "$(VERSION)"
-endif
-
-sign-ios: ios-bundle
-ifeq ($(UNAME_S),Darwin)
-	sh nixscripts/signapp.sh ios $(IOS_APP_BUNDLE) $(BUNDLE_ID)
-else
-	@echo "sign-ios target requires macOS." >&2; exit 1
-endif
-
 # ── iOS IPA (signed, release-ready) ────────────────────────────────
 IOS_IPA = $(IOS_BINDIR)/$(PROGNAME).ipa
 
-iosipa: ios-bundle
+sign-ios: $(IOS_BINARY)
 ifeq ($(UNAME_S),Darwin)
+	sh nixscripts/mkiosbundle.sh "$(PROGNAME)" "$(IOS_BINARY)" src/icons/builticons/ios/AppIcon-1024.png "$(BUNDLE_ID)" "$(VERSION)"
 	@PROV="$(IOS_PROVISIONING_PROFILE)"; \
 	if [ -z "$$PROV" ]; then \
 		printf 'Provisioning profile (.mobileprovision): '; read PROV; \
 	fi; \
 	if [ -z "$$PROV" ] || [ ! -f "$$PROV" ]; then \
-		echo "iosipa: provisioning profile not found: $$PROV" >&2; \
+		echo "sign-ios: provisioning profile not found: $$PROV" >&2; \
 		echo "  Set IOS_PROVISIONING_PROFILE or provide the path when prompted." >&2; \
 		exit 1; \
 	fi; \
-	echo "iosipa: embedding provisioning profile..."; \
+	echo "sign-ios: embedding provisioning profile..."; \
 	cp "$$PROV" $(IOS_APP_BUNDLE)/embedded.mobileprovision; \
 	\
-	echo "iosipa: extracting entitlements from profile..."; \
-	ENT_FILE=$$(mktemp /tmp/iosipa-ent-XXXXXX); \
+	echo "sign-ios: extracting entitlements from profile..."; \
+	ENT_FILE=$$(mktemp /tmp/sign-ios-ent-XXXXXX); \
 	security cms -D -i "$$PROV" > "$$ENT_FILE.full"; \
 	if ! /usr/libexec/PlistBuddy -x -c "Print :Entitlements" "$$ENT_FILE.full" > "$$ENT_FILE"; then \
-		echo "iosipa: failed to extract entitlements from provisioning profile." >&2; \
+		echo "sign-ios: failed to extract entitlements from provisioning profile." >&2; \
 		cat "$$ENT_FILE.full" >&2; \
 		rm -f "$$ENT_FILE" "$$ENT_FILE.full"; \
 		exit 1; \
 	fi; \
 	rm -f "$$ENT_FILE.full"; \
-	echo "iosipa: entitlements:"; \
+	echo "sign-ios: entitlements:"; \
 	cat "$$ENT_FILE"; \
 	\
 	echo ""; \
@@ -261,13 +259,13 @@ ifeq ($(UNAME_S),Darwin)
 	echo ""; \
 	printf "Choose identity [1-$$N]: "; read CHOICE; \
 	if [ -z "$$CHOICE" ]; then \
-		echo "iosipa: no selection made, aborting." >&2; \
+		echo "sign-ios: no selection made, aborting." >&2; \
 		rm -f "$$ENT_FILE"; \
 		exit 1; \
 	fi; \
 	LINE=$$(echo "$$IDENTITIES" | sed -n "$${CHOICE}p"); \
 	if [ -z "$$LINE" ]; then \
-		echo "iosipa: invalid selection." >&2; \
+		echo "sign-ios: invalid selection." >&2; \
 		rm -f "$$ENT_FILE"; \
 		exit 1; \
 	fi; \
@@ -285,30 +283,29 @@ ifeq ($(UNAME_S),Darwin)
 	rm -f "$$ENT_FILE"; \
 	\
 	echo ""; \
-	echo "iosipa: $(IOS_APP_BUNDLE) signed."; \
+	echo "sign-ios: $(IOS_APP_BUNDLE) signed."; \
 	codesign -dvv $(IOS_APP_BUNDLE) 2>&1 | grep -E '^(Authority|TeamIdentifier|Signature)'; \
 	\
 	echo ""; \
-	echo "iosipa: packaging $(IOS_IPA)..."; \
+	echo "sign-ios: packaging $(IOS_IPA)..."; \
 	rm -rf $(IOS_BINDIR)/_ipa_staging; \
 	mkdir -p $(IOS_BINDIR)/_ipa_staging/Payload; \
 	cp -R $(IOS_APP_BUNDLE) $(IOS_BINDIR)/_ipa_staging/Payload/; \
 	ditto -c -k --sequesterRsrc --keepParent \
 		$(IOS_BINDIR)/_ipa_staging/Payload "$(CURDIR)/$(IOS_IPA)"; \
 	rm -rf $(IOS_BINDIR)/_ipa_staging; \
-	echo "iosipa: $(IOS_IPA) created."
+	echo "sign-ios: $(IOS_IPA) created."
 else
-	@echo "iosipa target requires macOS." >&2; exit 1
+	@echo "sign-ios target requires macOS." >&2; exit 1
 endif
 
 # ── iOS Simulator (build + install + launch) ───────────────────────
-iossim: $(SIMOS_BINARY) iossim-bundle iossim-run
-
-$(SIMOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/menu.h
+$(SIMOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/menu.h $(WEB_SOURCES)
 ifeq ($(UNAME_S),Darwin)
 	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt "$(PROGNAME)" iOS "$(CONFIG_JS)"
+	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt "$(PROGNAME)" iOS "$(CONFIG_JS)" "$(THEME)" src/config
 	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
+	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
 	sh nixscripts/mkzipfile.sh "$(CONTENT)" "$(GENDIR)/zipdata.h"
 	mkdir -p $(SIMOS_BINDIR)
 	$(SIMOS_CC) $(SIMOS_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(SIMOS_LDFLAGS)
@@ -316,20 +313,9 @@ else
 	@echo "iOS Simulator target requires macOS with Xcode." >&2; exit 1
 endif
 
-iossim-bundle: $(SIMOS_BINARY)
+sim-ios: $(SIMOS_BINARY)
 ifeq ($(UNAME_S),Darwin)
 	sh nixscripts/mkiosbundle.sh "$(PROGNAME)" "$(SIMOS_BINARY)" src/icons/builticons/ios/AppIcon-1024.png "$(BUNDLE_ID)" "$(VERSION)" "$(SIMOS_BINDIR)"
-endif
-
-sign-iossim: iossim-bundle
-ifeq ($(UNAME_S),Darwin)
-	sh nixscripts/signapp.sh iossim $(SIMOS_APP_BUNDLE) $(BUNDLE_ID)
-else
-	@echo "sign-iossim target requires macOS." >&2; exit 1
-endif
-
-iossim-run: iossim-bundle
-ifeq ($(UNAME_S),Darwin)
 	@# Boot the most recent available iPhone if nothing is booted
 	@if ! xcrun simctl list devices booted 2>/dev/null | grep -q Booted; then \
 		UDID=$$(xcrun simctl list devices available -j \
@@ -346,6 +332,8 @@ ifeq ($(UNAME_S),Darwin)
 	xcrun simctl install booted $(SIMOS_APP_BUNDLE)
 	xcrun simctl launch booted $(BUNDLE_ID)
 	@echo "Launched $(PROGNAME) in iOS Simulator."
+else
+	@echo "iOS Simulator target requires macOS with Xcode." >&2; exit 1
 endif
 
 # ── Windows (cross-compile via mingw-w64) ──────────────────────
@@ -375,10 +363,11 @@ $(WV2_LOADER_H):
 	@rm -f $(WIN_BINDIR)/WebView2Loader.dll
 	@echo "$(WV2_LOADER_H) generated (embedded WebView2Loader.dll)"
 
-$(WIN_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/win_menu.h $(WV2_LOADER_H)
+$(WIN_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/win_menu.h $(WV2_LOADER_H) $(WEB_SOURCES)
 	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh src/Windows/menus/menu.txt $(PROGNAME) Windows $(CONFIG_JS)
+	sh nixscripts/mkmenu_json.sh src/Windows/menus/menu.txt $(PROGNAME) Windows $(CONFIG_JS) $(THEME) src/config
 	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
+	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 	mkdir -p $(WIN_BINDIR)
 	@if [ -f src/icons/builticons/windows/app.ico ] && \
@@ -400,8 +389,9 @@ LINUX_ICON_H        = src/C/generated/linux_icon.h
 linux: $(GENDIR)/menu.h
 ifeq ($(UNAME_S),Linux)
 	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh src/Linux/menus/menu.txt $(PROGNAME) Linux $(CONFIG_JS)
+	sh nixscripts/mkmenu_json.sh src/Linux/menus/menu.txt $(PROGNAME) Linux $(CONFIG_JS) $(THEME) src/config
 	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
+	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 	@mkdir -p $(GENDIR)
 	@_ICON="$(LINUX_ICON_PNG)"; \
@@ -427,8 +417,9 @@ endif
 # ── Android (Gradle + NDK) ─────────────────────────────────
 android: $(GENDIR)/menu.h
 	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh src/android/menus/menu.txt $(PROGNAME) Android $(CONFIG_JS)
+	sh nixscripts/mkmenu_json.sh src/android/menus/menu.txt $(PROGNAME) Android $(CONFIG_JS) $(THEME) src/config
 	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
+	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 	sh nixscripts/mkandroid.sh $(PROGNAME) $(BUNDLE_ID) $(VERSION)
 
@@ -485,8 +476,9 @@ WWW_BINDIR = bin/WWW
 
 www:
 	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh src/WWW/menus/menu.txt $(PROGNAME) WWW $(CONFIG_JS)
+	sh nixscripts/mkmenu_json.sh src/WWW/menus/menu.txt $(PROGNAME) WWW $(CONFIG_JS) $(THEME) src/config
 	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
+	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
 	@rm -rf $(WWW_BINDIR)
 	@mkdir -p $(WWW_BINDIR)
 	cp -R $(CONTENT)/* $(WWW_BINDIR)/
@@ -520,4 +512,4 @@ ifeq ($(UNAME_S),Linux)
 	-gtk-update-icon-cache -f -t $(HOME)/.local/share/icons/hicolor 2>/dev/null || true
 endif
 
-.PHONY: all clean icons bundle sign-macos ios ios-bundle sign-ios iosipa iossim iossim-bundle sign-iossim iossim-run windows linux android sign-android www
+.PHONY: all clean icons bundle macos sign-macos sign-ios sim-ios windows linux android sign-android www

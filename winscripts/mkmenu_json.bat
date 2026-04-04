@@ -19,9 +19,13 @@ set TEMPLATE=%~1
 set PROGNAME=%~2
 set OS_NAME=%~3
 set OUTPUT=%~4
+set THEME=%~5
+set CONFIGFILE=%~6
 if "%PROGNAME%"=="" set PROGNAME=passiflora
 if "%OS_NAME%"=="" set OS_NAME=unknown
 if "%OUTPUT%"=="" set OUTPUT=src\www\generated\config.js
+if "%THEME%"=="" set THEME=Default
+if "%CONFIGFILE%"=="" set CONFIGFILE=src\config
 
 if "%TEMPLATE%"=="" (
     echo Usage: %~nx0 ^<template^> [progname] [os_name] [output] >&2
@@ -32,7 +36,7 @@ if not exist "%TEMPLATE%" (
     exit /b 1
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0mkmenu_json.ps1" "%TEMPLATE%" "%PROGNAME%" "%OS_NAME%" "%OUTPUT%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0mkmenu_json.ps1" "%TEMPLATE%" "%PROGNAME%" "%OS_NAME%" "%OUTPUT%" "%THEME%" "%CONFIGFILE%"
 
 if errorlevel 1 (
     echo [ERROR] PowerShell failed generating %OUTPUT% >&2
@@ -40,6 +44,6 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo mkmenu_json: %OUTPUT% generated from %TEMPLATE% (progname=%PROGNAME%, os=%OS_NAME%)
+echo mkmenu_json: %OUTPUT% generated from %TEMPLATE% (progname=%PROGNAME%, os=%OS_NAME%, theme=%THEME%)
 endlocal
 exit /b 0
