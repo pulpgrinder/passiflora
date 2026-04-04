@@ -241,7 +241,7 @@ await PassifloraIO.resetVFS();   // clears VFS + IndexedDB, reloads preload data
 ### Limitations
 
 - **Explicit directories are optional:** The VFS is fundamentally a flat key-value store. Directories are inferred from path separators in file paths. You can also create explicit empty directories with `mkdir()`, which are persisted to IndexedDB and appear in directory listings.
-- **No native recording on WWW:** `startRecording` / `stopRecording` are not available on the WWW target. On native platforms, `stopRecording()` returns the recording data as a `Uint8Array` that can be stored directly in the VFS.
+- **Recording:** `stopRecording()` returns the recording data as a `Uint8Array` that can be stored directly in the VFS.
 - **IndexedDB quotas:** Browsers limit IndexedDB storage (Chrome: ~80% of disk, Firefox: ~5%, Safari: ~1 GB). Very large datasets may hit these limits.
 
 ### Building and Running the WWW Target

@@ -125,8 +125,10 @@ img, video, canvas {
 
 .passiflora_menu_back,
 .passiflora_fo_back {
+    position: relative;
     display: flex;
     align-items: center;
+    justify-content: center;
     padding: 12px 16px;
     font-size: 15px;
     font-weight: 600;
@@ -141,7 +143,8 @@ img, video, canvas {
 .passiflora_menu_back::before,
 .passiflora_fo_back::before {
     content: '\276E';
-    margin-right: 8px;
+    position: absolute;
+    left: 16px;
     font-size: 17px;
 }
 
@@ -210,16 +213,33 @@ ul.passiflora_menu li:has(+ li.passiflora_menu_separator) {
     list-style: none;
     margin: 0;
     padding: 0 0 0 0.75em;
+    border-radius: 0;
+}
+
+.passiflora_fo_wrapper .passiflora_fo_ul li:first-child {
+    border-radius: 0;
+}
+
+.passiflora_fo_wrapper .passiflora_fo_ul li:last-child {
+    border-radius: 0;
 }
 
 .passiflora_fo_wrapper .passiflora_fo_ul li.passiflora_fo_item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     border-bottom: 1px solid var(--border-color);
-    color: var(--slide-body-color);
+    color: var(--slide-body-background-color);
+}
+
+.passiflora_fo_arrow {
+    margin-left: auto;
+    flex-shrink: 0;
 }
 
 .passiflora_fo_wrapper .passiflora_fo_ul li.passiflora_fo_match {
     font-weight: bold;
-    color: var(--accent-color);
+    color: var(--slide-body-background-color);
 }
 
 .passiflora_fo_wrapper .passiflora_fo_ul li.passiflora_fo_dim {
@@ -260,6 +280,20 @@ ul.passiflora_menu li:has(+ li.passiflora_menu_separator) {
     color: var(--menu-color);
     background: var(--accent-color);
     border-color: var(--accent-color);
+}
+
+/* ── File-dialog track & screen (parallels menu track/screen) ──── */
+.passiflora_fo_track {
+    position: relative;
+    flex: 1 1 auto;
+    overflow: hidden;
+}
+
+.passiflora_fo_screen {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    transition: transform .25s ease;
 }
 
 /* ── Panel screens (menu-item-triggered sliding panels) ────────── */

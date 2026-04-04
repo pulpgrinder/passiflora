@@ -261,7 +261,7 @@ PassifloraIO = {
     },
 
     /* ================================================================ */
-    /*  Native recording bridge (Linux GStreamer fallback)              */
+    /*  Recording bridge                                                */
     /* ================================================================ */
 
     hasNativeRecording: function () {
@@ -1831,19 +1831,147 @@ PassifloraIO = {
         });
     };
 
-    /* -- Recording: WWW-only stubs (native platforms keep the bridge) -- */
+    /* -- Recording: WWW uses getUserMedia + MediaRecorder -- */
     if (PassifloraConfig.os_name === "WWW") {
+        var _recStream = null;
+        var _recRecorder = null;
+        var _recChunks = [];
+        var _recAudioCtx = null;
+        var _recCanvas = null;
+        var _recFrameId = null;
+        var _recPreview = null;
+
+        function _recCleanup() {
+            if (_recFrameId != null) {
+                cancelAnimationFrame(_recFrameId);
+                _recFrameId = null;
+            }
+            _recCanvas = null;
+            if (_recAudioCtx) {
+                _recAudioCtx.close();
+                _recAudioCtx = null;
+            }
+            if (_recPreview) {
+                _recPreview.pause();
+                _recPreview.srcObject = null;
+                _recPreview = null;
+            }
+            if (_recStream) {
+                _recStream.getTracks().forEach(function (t) { t.stop(); });
+                _recStream = null;
+            }
+            _recRecorder = null;
+        }
+
         PassifloraIO.hasNativeRecording = function () {
-            return Promise.resolve(false);
+            return Promise.resolve(
+                typeof navigator !== "undefined" &&
+                navigator.mediaDevices &&
+                typeof navigator.mediaDevices.getUserMedia === "function" &&
+                typeof MediaRecorder !== "undefined"
+            );
         };
-        PassifloraIO.startRecording = function () {
-            return Promise.reject(new Error("Native recording not available on web"));
+
+        PassifloraIO.startRecording = function (hasVideo, hasAudio) {
+            if (_recRecorder && _recRecorder.state === "recording") {
+                return Promise.reject(new Error("Already recording"));
+            }
+            var constraints = {};
+            if (hasVideo) constraints.video = true;
+            if (hasAudio) constraints.audio = true;
+            if (!hasVideo && !hasAudio) {
+                return Promise.reject(new Error("Must enable video, audio, or both"));
+            }
+            return navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
+                _recStream = stream;
+                _recChunks = [];
+
+                /* Build a normalized recording stream (canvas for steady
+                   frame rate, AudioContext for stable audio clock). */
+                var FPS = 30;
+                var recStream = new MediaStream();
+                var videoTracks = stream.getVideoTracks();
+                var audioTracks = stream.getAudioTracks();
+
+                if (videoTracks.length > 0) {
+                    /* Hidden video element to draw camera frames from */
+                    _recPreview = document.createElement("video");
+                    _recPreview.autoplay = true;
+                    _recPreview.playsInline = true;
+                    _recPreview.muted = true;
+                    _recPreview.srcObject = stream;
+
+                    var canvas = document.createElement("canvas");
+                    var vSettings = videoTracks[0].getSettings();
+                    canvas.width = vSettings.width || 640;
+                    canvas.height = vSettings.height || 480;
+                    var ctx2d = canvas.getContext("2d");
+                    _recCanvas = canvas;
+
+                    function drawFrame() {
+                        if (_recPreview && !_recPreview.paused && !_recPreview.ended) {
+                            ctx2d.drawImage(_recPreview, 0, 0, canvas.width, canvas.height);
+                        }
+                        _recFrameId = requestAnimationFrame(drawFrame);
+                    }
+                    _recFrameId = requestAnimationFrame(drawFrame);
+
+                    var canvasStream = canvas.captureStream(FPS);
+                    canvasStream.getVideoTracks().forEach(function (t) { recStream.addTrack(t); });
+                }
+
+                if (audioTracks.length > 0 && typeof AudioContext !== "undefined") {
+                    var actx = new AudioContext();
+                    _recAudioCtx = actx;
+                    var src = actx.createMediaStreamSource(stream);
+                    var dest = actx.createMediaStreamDestination();
+                    src.connect(dest);
+                    dest.stream.getAudioTracks().forEach(function (t) { recStream.addTrack(t); });
+                } else {
+                    audioTracks.forEach(function (t) { recStream.addTrack(t); });
+                }
+
+                /* Pick a supported MIME type */
+                var mimeType = "";
+                var types = [
+                    "video/webm;codecs=vp8,opus", "video/webm;codecs=vp9,opus",
+                    "video/webm", "video/mp4"
+                ];
+                for (var i = 0; i < types.length; i++) {
+                    if (MediaRecorder.isTypeSupported(types[i])) { mimeType = types[i]; break; }
+                }
+                var options = mimeType ? { mimeType: mimeType } : {};
+                _recRecorder = new MediaRecorder(recStream, options);
+                _recRecorder.ondataavailable = function (e) {
+                    if (e.data && e.data.size > 0) _recChunks.push(e.data);
+                };
+                _recRecorder.start(200);
+            });
         };
+
         PassifloraIO.stopRecording = function () {
-            return Promise.reject(new Error("Native recording not available on web"));
+            if (!_recRecorder || _recRecorder.state !== "recording") {
+                _recCleanup();
+                return Promise.resolve(null);
+            }
+            return new Promise(function (resolve) {
+                _recRecorder.onstop = function () {
+                    var type = _recRecorder.mimeType || "video/webm";
+                    var blob = new Blob(_recChunks, { type: type });
+                    _recChunks = [];
+                    _recCleanup();
+                    var reader = new FileReader();
+                    reader.onload = function () {
+                        resolve(new Uint8Array(reader.result));
+                    };
+                    reader.readAsArrayBuffer(blob);
+                };
+                _recRecorder.stop();
+            });
         };
+
         PassifloraIO.diagnoseNativeAudio = function () {
-            return Promise.reject(new Error("Native audio diagnostics not available on web"));
+            return Promise.resolve("Browser-based recording via MediaRecorder API");
         };
     }
 
