@@ -23,12 +23,48 @@
 
 <p>This is a paragraph of body text. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec a diam lectus. Sed sit amet ipsum mauris. Maecenas congue ligula ac quam viverra nec consectetur ante hendrerit. Donec et mollis dolor.</p>
 <button>Sample Button</button>
+
+ <h2>Sample List</h2>
 <ul>
   <li>Sample list item 1</li>
   <li>Sample list item 2</li>
   <li>Sample list item 3</li>
 
 </ul>
+
+<h2>Sample Code</h2>
 <pre><code>function test() {
   console.log("This is a code block");
 }</code></pre>
+
+<h2>Sample Menu</h2>
+<div style="position:relative; border:1px solid var(--border-color); border-radius:8px; overflow:hidden; margin-bottom:1.5em;">
+  <div class="passiflora_menu_back" style="position:relative; cursor:default;">Sample Menu</div>
+  <ul class="passiflora_menu" style="margin:0; border-radius:0; border:none;">
+    <li>Menu Item One<span class="passiflora_menu_arrow">&#x276F;</span></li>
+    <li>Menu Item Two<span class="passiflora_menu_arrow">&#x276F;</span></li>
+    <li class="passiflora_menu_separator"></li>
+    <li>Menu Item Three</li>
+    <li>Menu Item Four</li>
+  </ul>
+</div>
+
+<h2>Sample File Browser</h2>
+<div style="position:relative; border:1px solid var(--border-color); border-radius:8px; overflow:hidden; margin-bottom:1.5em;">
+  <div class="passiflora_fo_back" style="position:relative; cursor:default;">Documents</div>
+  <div class="passiflora_fo_list" style="background:var(--slide-body-background-color); color:var(--slide-body-color);">
+    <ul class="passiflora_fo_ul" style="margin:0;">
+      <li class="passiflora_fo_item" style="padding:10px 16px;">..<span class="passiflora_fo_arrow">&#x276F;</span></li>
+      <li class="passiflora_fo_item" style="padding:10px 16px;">&#x1F4C1; Photos<span class="passiflora_fo_arrow">&#x276F;</span></li>
+      <li class="passiflora_fo_item passiflora_fb_selected" style="padding:10px 16px;">&#x1F4C4; notes.txt</li>
+      <li class="passiflora_fo_item passiflora_fo_match" style="padding:10px 16px;">&#x1F4C4; report.md</li>
+      <li class="passiflora_fo_item passiflora_fo_dim" style="padding:10px 16px;">&#x1F4C4; archive.zip</li>
+    </ul>
+  </div>
+  <div class="passiflora_fo_filterbar" style="display:flex; align-items:center; gap:0.5em; padding:8px 0.75em;">
+    <select class="passiflora_fo_select" style="flex:1; padding:4px;" disabled>
+      <option>All Files (*.*)</option>
+    </select>
+    <button class="passiflora_fo_savebtn" style="padding:4px 12px; border-radius:4px;" disabled>Done</button>
+  </div>
+</div>

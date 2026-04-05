@@ -31,6 +31,13 @@ const PassifloraMenu = (function () {
             back.textContent = title;
             back.addEventListener("click", function () { slideBack(); });
             screen.appendChild(back);
+        } else {
+            /* Top-level screen: show a close bar with just the arrow */
+            const close = document.createElement("div");
+            close.className = "passiflora_menu_back";
+            close.textContent = "\u00A0"; /* non-breaking space keeps the bar height */
+            close.addEventListener("click", function () { deactivate(); });
+            screen.appendChild(close);
         }
 
         const ul = document.createElement("ul");

@@ -1559,7 +1559,7 @@ PassifloraIO = {
                     filterRow.appendChild(newDirBtn);
 
                     var doneBtn = document.createElement("button");
-                    doneBtn.className = "passiflora_fo_savebtn";
+                    doneBtn.className = "passiflora_fo_newdir";
                     doneBtn.textContent = "Done";
                     doneBtn.addEventListener("click", function () { finish(null); });
                     filterRow.appendChild(doneBtn);
