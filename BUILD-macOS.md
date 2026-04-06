@@ -38,6 +38,7 @@ This produces `bin/macOS/<progname>.app` — a standard macOS application bundle
 | `make` | Build macOS app bundle |
 | `make macos` | Build macOS app bundle (same as plain `make` on this platform) |
 | `make www` | Build plain-browser version into `bin/WWW/` — useful for debugging using browser tools |
+| `make sign-macos` | Sign, notarize, and package for distribution (see [Code Signing for macOS](#code-signing-for-macos)) |
 | `make icons` | Generate icon sets for all platforms |
 | `make clean` | Remove all build artifacts |
 
@@ -251,13 +252,20 @@ BUILD_TYPE=release make android
 
 macOS code signing uses Apple certificates managed through Keychain Access.
 
+`make sign-macos` produces up to two distribution-ready artifacts:
+
+1. **Notarized `.app`** — for distribution outside the App Store (Developer ID). Ready for direct download, DMG, etc.
+2. **Signed `.pkg`** — for Mac App Store submission. Ready for upload to App Store Connect.
+
+Each step is optional and prompted interactively.
+
 #### Prerequisites
 
 * **Apple Developer Program membership** ($99/year) — https://developer.apple.com/programs/
 
   Without it, only ad-hoc signing is available (the app runs only on your Mac; Gatekeeper blocks it elsewhere).
 
-* **Signing certificate** in your Keychain. After joining the Apple Developer Program, create certificates at https://developer.apple.com/account/resources/certificates/list or via Xcode:
+* **Signing certificates** in your Keychain. After joining the Apple Developer Program, create certificates at https://developer.apple.com/account/resources/certificates/list or via Xcode:
 
   **Xcode → Settings → Accounts → (your team) → Manage Certificates → +**
 
@@ -267,7 +275,8 @@ macOS code signing uses Apple certificates managed through Keychain Access.
 |-------------|-----|
 | **Developer ID Application** | Distribution outside the App Store. Recipients can run without disabling Gatekeeper. |
 | **Apple Development** / **Mac Developer** | Local development and testing. The destination Mac must trust your certificate. |
-| **Apple Distribution** / **3rd Party Mac Developer Application** | Mac App Store submission (requires additional packaging). |
+| **Apple Distribution** / **3rd Party Mac Developer Application** | Mac App Store submission (signs the `.app` inside the `.pkg`). |
+| **3rd Party Mac Developer Installer** | Signs the `.pkg` installer for Mac App Store submission. |
 | **Ad-hoc** (no identity) | The app runs on this Mac only. Gatekeeper blocks it on other machines. |
 
 #### Sign
@@ -276,12 +285,51 @@ macOS code signing uses Apple certificates managed through Keychain Access.
 make sign-macos
 ```
 
-This builds the app bundle and runs an interactive script that:
+This builds the app bundle and runs an interactive workflow with two stages:
 
-1. Lists all code signing identities in your Keychain.
-2. Describes each option.
-3. Prompts you to choose one (ad-hoc is always available).
-4. Signs the bundle and displays signature details.
+**Stage 1 — Developer ID distribution (outside App Store):**
+
+1. Lists Developer ID signing identities in your Keychain.
+2. Signs the `.app` bundle with hardened runtime.
+3. Submits to Apple's notary service (requires Apple ID + app-specific password, or a stored keychain profile).
+4. Staples the notarization ticket to the `.app`.
+
+The resulting `.app` is ready for distribution outside the App Store — recipients can run it without disabling Gatekeeper.
+
+**Stage 2 — Mac App Store `.pkg`:**
+
+1. Creates a separate copy of the `.app` for App Store signing.
+2. Signs the copy with your App Store application certificate (Apple Distribution / 3rd Party Mac Developer Application), including the App Sandbox entitlement.
+3. Wraps it in a `.pkg` signed with your installer certificate (3rd Party Mac Developer Installer).
+
+The resulting `.pkg` is ready for upload to App Store Connect via Transporter or `xcrun altool`.
+
+Both stages are optional — you can skip either one when prompted.
+
+#### Notarization setup
+
+Notarization requires an **app-specific password** (not your regular Apple ID password). Generate one at https://appleid.apple.com/account/manage under **Sign-In and Security → App-Specific Passwords**.
+
+For repeated use, store credentials in the Keychain so you only need to enter them once:
+
+```
+xcrun notarytool store-credentials "notary-profile" \
+    --apple-id your@apple.id \
+    --team-id YOURTEAMID \
+    --password <app-specific-password>
+```
+
+The script will ask for the profile name if you have one, or prompt for credentials directly.
+
+#### Uploading to the Mac App Store
+
+After `make sign-macos` produces the `.pkg`, upload it to App Store Connect:
+
+```
+xcrun altool --upload-app -f bin/macOS/<progname>.pkg -t macos -u your@apple.id -p @keychain:AC_PASSWORD
+```
+
+Or use the **Transporter** app (free on the Mac App Store).
 
 ---
 
@@ -311,7 +359,7 @@ iOS apps must be signed and include an **embedded provisioning profile** to run 
 
 #### Building a release-ready `.ipa`
 
-The `make sign-ios` target (described above) performs the full build-sign-package workflow:
+The `make sign-ios` target performs the full build-sign-package workflow:
 
 1. Build the iOS binary and `.app` bundle.
 2. Prompt for a provisioning profile (`.mobileprovision`) — or set the `IOS_PROVISIONING_PROFILE` environment variable to skip the prompt:
@@ -323,6 +371,18 @@ The `make sign-ios` target (described above) performs the full build-sign-packag
 5. List signing identities and prompt you to choose one.
 6. Sign the bundle with the profile-derived entitlements.
 7. Package everything into `bin/iOS/<progname>.ipa`.
+
+When signed with an **Apple Distribution** certificate and an **App Store provisioning profile**, the resulting `.ipa` is ready for upload to App Store Connect — no additional packaging is needed.
+
+#### Uploading to the App Store
+
+Upload the signed `.ipa` using `altool` or Transporter:
+
+```
+xcrun altool --upload-app -f bin/iOS/<progname>.ipa -t ios -u your@apple.id -p @keychain:AC_PASSWORD
+```
+
+Or use the **Transporter** app (free on the Mac App Store). Testers can then receive the build through TestFlight.
 
 #### Installing the IPA on a physical device
 
@@ -349,13 +409,13 @@ ideviceinstaller -i bin/iOS/HeckinChonker.ipa
 
 **TestFlight / App Store Connect:**
 
-Upload the IPA using `altool` or Transporter, then distribute via TestFlight:
+When signed with an Apple Distribution certificate and an App Store provisioning profile, the `.ipa` is ready for upload:
 
 ```
 xcrun altool --upload-app -f bin/iOS/HeckinChonker.ipa -t ios -u your@apple.id -p @keychain:AC_PASSWORD
 ```
 
-Testers will receive the build through the TestFlight app.
+Or use the **Transporter** app (free on the Mac App Store). Testers will receive the build through the TestFlight app.
 
 > **Note:** The device's UDID must be registered in the provisioning profile for ad-hoc and development builds. App Store and enterprise profiles do not have this restriction.
 
