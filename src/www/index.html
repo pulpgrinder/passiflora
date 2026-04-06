@@ -63,13 +63,15 @@
 
     function toggleRecording() {
         if (isRecording) {
-            PassifloraIO.stopRecording().then(function(data) {
+            PassifloraIO.stopRecording().then(function(result) {
                 document.getElementById('recordBtn').textContent = 'Record Video + Audio';
                 document.getElementById('playBtn').disabled = false;
                 isRecording = false;
-                if (data) {
-                    recordedBlob = new Blob([data], { type: 'video/webm' });
-                    logResult('Recording saved (' + (recordedBlob.size / 1024).toFixed(1) + ' KB, video/webm)');
+                if (result) {
+                    var data = result.data || result;
+                    var mime = result.mimeType || 'video/webm';
+                    recordedBlob = new Blob([data], { type: mime });
+                    logResult('Recording saved (' + (recordedBlob.size / 1024).toFixed(1) + ' KB, ' + mime + ')');
                 } else {
                     logResult('Recording stopped (no data returned)');
                 }

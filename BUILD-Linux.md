@@ -1,6 +1,6 @@
 # Building Passiflora Apps on Linux
 
-This guide covers building Passiflora apps natively on Linux (Debian/Ubuntu), plus cross-compiling for Windows and Android.
+This guide covers building Passiflora apps natively on Linux (Debian/Ubuntu), plus cross-compiling for Windows, Android, and WWW.
 
 > **Note:** Instructions use `apt` (Debian/Ubuntu). Adjust for your distro's package manager as needed (e.g., `dnf` on Fedora, `pacman` on Arch).
 
@@ -43,6 +43,7 @@ Produces `bin/Linux/<progname>`.
 | Command | Description |
 |---------|-------------|
 | `make` or `make linux` | Build native Linux binary |
+| `make www` | Build plain-browser version into `bin/WWW/` — useful for debugging using browser tools |
 | `make icons` | Generate icon sets for all platforms |
 | `make clean` | Remove all build artifacts |
 
@@ -56,6 +57,26 @@ The first time you run the Linux binary, it automatically installs its icon and 
 If you move the binary, the next launch updates the `Exec=` path automatically. No manual steps are needed.
 
 > **Note:** After the first run, the file manager (Nautilus/Files) may not display the custom icon until you navigate away from the directory and back. This is a Nautilus caching behavior.
+
+---
+
+## Building for WWW / Plain Browser
+
+Builds a plain-browser version that can be served with any web server. No additional prerequisites beyond the base Linux build tools.
+
+### Build
+
+```
+make www
+```
+
+Produces `bin/WWW/` — open `index.html` directly or serve with:
+
+```
+python3 webserver.py
+```
+
+or any other web server of your choice.
 
 ---
 

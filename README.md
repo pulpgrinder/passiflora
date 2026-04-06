@@ -48,9 +48,9 @@ Electron and Electron Forge also install **342** (!) npm packages, which generat
 
 Detailed installation, build, cross-compilation, and code signing instructions are in the per-platform guides:
 
-* **[Building on macOS](BUILD-macOS.md)** — native macOS builds, plus cross-compiling for iOS, iOS Simulator, Windows, and Android
-* **[Building on Windows](BUILD-Windows.md)** — native Windows builds, plus cross-compiling for Android
-* **[Building on Linux](BUILD-Linux.md)** — native Linux builds, plus cross-compiling for Windows and Android
+* **[Building on macOS](BUILD-macOS.md)** — native macOS builds, plus cross-compiling for iOS, iOS Simulator, Windows, Android, and WWW
+* **[Building on Windows](BUILD-Windows.md)** — native Windows builds, plus cross-compiling for Android and WWW
+* **[Building on Linux](BUILD-Linux.md)** — native Linux builds, plus cross-compiling for Windows, Android, and WWW
 
 ### Quick Start
 

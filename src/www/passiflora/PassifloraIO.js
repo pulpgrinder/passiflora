@@ -2190,31 +2190,15 @@ PassifloraIO = {
         });
     };
 
-    /* -- Recording: WWW uses getUserMedia + MediaRecorder -- */
-    if (PassifloraConfig.os_name === "WWW") {
+    /* -- Recording: use browser MediaRecorder on any platform that
+       lacks a native recording backend (only Linux has GStreamer). -- */
+    if (PassifloraConfig.os_name !== "Linux") {
         var _recStream = null;
         var _recRecorder = null;
         var _recChunks = [];
-        var _recAudioCtx = null;
-        var _recCanvas = null;
-        var _recFrameId = null;
-        var _recPreview = null;
+        var _recMimeType = "video/webm";
 
         function _recCleanup() {
-            if (_recFrameId != null) {
-                cancelAnimationFrame(_recFrameId);
-                _recFrameId = null;
-            }
-            _recCanvas = null;
-            if (_recAudioCtx) {
-                _recAudioCtx.close();
-                _recAudioCtx = null;
-            }
-            if (_recPreview) {
-                _recPreview.pause();
-                _recPreview.srcObject = null;
-                _recPreview = null;
-            }
             if (_recStream) {
                 _recStream.getTracks().forEach(function (t) { t.stop(); });
                 _recStream = null;
@@ -2245,51 +2229,6 @@ PassifloraIO = {
                 _recStream = stream;
                 _recChunks = [];
 
-                /* Build a normalized recording stream (canvas for steady
-                   frame rate, AudioContext for stable audio clock). */
-                var FPS = 30;
-                var recStream = new MediaStream();
-                var videoTracks = stream.getVideoTracks();
-                var audioTracks = stream.getAudioTracks();
-
-                if (videoTracks.length > 0) {
-                    /* Hidden video element to draw camera frames from */
-                    _recPreview = document.createElement("video");
-                    _recPreview.autoplay = true;
-                    _recPreview.playsInline = true;
-                    _recPreview.muted = true;
-                    _recPreview.srcObject = stream;
-
-                    var canvas = document.createElement("canvas");
-                    var vSettings = videoTracks[0].getSettings();
-                    canvas.width = vSettings.width || 640;
-                    canvas.height = vSettings.height || 480;
-                    var ctx2d = canvas.getContext("2d");
-                    _recCanvas = canvas;
-
-                    function drawFrame() {
-                        if (_recPreview && !_recPreview.paused && !_recPreview.ended) {
-                            ctx2d.drawImage(_recPreview, 0, 0, canvas.width, canvas.height);
-                        }
-                        _recFrameId = requestAnimationFrame(drawFrame);
-                    }
-                    _recFrameId = requestAnimationFrame(drawFrame);
-
-                    var canvasStream = canvas.captureStream(FPS);
-                    canvasStream.getVideoTracks().forEach(function (t) { recStream.addTrack(t); });
-                }
-
-                if (audioTracks.length > 0 && typeof AudioContext !== "undefined") {
-                    var actx = new AudioContext();
-                    _recAudioCtx = actx;
-                    var src = actx.createMediaStreamSource(stream);
-                    var dest = actx.createMediaStreamDestination();
-                    src.connect(dest);
-                    dest.stream.getAudioTracks().forEach(function (t) { recStream.addTrack(t); });
-                } else {
-                    audioTracks.forEach(function (t) { recStream.addTrack(t); });
-                }
-
                 /* Pick a supported MIME type */
                 var mimeType = "";
                 var types = [
@@ -2300,7 +2239,8 @@ PassifloraIO = {
                     if (MediaRecorder.isTypeSupported(types[i])) { mimeType = types[i]; break; }
                 }
                 var options = mimeType ? { mimeType: mimeType } : {};
-                _recRecorder = new MediaRecorder(recStream, options);
+                _recRecorder = new MediaRecorder(stream, options);
+                _recMimeType = _recRecorder.mimeType || "video/webm";
                 _recRecorder.ondataavailable = function (e) {
                     if (e.data && e.data.size > 0) _recChunks.push(e.data);
                 };
@@ -2315,13 +2255,12 @@ PassifloraIO = {
             }
             return new Promise(function (resolve) {
                 _recRecorder.onstop = function () {
-                    var type = _recRecorder.mimeType || "video/webm";
-                    var blob = new Blob(_recChunks, { type: type });
+                    var blob = new Blob(_recChunks, { type: _recMimeType });
                     _recChunks = [];
                     _recCleanup();
                     var reader = new FileReader();
                     reader.onload = function () {
-                        resolve(new Uint8Array(reader.result));
+                        resolve({ data: new Uint8Array(reader.result), mimeType: _recMimeType });
                     };
                     reader.readAsArrayBuffer(blob);
                 };

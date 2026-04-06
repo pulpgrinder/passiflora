@@ -1,6 +1,6 @@
 # Building Passiflora Apps on macOS
 
-This guide covers building Passiflora apps natively on macOS, plus cross-compiling for iOS, iOS Simulator, Windows, and Android.
+This guide covers building Passiflora apps natively on macOS, plus cross-compiling for iOS, iOS Simulator, Windows, Android, and WWW.
 
 ## Native macOS Build
 
@@ -37,6 +37,7 @@ This produces `bin/macOS/<progname>.app` — a standard macOS application bundle
 |---------|-------------|
 | `make` | Build macOS app bundle |
 | `make macos` | Build macOS app bundle (same as plain `make` on this platform) |
+| `make www` | Build plain-browser version into `bin/WWW/` — useful for debugging using browser tools |
 | `make icons` | Generate icon sets for all platforms |
 | `make clean` | Remove all build artifacts |
 
@@ -64,6 +65,26 @@ make BUNDLE_ID=com.yourcompany.YourApp
 * For Android, the same `BUNDLE_ID` is passed to build.gradle as the `applicationId`. Google Play uses it to identify your app, and it cannot be changed after publishing.
 
 Pick your bundle identifier early — changing it later means the OS treats it as a different app (losing user data, preferences, keychain items, etc.).
+
+---
+
+## Building for WWW / Plain Browser
+
+Builds a plain-browser version that can be served with any web server. No additional prerequisites beyond the base macOS build tools.
+
+### Build
+
+```
+make www
+```
+
+Produces `bin/WWW/` — open `index.html` directly or serve with:
+
+```
+python3 webserver.py
+```
+
+or any other web server of your choice.
 
 ---
 
