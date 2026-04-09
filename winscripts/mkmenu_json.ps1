@@ -9,15 +9,17 @@ param(
     [string]$configFile = "src\config"
 )
 
-# Read font stacks from config file
+# Read font stacks and port from config file
 $bodyFont = "System-UI"
 $headingFont = "System-UI"
 $codeFont = "Monospace Code"
+$cfgPort = "0"
 if (Test-Path $configFile) {
     foreach ($cfgLine in (Get-Content $configFile -Encoding UTF8)) {
         if ($cfgLine -match '^body-font-stack\s+(.+)$') { $bodyFont = $Matches[1].Trim() }
         if ($cfgLine -match '^heading-font-stack\s+(.+)$') { $headingFont = $Matches[1].Trim() }
         if ($cfgLine -match '^code-font-stack\s+(.+)$') { $codeFont = $Matches[1].Trim() }
+        if ($cfgLine -match '^port\s+(\d+)') { $cfgPort = $Matches[1].Trim() }
     }
 }
 
@@ -90,6 +92,7 @@ $content += "  theme: `"$theme`",`n"
 $content += "  `"body-font-stack`": `"$bodyFont`",`n"
 $content += "  `"heading-font-stack`": `"$headingFont`",`n"
 $content += "  `"code-font-stack`": `"$codeFont`",`n"
+$content += "  port: $cfgPort,`n"
 $content += "  menus: " + $json + ",`n"
 $content += "  handleMenu: function(title) { alert(`"Menu item clicked: `" + title); }`n"
 $content += "};`n"

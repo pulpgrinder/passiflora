@@ -3,7 +3,8 @@ usecamera true
 usemicrophone true
 allowremotedebugging true
 orientation both
-theme Graustark
+theme Northern Lights
 body-font-stack System UI
 heading-font-stack Antique
-code-font-stack Monospace code
+code-font-stack Monospace Code
+port 55381

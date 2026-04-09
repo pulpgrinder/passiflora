@@ -2554,6 +2554,12 @@ function rmdir(path)               { return PassifloraIO.rmdir(path); }
 function chdir(path)               { return PassifloraIO.chdir(path); }
 function getcwd()                  { return PassifloraIO.getcwd(); }
 
+/* Update PassifloraConfig.port to reflect the actual runtime port
+   (may differ from the compiled-in default after a port collision). */
+if (typeof PassifloraConfig !== "undefined" && window.location.port) {
+    PassifloraConfig.port = parseInt(window.location.port, 10);
+}
+
 /* Auto-patch remote links and load theme once the DOM is ready */
 document.addEventListener("DOMContentLoaded", function () {
     PassifloraIO.patchLinks();

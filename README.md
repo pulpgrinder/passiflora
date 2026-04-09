@@ -2,37 +2,34 @@
 
 # Passiflora
 
-Passiflora is a no-nonsense cross-platform packager that wraps HTML/JavaScript/CSS/etc. in an executable (similar to Electron and its ilk). 
+Passiflora is a no-nonsense cross-platform packager that wraps HTML/JavaScript/CSS/etc. in an executable (similar to Electron and its ilk, but far, far more efficiently). 
 
 Much of this project was vibe coded as an experiment (see below).
 
-Things are still "moving fast", but it's getting to a stage where I'm going to try to avoid "breaking things". While everything seems to be working fine, I'm far from an expert in all these systems and I'm sure there are some uglinesses and infelicities present. Please raise an issue if you notice anything amiss (especially security issues).
+Things are still "moving fast", but it's getting to a stage where I'm going to try to avoid "breaking things". However, I'm sure there are still some uglinesses and infelicities present. Please raise an issue if you notice anything amiss (especially security issues).
 
-Supported target platforms include:
+Supported host platforms include:
 
-* macOS (macOS only)
-* iOS (macOS only)
-* Android (build on macOS, Windows, or Linux)
-* Windows (build on macOS, Windows, or Linux)
-* Linux (build on Linux, or cross-compile from macOS via Docker)
-* WWW (plain browser — build on any platform, serve with `python3 webserver.py` (obviously requires having python3 installed) or any other webserver of your choice).
-* Need a different target? Open an issue... all suggestions will be considered, within the limits of time and efficiency.
-
+* macOS (available targets macOS, iOS, Android, Windows, WWW, and Linux (via Docker))
+* Windows (available targets Windows, Android, and WWW)
+* Linux (available targets Linux, Windows, Android, WWW)
+* Need a different host or target? Open an issue... all suggestions will be considered, within the limits of time and efficiency.
 Features:
 
 * Access to device location data, cameras, mics, etc.
 * Remote debugging
 * POSIX(-ish) file system
+* Produce signed app-store ready binaries for macOS, iOS, and Linux (Windows planned) (experimental -- needs testing)
 
 What it *doesn't* do:
 
-* Require that you install 50 million dubious npm packages (or a whole freakin' Rust ecosystem, for the love of all that's holy -- tauri, I'm looking in your direction)
+* Require that you install 50 million dubious npm packages (or a whole freakin' Rust ecosystem)
 * Generate 60 petabyte binaries for a "Hello, world!" program
-* Require baroque configuration gymnastics -- there's no need to fool with nasty-ass package.json scripts or even nastier-ass XML files. We won't even go into Gradle 🤮, the only good thing about which is that it's not Maven or Ant (Passiflora does *use* Gradle (technically gradlew) for Android builds, but you don't have to get the stench of it on you).
+* Require configuration gymnastics -- there's no need to fool with nasty-ass package.json scripts or even nastier-ass XML files -- no Maven, Ant, or Gradle config (Passiflora does *use* Gradle (technically gradlew) for Android builds, but you don't have to get the stench of it on you).
 
 ![Ur Doin' It Worng](doingitwrong.jpg)
 
-Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Bundling a web browser made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then.
+Unlike Electron, Passiflora uses the system's own embeddable web browser control rather than bundling an entire browser into the executable. Bundling a web browser made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then.
 
 ### Executable Size
 
@@ -76,15 +73,17 @@ For information on cross-compiling (e.g., building iOS apps on macOS), all avail
 
 ## Making the App Your Own
 
-Obviously you're gonna want to put your own HTML, JavaScript, CSS, images, and such inside the src/www folder. Here are some other customizations you'll probably want to make before building something for release.
+Obviously you're gonna want to put your own HTML, JavaScript, CSS, images, and such inside the src/www folder.  Use whatever framework, UI library, etc. you want --- or just plain vanilla HTML/JS/CSS. It's all good, mang (or womang, as you prefer).
+
+Here are some other customizations you'll probably want to make before building something for release.
 
 ### Setting the Program Name
 
-Edit `PROGNAME` in the `Makefile` (macOS/Linux) or `build.bat` (Windows) to your preferred name for the package.
+Edit `PROGNAME` in the `Makefile` (macOS/Linux) or `build.bat` (Windows) to your preferred name for the package. If you're building for iOS, also set `BUNDLE_ID` -- see the [macOS Build Guide](BUILD-macOS.md) for details.
 
 ### Config
 
-The file `src/config` controls permissions, orientation, and other app-level settings. Each line has the form `key value` (case-insensitive). Permissions use `true` / `false` values and default to `false` if omitted. For apps you're planning to distribute, you should set everything to `false` except the ones you actually need (good security policy in general, plus app stores frown on unnecessary permissions).
+The file `src/config` controls permissions, orientation, and other app-level settings. Each line has the form `key value` (case-insensitive). Permissions use `true` / `false` values and default to `false` if omitted. The supplied sample config file has pretty much everything turned on. For apps you're planning to distribute, you should set everything to `false` except the ones you actually need (good security policy in general, plus app stores frown on unnecessary permissions).
 
 | Setting | Values | Default | Description |
 |---------|--------|---------|-------------|
@@ -101,7 +100,7 @@ The file `src/config` controls permissions, orientation, and other app-level set
 
 ### Icons
 
-Change `roundicon.png` and `squareicon.png` in `src/icons` to whatever PNG images you like. These should be pretty big — around 1,000 pixels square. More is better! The `squareicon.png` file should be square (duh!), while the `roundicon.png` should be a square image consisting of a round image on a transparent background (I realize that may sound a little confusing... look at the supplied `roundicon.png` if you need clarification).
+Change `roundicon.png` and `squareicon.png` in `src/icons` to whatever PNG images you like. These should be pretty big — around 1,000 pixels square. More is better! The `squareicon.png` file should be square (duh!), while the `roundicon.png` should be a square image with an inscribed round image on a transparent background (I realize that may sound a little confusing... look at the supplied `roundicon.png` if you need clarification).
 
 All of the zillions of other icons for the various different systems are generated from these.
 
@@ -119,27 +118,29 @@ Note that these may need some manual tweaking for legibility, particularly at th
 
 ### Menus, Themes, and Font Stacks
 
-Passiflora includes a menu system (native menu bar + sliding menu + panel screens), 122 built-in color themes, and a curated set of font stacks. Full documentation is in **[MENUS-AND-THEMES.md](MENUS-AND-THEMES.md)**.
+Passiflora includes a basic menu system (native menu bar + sliding menu + panel screens), 122 built-in color themes, and a curated set of font stacks. Full documentation is in **[MENUS-AND-THEMES.md](MENUS-AND-THEMES.md)**. Of course, you're welcome to ignore this and roll your own UI, including the menu system.
 
 ## PassifloraConfig
 
 Each build generates `src/www/generated/config.js`, which defines a `PassifloraConfig` object containing:
 
 ```javascript
-var PassifloraConfig = {
+let PassifloraConfig = {
   os_name: "iOS",          // or "macOS", "Windows", "Linux", "Android", "WWW"
-  theme: "Graustark",      // default theme from src/config
+  theme: "Northern Lights",      // default theme from src/config
   "body-font-stack": "System UI",     // default body font stack name
   "heading-font-stack": "Antique",    // default heading font stack name
   "code-font-stack": "Monospace Code", // default code font stack name
+  port: 51299,             // localhost port the embedded server is listening on
   menus: [ ... ],          // menu structure from menu.txt (excludes *-prefixed items)
   handleMenu: function(title) { alert("Menu item clicked: " + title); }
 };
 ```
 
-- **`PassifloraConfig.os_name`** — the target platform, useful when your JavaScript needs to do different things on different platforms.
+- **`PassifloraConfig.os_name`** — the target platform, useful if your JavaScript needs to do different things on different platforms.
 - **`PassifloraConfig.theme`** — the default theme name from `src/config`. Applied on startup; may be overridden by VFS-persisted choice.
 - **`PassifloraConfig["body-font-stack"]`**, **`PassifloraConfig["heading-font-stack"]`**, **`PassifloraConfig["code-font-stack"]`** — default font stack names from `src/config`. Must match keys in `PassifloraThemes.baseFontStackOptions`.
+- **`PassifloraConfig.port`** — the localhost port from `src/config`. At runtime, if the configured port was unavailable (collision), `PassifloraIO` automatically updates this to the actual port the server bound to.
 - **`PassifloraConfig.menus`** — the menu structure as a nested JSON array, useful for building custom menus. Items prefixed with `*` in `menu.txt` are excluded — they are native-only and never reach JavaScript.
 - **`PassifloraConfig.handleMenu`** — called by both the native menu bar and the built-in sliding menu when a (non-native) menu item is selected. Override this in your `app.js` to handle menu actions.
 
@@ -164,9 +165,9 @@ These are methods on `PassifloraIO` (not available as bare globals).
 | `PassifloraIO.stopRecording()` | Stop a recording in progress. Returns a Promise resolving to a `Uint8Array` containing the recorded WebM data (or `null` if no data). |
 | `PassifloraIO.diagnoseNativeAudio()` | Run audio diagnostics. Returns a Promise resolving to a diagnostic string. |
 
-## Remote Debugging
+## Debugging
 
-Passiflora includes a built-in remote debugging facility that lets you execute JavaScript in a running app from an external browser. This is useful for inspecting app state, testing code snippets, and diagnosing issues on platforms where browser DevTools aren't available (iOS, Android, etc.).
+If you build for the WWW target, you'll be able to use normal browser dev tools for debugging. For binaries, Passiflora includes a built-in remote debugging facility that lets you execute JavaScript in a running app from an external browser. This is useful for inspecting app state, testing code snippets, and diagnosing issues on platforms where browser dev tools aren't available (iOS, Android, etc.).
 
 Remote debugging is compile-gated — set `allowremotedebugging` to `true` in `src/config` to enable it. When enabled, a setup overlay appears at app startup where you enter a shared passphrase and copy the debugger URL. Open that URL in a browser on another device to send JavaScript commands to the running app.
 
@@ -178,7 +179,7 @@ This code was developed through an iterative process involving human-guided prom
 
 ### Details
 
-The basic idea for this has been hanging around my todo list, along with code snippets, for several years. I finally decided to use it as a proof of concept for vibe coding. If it's of interest, the vibe code per se was mostly written with GitHub Copilot using Claude Opus 4.6. Configuration questions and similar (e.g., "Why aren't location services working on my Ubuntu Linux system running in a Parallels Desktop VM?") were mostly handled with Grok 4.0.
+The basic idea for this has been hanging around my todo list, along with code snippets, for several years. I finally decided to use it as a proof of concept for vibe coding. If it's of interest, the code per se was mostly written with GitHub Copilot using Claude Opus 4.6. Configuration questions and similar (e.g., "Why aren't location services working on my Ubuntu Linux system running in a Parallels Desktop VM?") were mostly handled with Grok 4.0.
 
 
 

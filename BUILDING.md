@@ -9,8 +9,8 @@
 | `make windows` | Cross-compile Windows exe (from macOS or Linux) |
 | `make linux` | Build Linux binary (Linux only) |
 | `make linux-docker` | Build Linux binary inside a Docker container (macOS only — requires Docker) |
-| `make all` | Build every platform: macOS, iOS, Windows, Android, Linux via Docker (macOS only) |
-| `make sign-all` | Build + sign every platform (macOS only — iOS and Android prompt for credentials) |
+| `make all` | Build *every* platform: macOS, iOS, Windows, Android, Linux via Docker (macOS only) |
+| `make sign-all` | Build + sign *every* platform (macOS only — iOS and Android prompt for credentials) |
 | `make sim-ios` | Build, install, launch in iOS Simulator (macOS only) |
 | `make sign-ios` | Build, sign, and package iOS .ipa — App Store ready (macOS only) |
 | `make android` | Build Android APK |

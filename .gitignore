@@ -2,6 +2,7 @@
 bin/
 src/C/generated/
 src/www/generated/
+wv2loader.h
 
 # IDE
 .vs/

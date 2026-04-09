@@ -23,10 +23,11 @@ OUTPUT="${4:-src/www/generated/config.js}"
 THEME="${5:-Default}"
 CONFIGFILE="${6:-src/config}"
 
-# Read font stacks from config file (everything after the key)
+# Read font stacks and port from config file
 BODY_FONT_STACK="System UI"
 HEADING_FONT_STACK="System UI"
 CODE_FONT_STACK="Monospace Code"
+CFG_PORT="0"
 if [ -f "$CONFIGFILE" ]; then
     _val=$(awk '/^body-font-stack / {sub(/^body-font-stack /, ""); print}' "$CONFIGFILE")
     [ -n "$_val" ] && BODY_FONT_STACK="$_val"
@@ -34,6 +35,8 @@ if [ -f "$CONFIGFILE" ]; then
     [ -n "$_val" ] && HEADING_FONT_STACK="$_val"
     _val=$(awk '/^code-font-stack / {sub(/^code-font-stack /, ""); print}' "$CONFIGFILE")
     [ -n "$_val" ] && CODE_FONT_STACK="$_val"
+    _val=$(awk '/^port / {print $2}' "$CONFIGFILE")
+    [ -n "$_val" ] && CFG_PORT="$_val"
 fi
 
 if [ -z "$TEMPLATE" ] || [ ! -f "$TEMPLATE" ]; then
@@ -46,7 +49,8 @@ fi
 mkdir -p "$(dirname "$OUTPUT")"
 
 awk -v progname="$PROGNAME" -v os_name="$OS_NAME" -v theme="$THEME" \
-    -v body_font="$BODY_FONT_STACK" -v heading_font="$HEADING_FONT_STACK" -v code_font="$CODE_FONT_STACK" '
+    -v body_font="$BODY_FONT_STACK" -v heading_font="$HEADING_FONT_STACK" -v code_font="$CODE_FONT_STACK" \
+    -v cfg_port="$CFG_PORT" '
 function pad(n,    s, k) { s = ""; for (k = 0; k < n; k++) s = s "  "; return s }
 {
     line = $0
@@ -98,6 +102,7 @@ END {
     printf "  \"body-font-stack\": \"%s\",\n", body_font
     printf "  \"heading-font-stack\": \"%s\",\n", heading_font
     printf "  \"code-font-stack\": \"%s\",\n", code_font
+    printf "  port: %s,\n", cfg_port
     printf "  menus: ["
 
     # open_depth tracks how many "items": [ arrays are open.

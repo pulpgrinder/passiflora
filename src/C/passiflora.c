@@ -210,6 +210,129 @@ static int random_port(void)
 }
 
 /* ------------------------------------------------------------------ */
+/*  Port persistence — save/load the last-used port across runs        */
+/*                                                                     */
+/*  macOS / iOS : NSUserDefaults (key "PassifloraPort")                */
+/*  Windows     : HKCU\Software\PROGNAME  value "Port"                 */
+/*  Linux       : ~/.config/PROGNAME/port  (plain text)                */
+/*  Android     : handled in Java (SharedPreferences)                  */
+/* ------------------------------------------------------------------ */
+
+/* Load a previously persisted port.  Returns 0 if none is stored. */
+static int load_persisted_port(void)
+{
+#if defined(__APPLE__) && defined(__MACH__)
+    @autoreleasepool {
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        NSInteger p = [defaults integerForKey:@"PassifloraPort"];
+        if (p >= PORT_RANGE_LO && p <= PORT_RANGE_HI) return (int)p;
+        return 0;
+    }
+#elif defined(_WIN32)
+    {
+        char dir[MAX_PATH];
+        DWORD dlen = GetEnvironmentVariableA("LOCALAPPDATA", dir, MAX_PATH);
+        if (dlen == 0 || dlen >= MAX_PATH) return 0;
+        char path[MAX_PATH + 64];
+        snprintf(path, sizeof path, "%s\\%s\\port", dir, PROGNAME_STR);
+        FILE *f = fopen(path, "r");
+        if (!f) return 0;
+        int p = 0;
+        if (fscanf(f, "%d", &p) != 1) p = 0;
+        fclose(f);
+        if (p >= PORT_RANGE_LO && p <= PORT_RANGE_HI) return p;
+        return 0;
+    }
+#elif defined(__ANDROID__)
+    extern const char *android_files_dir;
+    if (!android_files_dir) return 0;
+    char path[PATH_BUF];
+    snprintf(path, sizeof path, "%s/.passiflora_port", android_files_dir);
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    int p = 0;
+    if (fscanf(f, "%d", &p) != 1) p = 0;
+    fclose(f);
+    if (p >= PORT_RANGE_LO && p <= PORT_RANGE_HI) return p;
+    return 0;
+#elif defined(__linux__)
+    const char *home = getenv("HOME");
+    if (!home) {
+        struct passwd *pw = getpwuid(getuid());
+        if (pw) home = pw->pw_dir;
+    }
+    if (!home) return 0;
+    char path[PATH_BUF];
+    snprintf(path, sizeof path, "%s/.config/%s/port", home, PROGNAME_STR);
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    int p = 0;
+    if (fscanf(f, "%d", &p) != 1) p = 0;
+    fclose(f);
+    if (p >= PORT_RANGE_LO && p <= PORT_RANGE_HI) return p;
+    return 0;
+#else
+    return 0;
+#endif
+}
+
+/* Persist the given port for the next run. */
+static void save_persisted_port(int port)
+{
+    if (port < PORT_RANGE_LO || port > PORT_RANGE_HI) return;
+#if defined(__APPLE__) && defined(__MACH__)
+    @autoreleasepool {
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        [defaults setInteger:port forKey:@"PassifloraPort"];
+    }
+#elif defined(_WIN32)
+    {
+        char dir[MAX_PATH];
+        DWORD dlen = GetEnvironmentVariableA("LOCALAPPDATA", dir, MAX_PATH);
+        if (dlen == 0 || dlen >= MAX_PATH) return;
+        char appdir[MAX_PATH + 64], path[MAX_PATH + 64];
+        snprintf(appdir, sizeof appdir, "%s\\%s", dir, PROGNAME_STR);
+        CreateDirectoryA(appdir, NULL);
+        snprintf(path, sizeof path, "%s\\port", appdir);
+        FILE *f = fopen(path, "w");
+        if (f) {
+            fprintf(f, "%d\n", port);
+            fclose(f);
+        }
+    }
+#elif defined(__ANDROID__)
+    extern const char *android_files_dir;
+    if (!android_files_dir) return;
+    char path[PATH_BUF];
+    snprintf(path, sizeof path, "%s/.passiflora_port", android_files_dir);
+    FILE *f = fopen(path, "w");
+    if (f) {
+        fprintf(f, "%d\n", port);
+        fclose(f);
+    }
+#elif defined(__linux__)
+    const char *home = getenv("HOME");
+    if (!home) {
+        struct passwd *pw = getpwuid(getuid());
+        if (pw) home = pw->pw_dir;
+    }
+    if (!home) return;
+    char cfgdir[PATH_BUF], dir[PATH_BUF], path[PATH_BUF];
+    snprintf(cfgdir, sizeof cfgdir, "%s/.config", home);
+    mkdir(cfgdir, 0755);
+    snprintf(dir, sizeof dir, "%s/%s", cfgdir, PROGNAME_STR);
+    mkdir(dir, 0755);
+    snprintf(path, sizeof path, "%s/port", dir);
+    FILE *f = fopen(path, "w");
+    if (f) {
+        fprintf(f, "%d\n", port);
+        fclose(f);
+    }
+#endif
+    (void)port;
+}
+
+/* ------------------------------------------------------------------ */
 /*  MIME type helper                                                   */
 /* ------------------------------------------------------------------ */
 static const struct { const char *ext; const char *mime; } mime_table[] = {
@@ -1174,6 +1297,7 @@ int main(int argc, char **argv)
 
     int port = DEFAULT_PORT;  /* use fixed port so IndexedDB persists */
     int headless = 0;
+    int port_from_cli = 0;    /* was port explicitly given on command line? */
 
     srand((unsigned)time(NULL) ^ (unsigned)getpid());
 
@@ -1182,12 +1306,23 @@ int main(int argc, char **argv)
             headless = 1;
         } else {
             port = atoi(argv[i]);
+            port_from_cli = 1;
             if (port < 1 || port > 65535) {
                 fprintf(stderr,
                         "passiflora: invalid port '%s' (must be 1-65535)\n",
                         argv[i]);
                 return 1;
             }
+        }
+    }
+
+    /* If no port was given on the command line, check for a persisted
+       port from a previous run (takes precedence over compiled-in default). */
+    if (!port_from_cli) {
+        int persisted = load_persisted_port();
+        if (persisted > 0) {
+            LOGI("passiflora: using persisted port %d\n", persisted);
+            port = persisted;
         }
     }
 
@@ -1240,6 +1375,9 @@ int main(int argc, char **argv)
     }
 
     g_server_port = port;
+
+    /* Persist the successfully-bound port for the next run */
+    save_persisted_port(port);
 
 #ifdef PERM_REMOTEDEBUGGING
     LOGI("passiflora: listening on http://0.0.0.0:%d/\n", port);
@@ -1311,6 +1449,15 @@ Java_com_example_zipserve_MainActivity_startServer(JNIEnv *env, jclass cls)
     int port = DEFAULT_PORT;
     srand((unsigned)time(NULL) ^ (unsigned)getpid());
 
+    /* Check for a persisted port from a previous run */
+    {
+        int persisted = load_persisted_port();
+        if (persisted > 0) {
+            LOGI("passiflora: using persisted port %d\n", persisted);
+            port = persisted;
+        }
+    }
+
     struct sockaddr_in addr = {
         .sin_family      = AF_INET,
 #ifdef PERM_REMOTEDEBUGGING
@@ -1354,6 +1501,9 @@ Java_com_example_zipserve_MainActivity_startServer(JNIEnv *env, jclass cls)
     }
 
     g_server_port = port;
+
+    /* Persist the successfully-bound port for the next run */
+    save_persisted_port(port);
 
 #ifdef PERM_REMOTEDEBUGGING
     LOGI("passiflora: listening on http://0.0.0.0:%d/\n", port);

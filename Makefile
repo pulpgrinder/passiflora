@@ -129,6 +129,17 @@ CONFIG_JS = src/www/generated/config.js
 SRCDIR = src/C
 GENDIR = src/C/generated
 
+# Default target: build for the current platform only
+.DEFAULT_GOAL := default
+default:
+ifeq ($(UNAME_S),Darwin)
+	$(MAKE) macos
+else ifeq ($(UNAME_S),Linux)
+	$(MAKE) linux
+else
+	$(MAKE) $(BINARY) bundle
+endif
+
 all:
 ifeq ($(UNAME_S),Darwin)
 	$(MAKE) clean
@@ -597,4 +608,4 @@ ifeq ($(UNAME_S),Linux)
 	-gtk-update-icon-cache -f -t $(HOME)/.local/share/icons/hicolor 2>/dev/null || true
 endif
 
-.PHONY: all sign-all clean icons bundle macos sign-macos sign-ios sim-ios windows linux linux-docker android sign-android www
+.PHONY: default all sign-all clean icons bundle macos sign-macos sign-ios sim-ios windows linux linux-docker android sign-android www
