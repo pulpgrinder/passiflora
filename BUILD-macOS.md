@@ -37,6 +37,9 @@ This produces `bin/macOS/<progname>.app` — a standard macOS application bundle
 |---------|-------------|
 | `make` | Build macOS app bundle |
 | `make macos` | Build macOS app bundle (same as plain `make` on this platform) |
+| `make all` | Build every platform: macOS, iOS, Windows, Android, Linux (via Docker) |
+| `make sign-all` | Build + sign every platform (iOS and Android prompt for credentials) |
+| `make linux-docker` | Build Linux binary inside a Docker container (requires Docker) |
 | `make www` | Build plain-browser version into `bin/WWW/` — useful for debugging using browser tools |
 | `make sign-macos` | Sign, notarize, and package for distribution (see [Code Signing for macOS](#code-signing-for-macos)) |
 | `make icons` | Generate icon sets for all platforms |
@@ -113,7 +116,9 @@ make sign-ios
 
 This compiles the iOS binary, creates the `.app` bundle, then walks you through signing and IPA packaging (see [Code Signing for iOS](#code-signing-for-ios) below).
 
-To skip the provisioning-profile prompt, set the environment variable:
+The build automatically looks for a provisioning profile at `~/passiflora-keys/<progname>.mobileprovision`. If found, it is used automatically. If not, you are prompted to enter the path.
+
+To override the default location, set the environment variable:
 
 ```
 IOS_PROVISIONING_PROFILE=/path/to/MyApp.mobileprovision make sign-ios
@@ -242,6 +247,76 @@ BUILD_TYPE=release make android
 
 ---
 
+## Cross-Compiling for Linux (via Docker)
+
+Builds a native Linux (x86_64 or arm64) binary inside a Docker container, without needing a Linux toolchain on macOS.
+
+### Additional Prerequisites
+
+* **Docker Desktop** (https://www.docker.com/products/docker-desktop/) or **OrbStack** (https://orbstack.dev/). Make sure the Docker daemon is running.
+
+### Build
+
+```
+make linux-docker
+```
+
+This spins up an Ubuntu 24.04 container, installs the required build dependencies (`gcc`, `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libgstreamer1.0-dev`, etc.), and runs `make linux` inside the container. The project directory is bind-mounted, so the output lands directly in `bin/Linux/<progname>` on your Mac.
+
+To use a different base image:
+
+```
+make linux-docker LINUX_DOCKER_IMAGE=ubuntu:22.04
+```
+
+> **Note:** The resulting binary is a native Linux ELF executable — it won't run directly on macOS. Transfer it to a Linux machine (or run it inside the same Docker container) to test.
+
+---
+
+## Building All Platforms at Once
+
+Two convenience targets build every platform from a single command on macOS:
+
+### `make all` — unsigned builds
+
+```
+make all
+```
+
+Runs `make clean`, then builds macOS, iOS, Windows (cross-compile), Android, and Linux (Docker) in sequence, cleaning intermediate files between each platform. Produces:
+
+| Platform | Output |
+|----------|--------|
+| macOS | `bin/macOS/<progname>.app` |
+| iOS | `bin/iOS/<progname>.app` (unsigned) |
+| Windows | `bin/Windows/<progname>.exe` |
+| Android | `bin/Android/<progname>.apk` |
+| Linux | `bin/Linux/<progname>` |
+| WWW | `bin/WWW/` |
+
+### `make sign-all` — signed builds
+
+```
+make sign-all
+```
+
+Same as `make all`, but uses `make sign-macos`, `make sign-ios`, and `make sign-android` for platforms that support code signing. iOS and Android will prompt interactively for signing credentials (provisioning profile, keystore, etc.). Windows and Linux builds are identical to the unsigned versions since they don't have a signing step.
+
+Produces:
+
+| Platform | Output |
+|----------|--------|
+| macOS | `bin/macOS/<progname>.app` (signed + notarized) |
+| iOS | `bin/iOS/<progname>.ipa` (signed) |
+| Windows | `bin/Windows/<progname>.exe` |
+| Android | `bin/Android/<progname>.apk` (signed) |
+| Linux | `bin/Linux/<progname>` |
+| WWW | `bin/WWW/` |
+
+> **Prerequisites:** These targets require all cross-compilation prerequisites to be installed (Xcode, MinGW-w64, Android SDK/NDK, Docker). See the sections above for each platform's requirements.
+
+---
+
 ## Code Signing
 
 **IMPORTANT: Never put your signing certificates, keystores, passwords, etc. into a folder managed by git or another version control system. Ever.**
@@ -362,7 +437,7 @@ iOS apps must be signed and include an **embedded provisioning profile** to run 
 The `make sign-ios` target performs the full build-sign-package workflow:
 
 1. Build the iOS binary and `.app` bundle.
-2. Prompt for a provisioning profile (`.mobileprovision`) — or set the `IOS_PROVISIONING_PROFILE` environment variable to skip the prompt:
+2. Look for a provisioning profile at `~/passiflora-keys/<progname>.mobileprovision`. If found, it is used automatically. If not found, prompt for the path. You can also set the `IOS_PROVISIONING_PROFILE` environment variable to override:
    ```
    IOS_PROVISIONING_PROFILE=/path/to/MyApp.mobileprovision make sign-ios
    ```
@@ -431,7 +506,7 @@ Uses `apksigner` from the Android SDK build-tools to sign the APK after it's bui
 
 **Additional prerequisites:**
 
-The Android SDK build-tools (installed above) include `apksigner` and `zipalign`. They are located automatically via `ANDROID_HOME`. If not found, add the build-tools directory to your `PATH`:
+The Android SDK build-tools (installed above) include `apksigner` and `zipalign`. They are located automatically — the build checks `ANDROID_HOME`, the standard macOS SDK location (`~/Library/Android/sdk`), and `local.properties`. If they still can't be found, add the build-tools directory to your `PATH`:
 
 ```
 export PATH="$ANDROID_HOME/build-tools/35.0.0:$PATH"
@@ -443,8 +518,10 @@ export PATH="$ANDROID_HOME/build-tools/35.0.0:$PATH"
 make sign-android
 ```
 
-This builds the APK, then interactively prompts for:
-1. Keystore file path
+This builds the APK, then signs it with `apksigner`. The build automatically looks for a keystore at `~/passiflora-keys/android-keystore.jks`. If found, it is used automatically. If not found, you are prompted to enter the path.
+
+You will be prompted for:
+1. Keystore file path (only if the default is not found)
 2. Keystore password
 
 It then zipaligns (if available), signs, and verifies the APK.
@@ -471,18 +548,13 @@ BUILD_TYPE=release make android
 
 The resulting APK is already signed. Do **not** also run `make sign-android` — that would attempt to double-sign.
 
-#### Test keystore (included)
+#### Creating a keystore for production
 
-A test keystore (`src/android/release.jks`, password `testtest`, alias `mykey`) is included for development convenience. It is used automatically for release builds when no environment variables are set.
-
-**Do not ship apps signed with the test keystore.**
-
-#### Creating a real keystore for production
-
-Generate a keystore somewhere **outside** the Passiflora tree:
+Generate a keystore somewhere **outside** the Passiflora tree. The recommended path is `~/passiflora-keys/android-keystore.jks` — `make sign-android` checks there automatically:
 
 ```
-keytool -genkey -v -keystore ~/my-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias mykey
+mkdir -p ~/passiflora-keys
+keytool -genkey -v -keystore ~/passiflora-keys/android-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias mykey
 ```
 
 `keytool` is included with any JDK installation. It will prompt for a keystore password and certificate details.

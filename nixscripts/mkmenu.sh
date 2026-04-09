@@ -60,11 +60,8 @@ awk -v progname="$PROGNAME" '
         line = substr(line, 1, idx - 1) progname substr(line, idx + 12)
     }
 
-    # Items starting with * are native-only; strip the marker for the C header
-    if (substr(line, 1, 1) == "*") {
-        line = substr(line, 2)
-        gsub(/^[ \t]+/, "", line)
-    }
+    # Items starting with * are native-only; keep the marker for UI.c
+    # (the C code uses it to route to native handlers like Quit)
 
     # Escape backslashes and double quotes for C strings
     gsub(/\\/, "\\\\", line)

@@ -72,6 +72,12 @@ if(EXISTS ${CONFIG_FILE})
                 target_compile_definitions(passiflora PRIVATE PERM_REMOTEDEBUGGING)
             endif()
         endif()
+        # Port line: "port 61333"
+        string(REGEX MATCH "^port +([0-9]+)" _pm "${LINE}")
+        if(_pm)
+            string(REGEX REPLACE "^port +([0-9]+)" "\\1" CFG_PORT "${LINE}")
+            target_compile_definitions(passiflora PRIVATE DEFAULT_PORT=${CFG_PORT})
+        endif()
     endforeach()
 endif()
 

@@ -204,8 +204,10 @@ set PATH=%LOCALAPPDATA%\Android\Sdk\build-tools\35.0.0;%PATH%
 .\build sign-android
 ```
 
-This builds the APK, then interactively prompts for:
-1. Keystore file path
+This builds the APK, then signs it with `apksigner`. The build automatically looks for a keystore at `%USERPROFILE%\passiflora-keys\android-keystore.jks`. If found, it is used automatically. If not found, you are prompted to enter the path.
+
+You will be prompted for:
+1. Keystore file path (only if the default is not found)
 2. Keystore password (entered securely — characters are hidden)
 
 It then zipaligns (if available), signs, and verifies the APK.
@@ -234,18 +236,13 @@ set BUILD_TYPE=release
 
 The resulting APK is already signed. Do **not** also run `.\build sign-android` — that would attempt to double-sign.
 
-#### Test keystore (included)
+#### Creating a keystore for production
 
-A test keystore (`src\android\release.jks`, password `testtest`, alias `mykey`) is included for development convenience. It is used automatically for release builds when no environment variables are set.
-
-**Do not ship apps signed with the test keystore.**
-
-#### Creating a real keystore for production
-
-Generate a keystore somewhere **outside** the Passiflora tree:
+Generate a keystore somewhere **outside** the Passiflora tree. The recommended path is `%USERPROFILE%\passiflora-keys\android-keystore.jks` — `.\build sign-android` checks there automatically:
 
 ```
-keytool -genkey -v -keystore "%USERPROFILE%\my-release.jks" -keyalg RSA -keysize 2048 -validity 10000 -alias mykey
+mkdir "%USERPROFILE%\passiflora-keys"
+keytool -genkey -v -keystore "%USERPROFILE%\passiflora-keys\android-keystore.jks" -keyalg RSA -keysize 2048 -validity 10000 -alias mykey
 ```
 
 `keytool` is included with any JDK installation. It will prompt for a keystore password and certificate details.

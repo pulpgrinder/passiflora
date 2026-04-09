@@ -4,17 +4,17 @@
 
 Passiflora is a no-nonsense cross-platform packager that wraps HTML/JavaScript/CSS/etc. in an executable (similar to Electron and its ilk). 
 
-Things are still "moving fast", but it's getting to a stage where I'm going to try to avoid "breaking things". However, this system is still in a state of flux.  Please report any issues. In addition, much of this project was vibe coded as an experiment. The basic idea for this has been hanging around my todo list, along with code snippets, for several years. I finally decided to use it as a proof of concept for vibe coding. If it's of interest, the vibe code per se was mostly written with GitHub Copilot using Claude Opus 4.6. Configuration questions and similar (e.g., "Why aren't location services working on my Ubuntu Linux system running in a Parallels Desktop VM?") were mostly handled with Grok 4.0.
+Much of this project was vibe coded as an experiment (see below).
 
-While everything seems to be working fine, I'm far from an expert in all these systems and I'm sure there are numerous uglinesses and infelicities present. Again, please raise an issue if you notice anything amiss (especially security issues).
+Things are still "moving fast", but it's getting to a stage where I'm going to try to avoid "breaking things". While everything seems to be working fine, I'm far from an expert in all these systems and I'm sure there are some uglinesses and infelicities present. Please raise an issue if you notice anything amiss (especially security issues).
 
 Supported target platforms include:
 
-* macOS (build on macOS only, alas)
-* iOS (likewise)
+* macOS (macOS only)
+* iOS (macOS only)
 * Android (build on macOS, Windows, or Linux)
 * Windows (build on macOS, Windows, or Linux)
-* Linux (build on Linux)
+* Linux (build on Linux, or cross-compile from macOS via Docker)
 * WWW (plain browser — build on any platform, serve with `python3 webserver.py` (obviously requires having python3 installed) or any other webserver of your choice).
 * Need a different target? Open an issue... all suggestions will be considered, within the limits of time and efficiency.
 
@@ -32,7 +32,7 @@ What it *doesn't* do:
 
 ![Ur Doin' It Worng](doingitwrong.jpg)
 
-Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Bundling a web browser made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then. It's my belief that it's now preferable to work through or around whatever inconsistencies and shortcomings that remain than take the enormous hit of bundling an entire browser. Passiflora does do some native bridging (e.g., geolocation, audio recording, opening external URLs), and it's possible that more native bridging will be added in the future, but the plan is to continue doing everything with web technology that *can* be done with web technology.
+Passiflora uses the system's own web browser control rather than bundling an entire browser into the executable, like Electron. Bundling a web browser made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then.
 
 ### Executable Size
 
@@ -97,6 +97,7 @@ The file `src/config` controls permissions, orientation, and other app-level set
 | `body-font-stack` | font stack name | `System UI` | Default font stack for body text. Must match a key in `PassifloraThemes.baseFontStackOptions`. See [MENUS-AND-THEMES.md](MENUS-AND-THEMES.md#font-stacks). |
 | `heading-font-stack` | font stack name | `System UI` | Default font stack for headings. Same values as `body-font-stack`. |
 | `code-font-stack` | font stack name | `Monospace Code` | Default font stack for code blocks. Same values as `body-font-stack`. |
+| `port` | `40000`–`62000` | auto-generated | The localhost port the embedded HTTP server listens on. If omitted, the build system picks a random port in the 40000–62000 range and writes it back to `src/config` so subsequent builds reuse the same port. A stable port is important because IndexedDB storage is scoped by origin (including port) — changing it loses persisted VFS data. If the configured port is unavailable at runtime, the server tries random ports in the same range. |
 
 ### Icons
 
@@ -158,7 +159,7 @@ These are methods on `PassifloraIO` (not available as bare globals).
 | `PassifloraIO.getCurrentPosition(successCb, errorCb)` | Get the device's current GPS position. On macOS/iOS uses the native CLLocationManager bridge; on other platforms delegates to `navigator.geolocation`. Callbacks follow the standard Geolocation API signature. |
 | `PassifloraIO.webDownload(path, mimeType)` | Trigger a browser download for a VFS file. On macOS/iOS uses the native save panel via `passifloraSaveFile`; on other platforms creates a temporary download link. `mimeType` defaults to `"application/octet-stream"` if omitted. |
 | `PassifloraIO.patchLinks()` | Scan the DOM for `<a href>` elements with `http://` or `https://` URLs and attach click handlers that route them through `openExternal()` instead of navigating the webview. Called automatically on `DOMContentLoaded`. |
-W| `PassifloraIO.hasNativeRecording()` | Returns a Promise resolving to `true` if recording is available on this platform, `false` otherwise. |
+| `PassifloraIO.hasNativeRecording()` | Returns a Promise resolving to `true` if recording is available on this platform, `false` otherwise. |
 | `PassifloraIO.startRecording(hasVideo, hasAudio)` | Start recording. `hasVideo` and `hasAudio` are booleans selecting which tracks to capture. Returns a Promise that resolves when recording has started. |
 | `PassifloraIO.stopRecording()` | Stop a recording in progress. Returns a Promise resolving to a `Uint8Array` containing the recorded WebM data (or `null` if no data). |
 | `PassifloraIO.diagnoseNativeAudio()` | Run audio diagnostics. Returns a Promise resolving to a diagnostic string. |
@@ -174,5 +175,10 @@ For the full protocol details, security notes, and usage tips, see **[DEBUGGING.
 ## About this project
 
 This code was developed through an iterative process involving human-guided prompting of a large language model (LLM), followed by review, editing, refinement, and original contributions by the author. To the extent the work contains copyrightable human-authored elements (including structure, modifications, arrangements, and additions), it is Copyright (c) 2026 by Anthony W. Hursh. The project is distributed under the terms of the MIT License (see LICENSE file for full text). Portions generated directly by AI may not be independently copyrightable under current U.S. law.
+
+### Details
+
+The basic idea for this has been hanging around my todo list, along with code snippets, for several years. I finally decided to use it as a proof of concept for vibe coding. If it's of interest, the vibe code per se was mostly written with GitHub Copilot using Claude Opus 4.6. Configuration questions and similar (e.g., "Why aren't location services working on my Ubuntu Linux system running in a Parallels Desktop VM?") were mostly handled with Grok 4.0.
+
 
 

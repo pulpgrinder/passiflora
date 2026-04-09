@@ -47,10 +47,9 @@ android {
     }
 
     signingConfigs {
-        // Override with environment variables for a real keystore:
+        // Set environment variables to sign release builds:
         //   RELEASE_KEYSTORE, RELEASE_KEYSTORE_PASSWORD,
         //   RELEASE_KEY_ALIAS, RELEASE_KEY_PASSWORD
-        // Falls back to a test keystore for local development only.
         release {
             def ksFile = System.getenv("RELEASE_KEYSTORE")
             def ksPass = System.getenv("RELEASE_KEYSTORE_PASSWORD")
@@ -62,12 +61,7 @@ android {
                 keyAlias      ksAlias
                 keyPassword   ksKeyPass
             } else {
-                // Local dev fallback — NOT for production distribution
-                storeFile     file("../release.jks")
-                storePassword "testtest"
-                keyAlias      "mykey"
-                keyPassword   "testtest"
-                logger.warn("WARNING: Using test keystore. Set RELEASE_KEYSTORE env vars for production builds.")
+                logger.warn("WARNING: No signing config. Set RELEASE_KEYSTORE env vars or use 'make sign-android'.")
             }
         }
     }

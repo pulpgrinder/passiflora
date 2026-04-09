@@ -41,9 +41,13 @@ if exist "%SCRIPT_DIR%\src\config" (
         if /I "%%A"=="usemicrophone"        if /I "%%B"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_MICROPHONE
         if /I "%%A"=="allowremotedebugging" if /I "%%B"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_REMOTEDEBUGGING
         if /I "%%A"=="theme" set THEME=%%B
+        if /I "%%A"=="port" set CFGPORT=%%B
     )
 )
 if "%THEME%"=="" set THEME=default
+if defined CFGPORT (
+    set WIN_CFLAGS=!WIN_CFLAGS! -DDEFAULT_PORT=!CFGPORT!
+)
 
 set WV2_NUGET_VER=1.0.2903.40
 set WV2_NUGET_URL=https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/%WV2_NUGET_VER%
@@ -133,14 +137,20 @@ if not exist "%ANDROID_APK%" (
     exit /b 1
 )
 
-set /p KS_FILE="Keystore file: "
-if "%KS_FILE%"=="" (
-    echo [sign-android] No keystore file specified. >&2
-    exit /b 1
-)
+set KS_FILE=%USERPROFILE%\passiflora-keys\android-keystore.jks
 if not exist "%KS_FILE%" (
-    echo [sign-android] Keystore not found: %KS_FILE% >&2
-    exit /b 1
+    set KS_FILE=
+    set /p KS_FILE="Keystore file: "
+    if "!KS_FILE!"=="" (
+        echo [sign-android] No keystore file specified. >&2
+        exit /b 1
+    )
+    if not exist "!KS_FILE!" (
+        echo [sign-android] Keystore not found: !KS_FILE! >&2
+        exit /b 1
+    )
+) else (
+    echo [sign-android] Using keystore %KS_FILE%
 )
 for /f "delims=" %%P in ('powershell -NoProfile -Command "[Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR((Read-Host 'Keystore password' -AsSecureString)))"') do set KS_PASS=%%P
 if "%KS_PASS%"=="" (

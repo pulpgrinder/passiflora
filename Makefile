@@ -17,7 +17,15 @@ THEME := $(shell awk '/^theme / {print $$2}' src/config 2>/dev/null)
 ifeq ($(THEME),)
   THEME := Default
 endif
-PERM_DEFS := -DPROGNAME_STR=\"$(PROGNAME)\"
+
+# ── Port (read from src/config; generate if missing) ───────────────
+PORT := $(shell awk '/^port / {print $$2}' src/config 2>/dev/null)
+ifeq ($(PORT),)
+  PORT := $(shell awk 'BEGIN{srand(); print int(40000+rand()*22001)}')
+  $(shell echo 'port $(PORT)' >> src/config)
+endif
+
+PERM_DEFS := -DPROGNAME_STR=\"$(PROGNAME)\" -DDEFAULT_PORT=$(PORT)
 ifeq ($(PERM_LOCATION),true)
   PERM_DEFS += -DPERM_LOCATION
 endif
@@ -43,7 +51,7 @@ ifeq ($(UNAME_S),Darwin)
     UI_LDFLAGS  += -framework CoreLocation
   endif
   MENU_TEMPLATE  = src/macOS/menus/menu.txt
-  BUNDLE_ID     ?= com.example.$(PROGNAME)
+  BUNDLE_ID     ?= com.pulpgrinder.$(PROGNAME)
   VERSION       ?= 1.0.0
   ICNS           = src/icons/builticons/macos/AppIcon.icns
   APP_BUNDLE     = $(BINDIR)/$(PROGNAME).app
@@ -121,12 +129,42 @@ CONFIG_JS = src/www/generated/config.js
 SRCDIR = src/C
 GENDIR = src/C/generated
 
-all: $(BINARY) bundle
+all:
+ifeq ($(UNAME_S),Darwin)
+	$(MAKE) clean
+	$(MAKE) macos
+	$(MAKE) $(IOS_BINARY)
+	$(MAKE) windows
+	$(MAKE) android
+	$(MAKE) linux-docker
+	$(MAKE) www
+else ifeq ($(UNAME_S),Linux)
+	$(MAKE) clean
+	$(MAKE) linux
+	$(MAKE) windows
+	$(MAKE) android
+	$(MAKE) www
+else
+	$(MAKE) $(BINARY) bundle
+endif
+
+sign-all:
+ifeq ($(UNAME_S),Darwin)
+	$(MAKE) clean
+	$(MAKE) sign-macos
+	$(MAKE) sign-ios
+	$(MAKE) windows
+	$(MAKE) sign-android
+	$(MAKE) linux-docker
+	$(MAKE) www
+else
+	@echo "sign-all target requires macOS." >&2; exit 1
+endif
 
 # ── macOS (alias for consistency with other platform targets) ────────
 macos:
 ifeq ($(UNAME_S),Darwin)
-	$(MAKE) all
+	$(MAKE) $(BINARY) bundle
 else
 	@echo "macos target requires macOS." >&2
 endif
@@ -209,6 +247,9 @@ ifeq ($(UNAME_S),Darwin)
 	sh nixscripts/mkiosbundle.sh "$(PROGNAME)" "$(IOS_BINARY)" src/icons/builticons/ios/AppIcon-1024.png "$(BUNDLE_ID)" "$(VERSION)"
 	@PROV="$(IOS_PROVISIONING_PROFILE)"; \
 	if [ -z "$$PROV" ]; then \
+		PROV=~/passiflora-keys/$(PROGNAME).mobileprovision; \
+	fi; \
+	if [ -z "$$PROV" ]; then \
 		printf 'Provisioning profile (.mobileprovision): '; read PROV; \
 	fi; \
 	if [ -z "$$PROV" ] || [ ! -f "$$PROV" ]; then \
@@ -221,16 +262,30 @@ ifeq ($(UNAME_S),Darwin)
 	\
 	echo "sign-ios: extracting entitlements from profile..."; \
 	ENT_FILE=$$(mktemp /tmp/sign-ios-ent-XXXXXX); \
+	TMPDIR_IPA=""; \
+	trap 'rm -f "$$ENT_FILE" "$$ENT_FILE.full"; [ -n "$$TMPDIR_IPA" ] && rm -rf "$$TMPDIR_IPA"' EXIT; \
 	security cms -D -i "$$PROV" > "$$ENT_FILE.full"; \
 	if ! /usr/libexec/PlistBuddy -x -c "Print :Entitlements" "$$ENT_FILE.full" > "$$ENT_FILE"; then \
 		echo "sign-ios: failed to extract entitlements from provisioning profile." >&2; \
 		cat "$$ENT_FILE.full" >&2; \
-		rm -f "$$ENT_FILE" "$$ENT_FILE.full"; \
 		exit 1; \
 	fi; \
-	rm -f "$$ENT_FILE.full"; \
 	echo "sign-ios: entitlements:"; \
 	cat "$$ENT_FILE"; \
+	\
+	PROFILE_APPID=$$(/usr/libexec/PlistBuddy -c "Print :application-identifier" "$$ENT_FILE" 2>/dev/null \
+		| sed 's/^[A-Z0-9]*\.//'); \
+	PLIST_BUNDLEID=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" $(IOS_APP_BUNDLE)/Info.plist 2>/dev/null); \
+	if [ -n "$$PROFILE_APPID" ] && [ -n "$$PLIST_BUNDLEID" ] && [ "$$PROFILE_APPID" != "$$PLIST_BUNDLEID" ]; then \
+		echo "" >&2; \
+		echo "sign-ios: ERROR — bundle ID mismatch:" >&2; \
+		echo "  Info.plist:           $$PLIST_BUNDLEID" >&2; \
+		echo "  Provisioning profile: $$PROFILE_APPID" >&2; \
+		echo "" >&2; \
+		echo "  Set BUNDLE_ID to match your profile:" >&2; \
+		echo "    make sign-ios BUNDLE_ID=$$PROFILE_APPID" >&2; \
+		exit 1; \
+	fi; \
 	\
 	echo ""; \
 	echo "=== Code Signing: $(IOS_APP_BUNDLE) ==="; \
@@ -260,13 +315,11 @@ ifeq ($(UNAME_S),Darwin)
 	printf "Choose identity [1-$$N]: "; read CHOICE; \
 	if [ -z "$$CHOICE" ]; then \
 		echo "sign-ios: no selection made, aborting." >&2; \
-		rm -f "$$ENT_FILE"; \
 		exit 1; \
 	fi; \
 	LINE=$$(echo "$$IDENTITIES" | sed -n "$${CHOICE}p"); \
 	if [ -z "$$LINE" ]; then \
 		echo "sign-ios: invalid selection." >&2; \
-		rm -f "$$ENT_FILE"; \
 		exit 1; \
 	fi; \
 	SIGN_ID=$$(echo "$$LINE" | sed 's/^[0-9]*) *\([A-F0-9]*\).*/\1/'); \
@@ -274,26 +327,26 @@ ifeq ($(UNAME_S),Darwin)
 	echo ""; \
 	echo "Signing with: $$SIGN_DESC"; \
 	\
-	xattr -cr $(IOS_APP_BUNDLE); \
+	TMPDIR_IPA=$$(mktemp -d /tmp/sign-ios-ipa-XXXXXX); \
+	echo "sign-ios: copying bundle to $$TMPDIR_IPA (avoids iCloud xattr interference)..."; \
+	ditto $(IOS_APP_BUNDLE) "$$TMPDIR_IPA/$(PROGNAME).app"; \
+	xattr -cr "$$TMPDIR_IPA/$(PROGNAME).app"; \
 	codesign --force \
 		--sign "$$SIGN_ID" \
 		--entitlements "$$ENT_FILE" \
 		--generate-entitlement-der \
-		$(IOS_APP_BUNDLE); \
-	rm -f "$$ENT_FILE"; \
+		"$$TMPDIR_IPA/$(PROGNAME).app"; \
 	\
 	echo ""; \
-	echo "sign-ios: $(IOS_APP_BUNDLE) signed."; \
-	codesign -dvv $(IOS_APP_BUNDLE) 2>&1 | grep -E '^(Authority|TeamIdentifier|Signature)'; \
+	echo "sign-ios: bundle signed."; \
+	codesign -dvv "$$TMPDIR_IPA/$(PROGNAME).app" 2>&1 | grep -E '^(Authority|TeamIdentifier|Signature)'; \
 	\
 	echo ""; \
 	echo "sign-ios: packaging $(IOS_IPA)..."; \
-	rm -rf $(IOS_BINDIR)/_ipa_staging; \
-	mkdir -p $(IOS_BINDIR)/_ipa_staging/Payload; \
-	cp -R $(IOS_APP_BUNDLE) $(IOS_BINDIR)/_ipa_staging/Payload/; \
-	ditto -c -k --sequesterRsrc --keepParent \
-		$(IOS_BINDIR)/_ipa_staging/Payload "$(CURDIR)/$(IOS_IPA)"; \
-	rm -rf $(IOS_BINDIR)/_ipa_staging; \
+	mkdir -p "$$TMPDIR_IPA/Payload"; \
+	mv "$$TMPDIR_IPA/$(PROGNAME).app" "$$TMPDIR_IPA/Payload/"; \
+	ditto -c -k --keepParent \
+		"$$TMPDIR_IPA/Payload" "$(CURDIR)/$(IOS_IPA)"; \
 	echo "sign-ios: $(IOS_IPA) created."
 else
 	@echo "sign-ios target requires macOS." >&2; exit 1
@@ -414,6 +467,25 @@ else
 	@echo "  Install: sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev" >&2; exit 1
 endif
 
+# ── Linux via Docker (cross-build from macOS) ──────────────────────
+LINUX_DOCKER_IMAGE ?= ubuntu:24.04
+
+linux-docker:
+ifeq ($(UNAME_S),Darwin)
+	docker run --rm \
+		-v "$(CURDIR)":/workspace \
+		-w /workspace \
+		$(LINUX_DOCKER_IMAGE) \
+		sh -c 'apt-get update && \
+		       apt-get install -y --no-install-recommends \
+		           gcc make pkg-config \
+		           libgtk-3-dev libwebkit2gtk-4.1-dev \
+		           libgstreamer1.0-dev xxd && \
+		       make linux'
+else
+	@echo "linux-docker target is intended for macOS (use 'make linux' on Linux)." >&2; exit 1
+endif
+
 # ── Android (Gradle + NDK) ─────────────────────────────────
 android: $(GENDIR)/menu.h
 	@mkdir -p $(dir $(CONFIG_JS))
@@ -432,13 +504,26 @@ sign-android: android
 		echo "  Run 'make android' first." >&2; \
 		exit 1; \
 	fi
-	@printf 'Keystore file: '; read KS_FILE; \
+	@KS_FILE=~/passiflora-keys/android-keystore.jks; \
 	if [ ! -f "$$KS_FILE" ]; then \
-		echo "sign-android: keystore not found: $$KS_FILE" >&2; \
-		exit 1; \
+		printf 'Keystore file: '; read KS_FILE; \
+		if [ ! -f "$$KS_FILE" ]; then \
+			echo "sign-android: keystore not found: $$KS_FILE" >&2; \
+			exit 1; \
+		fi; \
+	else \
+		echo "sign-android: using keystore $$KS_FILE"; \
 	fi; \
 	printf 'Keystore password: '; \
 	stty -echo 2>/dev/null; read KS_PASS; stty echo 2>/dev/null; echo; \
+	if [ -z "$$ANDROID_HOME" ]; then \
+		for _d in "$$HOME/Library/Android/sdk" "$$HOME/Android/Sdk" "/usr/local/lib/android/sdk"; do \
+			if [ -d "$$_d" ]; then ANDROID_HOME="$$_d"; break; fi; \
+		done; \
+		if [ -z "$$ANDROID_HOME" ] && [ -f src/android/local.properties ]; then \
+			ANDROID_HOME=$$(sed -n 's/^sdk\.dir=//p' src/android/local.properties); \
+		fi; \
+	fi; \
 	APKSIGNER=""; \
 	if [ -n "$$ANDROID_HOME" ]; then \
 		APKSIGNER=$$(find "$$ANDROID_HOME/build-tools" -name apksigner -type f 2>/dev/null | sort -V | tail -1); \
@@ -512,4 +597,4 @@ ifeq ($(UNAME_S),Linux)
 	-gtk-update-icon-cache -f -t $(HOME)/.local/share/icons/hicolor 2>/dev/null || true
 endif
 
-.PHONY: all clean icons bundle macos sign-macos sign-ios sim-ios windows linux android sign-android www
+.PHONY: all sign-all clean icons bundle macos sign-macos sign-ios sim-ios windows linux linux-docker android sign-android www

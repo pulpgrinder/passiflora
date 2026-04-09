@@ -26,6 +26,7 @@
 #include <ctype.h>
 #include <stdint.h>
 #include <signal.h>
+#include <time.h>
 #include <pthread.h>
 
 #if defined(__linux__) && !defined(__ANDROID__)
@@ -42,6 +43,7 @@
   #include <windows.h>
   #include <shellapi.h>
   #include <shlobj.h>
+  #include <process.h>
   #define sock_read(fd,buf,len)       recv((fd),(char*)(buf),(int)(len),0)
   #define sock_write(fd,buf,len)      send((fd),(const char*)(buf),(int)(len),0)
   #define sock_close(fd)              closesocket(fd)
@@ -185,7 +187,11 @@ void passiflora_auto_debug(int port)
 /* ------------------------------------------------------------------ */
 /*  Configuration                                                      */
 /* ------------------------------------------------------------------ */
-#define DEFAULT_PORT       8080
+#ifndef DEFAULT_PORT
+#define DEFAULT_PORT       51299
+#endif
+#define PORT_RANGE_LO      40000
+#define PORT_RANGE_HI      62000
 #define BACKLOG            128
 #define MAX_HEADER_SIZE    (64 * 1024)
 #define MAX_CONNECTIONS    64
@@ -196,6 +202,12 @@ void passiflora_auto_debug(int port)
 static int             active_connections = 0;
 static pthread_mutex_t conn_lock  = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  conn_cond  = PTHREAD_COND_INITIALIZER;
+
+/* Pick a random port in [PORT_RANGE_LO, PORT_RANGE_HI]. */
+static int random_port(void)
+{
+    return PORT_RANGE_LO + (int)(rand() % (PORT_RANGE_HI - PORT_RANGE_LO + 1));
+}
 
 /* ------------------------------------------------------------------ */
 /*  MIME type helper                                                   */
@@ -440,7 +452,10 @@ static const char *getDocumentsDirectory(void)
         char parent[PATH_BUF];
         snprintf(parent, sizeof parent, "%s/Documents", dd_home);
         mkdir(parent, 0755);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
         snprintf(doc_dir, sizeof doc_dir, "%s/%s", parent, PROGNAME_STR);
+#pragma GCC diagnostic pop
     }
     if (doc_dir[0]) mkdir(doc_dir, 0755);
 #endif
@@ -1157,8 +1172,10 @@ int main(int argc, char **argv)
     { WSADATA wsa; WSAStartup(MAKEWORD(2,2), &wsa); }
 #endif
 
-    int port = 0;  /* 0 = let the OS pick a free port */
+    int port = DEFAULT_PORT;  /* use fixed port so IndexedDB persists */
     int headless = 0;
+
+    srand((unsigned)time(NULL) ^ (unsigned)getpid());
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--headless") == 0) {
@@ -1195,16 +1212,26 @@ int main(int argc, char **argv)
     };
 
     if (bind(server_fd, (struct sockaddr *)&addr, sizeof addr) < 0) {
-        sock_perror("bind");
-        return 1;
-    }
-
-    /* If port was 0, read back the actual port the OS assigned */
-    if (port == 0) {
-        struct sockaddr_in bound;
-        socklen_t blen = sizeof bound;
-        if (getsockname(server_fd, (struct sockaddr *)&bound, &blen) == 0)
-            port = ntohs(bound.sin_port);
+        /* Preferred port in use — try random ports in the configured range */
+        if (port != 0) {
+            LOGI("passiflora: port %d in use, trying random port\n", port);
+            int bound = 0;
+            for (int attempt = 0; attempt < 20; attempt++) {
+                port = random_port();
+                addr.sin_port = htons(port);
+                if (bind(server_fd, (struct sockaddr *)&addr, sizeof addr) == 0) {
+                    bound = 1;
+                    break;
+                }
+            }
+            if (!bound) {
+                sock_perror("bind");
+                return 1;
+            }
+        } else {
+            sock_perror("bind");
+            return 1;
+        }
     }
 
     if (listen(server_fd, BACKLOG) < 0) {
@@ -1281,6 +1308,9 @@ Java_com_example_zipserve_MainActivity_startServer(JNIEnv *env, jclass cls)
     setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR,
                (const char *)&opt, sizeof opt);
 
+    int port = DEFAULT_PORT;
+    srand((unsigned)time(NULL) ^ (unsigned)getpid());
+
     struct sockaddr_in addr = {
         .sin_family      = AF_INET,
 #ifdef PERM_REMOTEDEBUGGING
@@ -1288,20 +1318,34 @@ Java_com_example_zipserve_MainActivity_startServer(JNIEnv *env, jclass cls)
 #else
         .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
 #endif
-        .sin_port        = htons(0),
+        .sin_port        = htons(port),
     };
 
     if (bind(server_fd, (struct sockaddr *)&addr, sizeof addr) < 0) {
-        LOGE("passiflora: bind() failed: %s\n", strerror(errno));
-        sock_close(server_fd);
-        return -1;
+        /* Preferred port in use — try random ports in the configured range */
+        LOGI("passiflora: port %d in use, trying random port\n", port);
+        int bound_ok = 0;
+        for (int attempt = 0; attempt < 20; attempt++) {
+            port = random_port();
+            addr.sin_port = htons(port);
+            if (bind(server_fd, (struct sockaddr *)&addr, sizeof addr) == 0) {
+                bound_ok = 1;
+                break;
+            }
+        }
+        if (!bound_ok) {
+            LOGE("passiflora: bind() failed: %s\n", strerror(errno));
+            sock_close(server_fd);
+            return -1;
+        }
     }
 
-    struct sockaddr_in bound;
-    socklen_t blen = sizeof bound;
-    int port = 0;
-    if (getsockname(server_fd, (struct sockaddr *)&bound, &blen) == 0)
-        port = ntohs(bound.sin_port);
+    {
+        struct sockaddr_in baddr;
+        socklen_t blen = sizeof baddr;
+        if (getsockname(server_fd, (struct sockaddr *)&baddr, &blen) == 0)
+            port = ntohs(baddr.sin_port);
+    }
 
     if (listen(server_fd, BACKLOG) < 0) {
         LOGE("passiflora: listen() failed: %s\n", strerror(errno));

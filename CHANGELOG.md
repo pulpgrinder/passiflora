@@ -6,6 +6,38 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Configurable server port** (`src/config`): The `port` setting controls which localhost port the embedded HTTP server uses. If no port is set, the build system auto-generates a random port in the 40000–62000 range and writes it to `src/config` for reuse. A stable port ensures IndexedDB-persisted VFS data survives between runs. If the configured port is unavailable at runtime, the server automatically tries other random ports in the same range.
+
+### Fixed
+
+- **`make sign-macos` temp file cleanup**: Temporary files (entitlements plists, notarization zips, App Store bundle copies) are now guaranteed to be removed on exit, even if the signing workflow fails with an error. Previously, an early failure could leave orphaned files in `/tmp` or the build directory.
+
+- **`make all` and `make sign-all`**: These targets now actually build all platforms as documented. Previously `make all` only built the macOS app, and `make sign-all` did not exist.
+
+- **`make linux-docker`**: Added missing target to build the Linux binary inside a Docker container from macOS.
+
+### Changed
+
+- **Android signing default keystore path**: `make sign-android` (and `.\build sign-android` on Windows) now automatically looks for a keystore at `~/passiflora-keys/android-keystore.jks` (`%USERPROFILE%\passiflora-keys\android-keystore.jks` on Windows). If found, it is used without prompting for a path. If not found, you are prompted as before. The recommended `keytool` command in the docs now creates the keystore at this default location.
+
+- **Android SDK auto-detection**: `make sign-android` now auto-detects `ANDROID_HOME` from common SDK locations (`~/Library/Android/sdk` on macOS, `~/Android/Sdk` on Linux) and from `local.properties`, so `apksigner` and `zipalign` are found without needing to export `ANDROID_HOME`.
+
+### Removed
+
+- **Test keystore removed**: The bundled test keystore (`src/android/release.jks`) has been removed. Gradle release builds now require `RELEASE_KEYSTORE` environment variables to be set, or use `make sign-android` for interactive signing.
+
+### Added
+
+- **macOS notarization and App Store packaging**: `make sign-macos` now runs a two-stage interactive workflow. Stage 1 signs the `.app` with a Developer ID certificate, submits it to Apple's notary service, and staples the ticket — producing a notarized app ready for distribution outside the App Store. Stage 2 creates a separate App Store copy, signs it with an App Store application certificate (with App Sandbox), and wraps it in a `.pkg` signed with an installer certificate — ready for upload to App Store Connect. Both stages are optional.
+
+- **iOS App Store upload guidance**: `make sign-ios` documentation now notes that when signed with an Apple Distribution certificate and an App Store provisioning profile, the resulting `.ipa` is ready for direct upload to App Store Connect. Added upload instructions using `xcrun altool` and Transporter.
+
+- **3rd Party Mac Developer Installer certificate**: Added to the certificate types table in BUILD-macOS.md — required for signing the `.pkg` installer for Mac App Store submission.
+
+- **Notarization setup instructions**: BUILD-macOS.md now documents how to generate an app-specific password and store notarization credentials in the Keychain via `xcrun notarytool store-credentials`.
+
+### Previously added
+
 - **Virtual File System (VFS) + IndexedDB**: All file I/O now runs entirely in JavaScript via an in-memory VFS backed by IndexedDB for persistence. The POSIX-style `PassifloraIO` methods (`fopen`, `fread`, `fwrite`, etc.) work on all platforms, including the WWW browser target. Files are hydrated from IndexedDB on startup and persisted on `fclose()`.
 
 - **Directory functions**: `mkdir(path)`, `rmdir(path)`, `chdir(path)`, `getcwd()` — POSIX-style directory management with IndexedDB persistence. Relative paths and `.`/`..` components are resolved automatically. `rename()` now handles directory renames (moves all files and subdirectories under the old path).
@@ -41,7 +73,7 @@ All notable changes to this project will be documented in this file.
 
 - **`PassifloraIO.resetVFS()`**: Erases the entire VFS and IndexedDB, then repopulates from the compiled-in preload data.
 
-- **App configuration file** (`src/config`): A unified key-value config file that controls permissions and app settings. Supported keys: `uselocation`, `usecamera`, `usemicrophone`, `allowremotedebugging` (`true`/`false`), and `orientation` (`portrait`, `landscape`, or `both`). The separate `src/permissions` file has been removed.
+- **App configuration file** (`src/config`): A unified key-value config file that controls permissions and app settings. Supported keys: `uselocation`, `usecamera`, `usemicrophone`, `allowremotedebugging` (`true`/`false`), `orientation` (`portrait`, `landscape`, or `both`), and `port` (server port number). The separate `src/permissions` file has been removed.
 
 - **Documentation**: Added previously undocumented public APIs to the README: `eraseVFS()`, `resetVFS()`, `listDirectory()`, `openExternal()`, `getCurrentPosition()`, `webDownload()`, and `patchLinks()`.
 

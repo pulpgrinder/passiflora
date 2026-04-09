@@ -155,6 +155,12 @@ if [ "$PLATFORM" = "macos" ]; then
 
     BUNDLE_DIR=$(dirname "$BUNDLE")
 
+    # Ensure all temporary files are removed on exit (even on error)
+    ENT_FILE=""
+    _zip_file=""
+    _mas_bundle=""
+    trap '[ -n "$ENT_FILE" ] && rm -f "$ENT_FILE"; [ -n "$_zip_file" ] && rm -f "$_zip_file"; [ -n "$_mas_bundle" ] && rm -rf "$_mas_bundle"' EXIT
+
     # ── Step 1: Developer ID signing + notarization ────────────────
     echo "━━━ Step 1: Developer ID distribution (outside App Store) ━━━"
     echo ""
