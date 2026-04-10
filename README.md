@@ -19,7 +19,7 @@ Features:
 * Access to device location data, cameras, mics, etc.
 * Remote debugging
 * POSIX(-ish) file system
-* Produce signed app-store ready binaries for macOS, iOS, and Linux (Windows planned) (experimental -- needs testing)
+* Produce signed app-store ready binaries for macOS, iOS, and Android (Windows planned) (experimental -- needs testing)
 
 What it *doesn't* do:
 
