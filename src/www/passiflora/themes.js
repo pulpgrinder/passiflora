@@ -1427,13 +1427,23 @@ _saveConfig: async function(fields) {
 };
 
 /* Apply config theme immediately so currentTheme is set for synchronous callers */
-PassifloraThemes.applyPassifloraTheme(PassifloraConfig.theme);
+if (!PassifloraThemes.applyPassifloraTheme(PassifloraConfig.theme)) {
+    PassifloraThemes.applyPassifloraTheme("Default");
+    setTimeout(function() {
+        alert('Theme "' + PassifloraConfig.theme + '" was not found. Using Default theme.');
+    }, 0);
+}
 
 /* Then check VFS for a saved preference and override if found */
 (async function() {
     var cfg = await PassifloraThemes._loadConfig();
-    if (cfg.theme && PassifloraThemes.themeData[cfg.theme]) {
-        PassifloraThemes.applyPassifloraTheme(cfg.theme);
+    if (cfg.theme) {
+        if (PassifloraThemes.themeData[cfg.theme]) {
+            PassifloraThemes.applyPassifloraTheme(cfg.theme);
+        } else {
+            PassifloraThemes.applyPassifloraTheme("Default");
+            alert('Saved theme "' + cfg.theme + '" was not found. Using Default theme.');
+        }
     }
 })();
 

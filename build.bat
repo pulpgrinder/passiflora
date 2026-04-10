@@ -35,7 +35,7 @@ set WIN_LDFLAGS=-lws2_32 -lshell32 -lgdi32 -lole32 -luuid -mwindows -static -lpt
 
 REM ── Read permissions from src\config ──
 if exist "%SCRIPT_DIR%\src\config" (
-    for /F "tokens=1,2" %%A in (%SCRIPT_DIR%\src\config) do (
+    for /F "tokens=1,*" %%A in (%SCRIPT_DIR%\src\config) do (
         if /I "%%A"=="uselocation"          if /I "%%B"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_LOCATION
         if /I "%%A"=="usecamera"            if /I "%%B"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_CAMERA
         if /I "%%A"=="usemicrophone"        if /I "%%B"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_MICROPHONE

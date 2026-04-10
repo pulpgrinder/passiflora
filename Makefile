@@ -13,7 +13,7 @@ PERM_LOCATION   := $(shell awk '/^uselocation /          {print $$2}' src/config
 PERM_CAMERA     := $(shell awk '/^usecamera /            {print $$2}' src/config 2>/dev/null)
 PERM_MICROPHONE := $(shell awk '/^usemicrophone /        {print $$2}' src/config 2>/dev/null)
 PERM_REMOTEDEBUGGING := $(shell awk '/^allowremotedebugging / {print $$2}' src/config 2>/dev/null)
-THEME := $(shell awk '/^theme / {print $$2}' src/config 2>/dev/null)
+THEME := $(shell awk '/^theme / {sub(/^theme /, ""); print}' src/config 2>/dev/null)
 ifeq ($(THEME),)
   THEME := Default
 endif
@@ -429,7 +429,7 @@ $(WV2_LOADER_H):
 
 $(WIN_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/win_menu.h $(WV2_LOADER_H) $(WEB_SOURCES)
 	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh src/Windows/menus/menu.txt $(PROGNAME) Windows $(CONFIG_JS) $(THEME) src/config
+	sh nixscripts/mkmenu_json.sh src/Windows/menus/menu.txt $(PROGNAME) Windows $(CONFIG_JS) "$(THEME)" src/config
 	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
 	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
@@ -453,7 +453,7 @@ LINUX_ICON_H        = src/C/generated/linux_icon.h
 linux: $(GENDIR)/menu.h
 ifeq ($(UNAME_S),Linux)
 	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh src/Linux/menus/menu.txt $(PROGNAME) Linux $(CONFIG_JS) $(THEME) src/config
+	sh nixscripts/mkmenu_json.sh src/Linux/menus/menu.txt $(PROGNAME) Linux $(CONFIG_JS) "$(THEME)" src/config
 	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
 	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
@@ -500,7 +500,7 @@ endif
 # ── Android (Gradle + NDK) ─────────────────────────────────
 android: $(GENDIR)/menu.h
 	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh src/android/menus/menu.txt $(PROGNAME) Android $(CONFIG_JS) $(THEME) src/config
+	sh nixscripts/mkmenu_json.sh src/android/menus/menu.txt $(PROGNAME) Android $(CONFIG_JS) "$(THEME)" src/config
 	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
 	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
@@ -572,7 +572,7 @@ WWW_BINDIR = bin/WWW
 
 www:
 	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh src/WWW/menus/menu.txt $(PROGNAME) WWW $(CONFIG_JS) $(THEME) src/config
+	sh nixscripts/mkmenu_json.sh src/WWW/menus/menu.txt $(PROGNAME) WWW $(CONFIG_JS) "$(THEME)" src/config
 	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
 	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
 	@rm -rf $(WWW_BINDIR)
