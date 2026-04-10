@@ -1363,6 +1363,7 @@ OnEnvironmentCreated(WV2Handler *self, HRESULT hr, void *env)
 
     /* Allocate the controller-completed handler */
     WV2Handler *ch = calloc(1, sizeof *ch);
+    if (!ch) return E_OUTOFMEMORY;
     static WV2HandlerVtbl ctrlVtbl = {
         Handler_QueryInterface, Handler_AddRef,
         Handler_Release,
@@ -1431,6 +1432,7 @@ static DWORD WINAPI win_posix_thread(LPVOID data)
     extern char *passiflora_posix_call(const char *);
     char *json = passiflora_posix_call(task->params);
     if (!json) json = _strdup("{}");
+    if (!json) { free(task->params); free(task->cb_id); free(task); return 0; }
 
     /* Build JS callback: PassifloraIO._posixResolve('id', {json}) */
     size_t jlen = strlen(task->cb_id) + strlen(json) + 64;
@@ -1545,6 +1547,7 @@ OnControllerCreated(WV2Handler *self, HRESULT hr, void *ctrl)
     /* Auto-grant geolocation permission requests */
     {
         WV2Handler *ph = calloc(1, sizeof *ph);
+        if (!ph) return E_OUTOFMEMORY;
         static WV2HandlerVtbl permVtbl = {
             Handler_QueryInterface, Handler_AddRef,
             Handler_Release,
@@ -1562,6 +1565,7 @@ OnControllerCreated(WV2Handler *self, HRESULT hr, void *ctrl)
     /* Listen for web messages from JavaScript (POSIX bridge) */
     {
         WV2Handler *mh = calloc(1, sizeof *mh);
+        if (!mh) return E_OUTOFMEMORY;
         static WV2HandlerVtbl msgVtbl = {
             Handler_QueryInterface, Handler_AddRef,
             Handler_Release,
@@ -1585,6 +1589,7 @@ OnControllerCreated(WV2Handler *self, HRESULT hr, void *ctrl)
     /* Listen for NavigationCompleted to auto-start debug */
     {
         WV2Handler *nh = calloc(1, sizeof *nh);
+        if (!nh) return E_OUTOFMEMORY;
         static WV2HandlerVtbl navVtbl = {
             Handler_QueryInterface, Handler_AddRef,
             Handler_Release,
@@ -1882,6 +1887,7 @@ void ui_open(int port)
     } else {
         /* Create environment-completed handler */
         WV2Handler *eh = calloc(1, sizeof *eh);
+        if (!eh) { ExitProcess(1); }
         static WV2HandlerVtbl envVtbl = {
             Handler_QueryInterface, Handler_AddRef,
             Handler_Release,
@@ -2734,6 +2740,7 @@ static gpointer posix_thread_func(gpointer data)
     char **pair = g_new(char *, 2);
     pair[0] = task->cb_id;       /* already g_strdup'd */
     pair[1] = json ? json : strdup("{}");
+    if (!pair[1]) pair[1] = g_strdup("{}");
     g_idle_add(posix_result_idle, pair);
     g_free(task->params);
     g_free(task);

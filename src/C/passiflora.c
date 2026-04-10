@@ -492,7 +492,9 @@ char *json_error(const char *msg)
 
 char *json_ok_void(void)
 {
-    return strdup("{\"ok\":true}");
+    char *s = strdup("{\"ok\":true}");
+    if (!s) return NULL;
+    return s;
 }
 
 char *json_ok_int(long val)
@@ -505,7 +507,9 @@ char *json_ok_int(long val)
 
 char *json_ok_null(void)
 {
-    return strdup("{\"ok\":true,\"result\":null}");
+    char *s = strdup("{\"ok\":true,\"result\":null}");
+    if (!s) return NULL;
+    return s;
 }
 
 char *json_ok_str(const char *val)
@@ -1421,6 +1425,8 @@ Java_com_example_zipserve_MainActivity_nativeSetFilesDir(
     const char *p = (*env)->GetStringUTFChars(env, path, NULL);
     android_files_dir = strdup(p);
     (*env)->ReleaseStringUTFChars(env, path, p);
+    if (!android_files_dir)
+        LOGE("passiflora: strdup(filesDir) failed\n");
 }
 
 JNIEXPORT jint JNICALL
