@@ -68,8 +68,8 @@
                 document.getElementById('playBtn').disabled = false;
                 isRecording = false;
                 if (result) {
-                    var data = result.data || result;
-                    var mime = result.mimeType || 'video/webm';
+                    const data = result.data || result;
+                    const mime = result.mimeType || 'video/webm';
                     recordedBlob = new Blob([data], { type: mime });
                     logResult('Recording saved (' + (recordedBlob.size / 1024).toFixed(1) + ' KB, ' + mime + ')');
                 } else {

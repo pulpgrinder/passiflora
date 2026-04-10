@@ -1404,12 +1404,12 @@ PassifloraIO = {
         if (!extensions) extensions = [];
         if (!defaultFolder) defaultFolder = "";
 
-        var extInfo = PassifloraIO._prepareExts(extensions);
-        var extsLower = extInfo.extsLower;
-        var extLabel  = extInfo.extLabel;
+        const extInfo = PassifloraIO._prepareExts(extensions);
+        const extsLower = extInfo.extsLower;
+        const extLabel  = extInfo.extLabel;
 
         /* Determine start directory: remembered > supplied > home */
-        var startPromise;
+        let startPromise;
         if (PassifloraIO._fileBrowserDir) {
             startPromise = Promise.resolve(PassifloraIO._fileBrowserDir);
         } else if (defaultFolder) {
@@ -1422,15 +1422,15 @@ PassifloraIO = {
 
             return new Promise(function (resolve) {
 
-                var overlay  = null;
-                var wrapper  = null;
-                var screens  = [];
-                var depth    = 0;
-                var initialDepth = 0;
-                var filterAll = false;
-                var resolved  = false;
-                var currentDir = startDir;
-                var selectedLi = null;          /* currently highlighted <li> */
+                let overlay  = null;
+                let wrapper  = null;
+                const screens  = [];
+                let depth    = 0;
+                let initialDepth = 0;
+                let filterAll = false;
+                let resolved  = false;
+                let currentDir = startDir;
+                let selectedLi = null;          /* currently highlighted <li> */
 
                 function finish(value) {
                     if (resolved) return;
@@ -1447,7 +1447,7 @@ PassifloraIO = {
 
                 function slideForward(screen) {
                     while (screens.length > depth + 1) {
-                        var old = screens.pop();
+                        const old = screens.pop();
                         if (old.parentNode) old.parentNode.removeChild(old);
                     }
                     screen.style.transform = "translateX(100%)";
@@ -1465,7 +1465,7 @@ PassifloraIO = {
                     }
                     depth--;
                     positionScreens();
-                    var removed = screens.pop();
+                    const removed = screens.pop();
                     setTimeout(function () {
                         if (removed.parentNode) removed.parentNode.removeChild(removed);
                     }, 300);
@@ -1480,8 +1480,8 @@ PassifloraIO = {
 
                 /* -- move a file into a directory via the file system -- */
                 function moveFile(fileName, fromDir, toDir, refreshFn) {
-                    var oldPath = PassifloraIO._joinPath(fromDir, fileName);
-                    var newPath = PassifloraIO._joinPath(toDir, fileName);
+                    const oldPath = PassifloraIO._joinPath(fromDir, fileName);
+                    const newPath = PassifloraIO._joinPath(toDir, fileName);
                     PassifloraIO.rename(oldPath, newPath).then(function () {
                         if (refreshFn) refreshFn();
                     }).catch(function () {
@@ -1491,38 +1491,38 @@ PassifloraIO = {
 
                 /* -- build a screen for a directory -- */
                 function buildDirScreen(dirPath, title) {
-                    var screen = document.createElement("div");
+                    const screen = document.createElement("div");
                     screen.className = "passiflora_fo_screen";
 
                     /* Back header */
-                    var back = document.createElement("div");
+                    const back = document.createElement("div");
                     back.className = "passiflora_fo_back";
                     back.textContent = title || PassifloraIO._shortPath(dirPath);
                     back.addEventListener("click", function () { slideBack(); });
                     screen.appendChild(back);
 
                     /* File list */
-                    var listWrap = document.createElement("div");
+                    const listWrap = document.createElement("div");
                     listWrap.className = "passiflora_fo_list";
-                    var loadingMsg = document.createElement("div");
+                    const loadingMsg = document.createElement("div");
                     loadingMsg.className = "passiflora_fo_loading";
                     loadingMsg.textContent = "Loading\u2026";
                     listWrap.appendChild(loadingMsg);
                     screen.appendChild(listWrap);
 
                     /* Filter bar + Create Folder + Done */
-                    var filterRow = document.createElement("div");
+                    const filterRow = document.createElement("div");
                     filterRow.className = "passiflora_fo_filterbar";
 
-                    var sel = document.createElement("select");
+                    const sel = document.createElement("select");
                     sel.className = "passiflora_fo_select";
                     if (extensions.length > 0) {
-                        var opt1 = document.createElement("option");
+                        const opt1 = document.createElement("option");
                         opt1.value = "ext";
                         opt1.textContent = extLabel;
                         sel.appendChild(opt1);
                     }
-                    var opt2 = document.createElement("option");
+                    const opt2 = document.createElement("option");
                     opt2.value = "all";
                     opt2.textContent = "All files (*.*)";
                     sel.appendChild(opt2);
@@ -1534,21 +1534,21 @@ PassifloraIO = {
                     });
                     filterRow.appendChild(sel);
 
-                    var newDirBtn = document.createElement("button");
+                    const newDirBtn = document.createElement("button");
                     newDirBtn.className = "passiflora_fo_newdir";
                     newDirBtn.textContent = "\uD83D\uDCC1+";
                     newDirBtn.title = "Create Folder";
                     newDirBtn.addEventListener("click", function () {
-                        var base = "Untitled";
-                        var taken = {};
+                        const base = "Untitled";
+                        const taken = {};
                         if (entries) {
-                            for (var ti = 0; ti < entries.length; ti++)
+                            for (let ti = 0; ti < entries.length; ti++)
                                 taken[entries[ti].name] = true;
                         }
-                        var name = base;
-                        var n = 2;
+                        let name = base;
+                        let n = 2;
                         while (taken[name]) { name = base + " " + n; n++; }
-                        var newPath = dirPath === "/" ? "/" + name : dirPath + "/" + name;
+                        const newPath = dirPath === "/" ? "/" + name : dirPath + "/" + name;
                         PassifloraIO.mkdir(newPath).then(function () {
                             return PassifloraIO.listDirectory(dirPath);
                         }).then(function (list) {
@@ -1558,7 +1558,7 @@ PassifloraIO = {
                     });
                     filterRow.appendChild(newDirBtn);
 
-                    var doneBtn = document.createElement("button");
+                    const doneBtn = document.createElement("button");
                     doneBtn.className = "passiflora_fo_newdir";
                     doneBtn.textContent = "Done";
                     doneBtn.addEventListener("click", function () { finish(null); });
@@ -1567,12 +1567,12 @@ PassifloraIO = {
                     screen.appendChild(filterRow);
 
                     /* Fetch directory listing and populate */
-                    var entries = null;
+                    let entries = null;
 
                     function populateList() {
                         if (!entries) return;
                         listWrap.innerHTML = "";
-                        var ul = document.createElement("ul");
+                        const ul = document.createElement("ul");
                         ul.className = "passiflora_fo_ul";
 
                         function refreshDir() {
@@ -1584,10 +1584,10 @@ PassifloraIO = {
 
                         /* ".." entry — go up (doubles as drop target for parent) */
                         if (dirPath !== "/") {
-                            var upLi = document.createElement("li");
+                            const upLi = document.createElement("li");
                             upLi.className = "passiflora_fo_item passiflora_fo_dir";
                             upLi.textContent = "\uD83D\uDCC1 ..";
-                            var upArrow = document.createElement("span");
+                            const upArrow = document.createElement("span");
                             upArrow.className = "passiflora_fo_arrow";
                             upArrow.textContent = "\u276E";
                             upLi.appendChild(upArrow);
@@ -1605,9 +1605,9 @@ PassifloraIO = {
                             upLi.addEventListener("drop", function (e) {
                                 e.preventDefault();
                                 upLi.classList.remove("passiflora_fb_dragover");
-                                var fileName = e.dataTransfer.getData("text/plain");
+                                const fileName = e.dataTransfer.getData("text/plain");
                                 if (!fileName) return;
-                                var parentDir = dirPath.replace(/\/[^\/]+$/, "") || "/";
+                                const parentDir = dirPath.replace(/\/[^\/]+$/, "") || "/";
                                 moveFile(fileName, dirPath, parentDir, refreshDir);
                             });
 
@@ -1615,8 +1615,8 @@ PassifloraIO = {
                         }
 
                         /* Sort: directories first, then alphabetical */
-                        var dirs = [], files = [];
-                        for (var i = 0; i < entries.length; i++) {
+                        const dirs = [], files = [];
+                        for (let i = 0; i < entries.length; i++) {
                             if (entries[i].name === "..") continue;
                             if (entries[i].isDir) dirs.push(entries[i]);
                             else files.push(entries[i]);
@@ -1624,21 +1624,21 @@ PassifloraIO = {
                         dirs.sort(function (a, b) { return a.name.localeCompare(b.name); });
                         files.sort(function (a, b) { return a.name.localeCompare(b.name); });
 
-                        for (var di = 0; di < dirs.length; di++) {
+                        for (let di = 0; di < dirs.length; di++) {
                             (function (ent) {
-                                var li = document.createElement("li");
+                                const li = document.createElement("li");
                                 li.className = "passiflora_fo_item passiflora_fo_dir";
-                                var nameSpan = document.createElement("span");
+                                const nameSpan = document.createElement("span");
                                 nameSpan.textContent = "\uD83D\uDCC1 " + ent.name;
                                 li.appendChild(nameSpan);
-                                var arrow = document.createElement("span");
+                                const arrow = document.createElement("span");
                                 arrow.className = "passiflora_fo_arrow";
                                 arrow.textContent = "\u276F";
                                 li.appendChild(arrow);
                                 li.addEventListener("click", function () {
-                                    var sub = PassifloraIO._joinPath(dirPath, ent.name);
+                                    const sub = PassifloraIO._joinPath(dirPath, ent.name);
                                     currentDir = sub;
-                                    var newScreen = buildDirScreen(sub, ent.name);
+                                    const newScreen = buildDirScreen(sub, ent.name);
                                     slideForward(newScreen);
                                 });
 
@@ -1654,9 +1654,9 @@ PassifloraIO = {
                                 li.addEventListener("drop", function (e) {
                                     e.preventDefault();
                                     li.classList.remove("passiflora_fb_dragover");
-                                    var fileName = e.dataTransfer.getData("text/plain");
+                                    const fileName = e.dataTransfer.getData("text/plain");
                                     if (!fileName) return;
-                                    var targetDir = PassifloraIO._joinPath(dirPath, ent.name);
+                                    const targetDir = PassifloraIO._joinPath(dirPath, ent.name);
                                     moveFile(fileName, dirPath, targetDir, refreshDir);
                                 });
 
@@ -1667,10 +1667,10 @@ PassifloraIO = {
                             })(dirs[di]);
                         }
 
-                        for (var fi = 0; fi < files.length; fi++) {
+                        for (let fi = 0; fi < files.length; fi++) {
                             (function (ent) {
-                                var li = document.createElement("li");
-                                var matches = PassifloraIO._fileMatchesExt(
+                                const li = document.createElement("li");
+                                const matches = PassifloraIO._fileMatchesExt(
                                     ent.name, filterAll, extsLower);
                                 li.className = "passiflora_fo_item passiflora_fo_file" +
                                     (matches ? " passiflora_fo_match" : " passiflora_fo_dim");
@@ -1686,7 +1686,7 @@ PassifloraIO = {
                                     li.classList.remove("passiflora_fb_dragging");
                                 });
 
-                                var nameSpan = document.createElement("span");
+                                const nameSpan = document.createElement("span");
                                 nameSpan.textContent = ent.name;
                                 li.appendChild(nameSpan);
 
@@ -1707,7 +1707,7 @@ PassifloraIO = {
 
                     /* Track the current directory when this screen becomes visible */
                     screen.addEventListener("transitionend", function () {
-                        var r = screen.getBoundingClientRect();
+                        const r = screen.getBoundingClientRect();
                         if (r.left >= 0 && r.left < 5) currentDir = dirPath;
                     });
 
@@ -1717,7 +1717,7 @@ PassifloraIO = {
                         populateList();
                     }).catch(function () {
                         listWrap.innerHTML = "";
-                        var err = document.createElement("div");
+                        const err = document.createElement("div");
                         err.className = "passiflora_fo_loading";
                         err.textContent = "Cannot read directory.";
                         listWrap.appendChild(err);
@@ -1727,18 +1727,18 @@ PassifloraIO = {
                 }
 
                 /* -- init DOM via shared helper -- */
-                var dom = PassifloraIO._initFileDialogDOM(finish);
+                const dom = PassifloraIO._initFileDialogDOM(finish);
                 overlay = dom.overlay;
                 wrapper = dom.wrapper;
-                var teardown = dom.teardown;
+                const teardown = dom.teardown;
 
-                var track = document.createElement("div");
+                const track = document.createElement("div");
                 track.className = "passiflora_fo_track";
                 wrapper.appendChild(track);
                 document.body.appendChild(wrapper);
 
                 /* Build and show the root screen */
-                var rootScreen = buildDirScreen(startDir, null);
+                const rootScreen = buildDirScreen(startDir, null);
                 rootScreen.style.transform = "translateX(0)";
                 track.appendChild(rootScreen);
                 screens.push(rootScreen);
@@ -2193,10 +2193,10 @@ PassifloraIO = {
     /* -- Recording: use browser MediaRecorder on any platform that
        lacks a native recording backend (only Linux has GStreamer). -- */
     if (PassifloraConfig.os_name !== "Linux") {
-        var _recStream = null;
-        var _recRecorder = null;
-        var _recChunks = [];
-        var _recMimeType = "video/webm";
+        let _recStream = null;
+        let _recRecorder = null;
+        let _recChunks = [];
+        let _recMimeType = "video/webm";
 
         function _recCleanup() {
             if (_recStream) {
@@ -2219,7 +2219,7 @@ PassifloraIO = {
             if (_recRecorder && _recRecorder.state === "recording") {
                 return Promise.reject(new Error("Already recording"));
             }
-            var constraints = {};
+            const constraints = {};
             if (hasVideo) constraints.video = true;
             if (hasAudio) constraints.audio = true;
             if (!hasVideo && !hasAudio) {
@@ -2230,15 +2230,15 @@ PassifloraIO = {
                 _recChunks = [];
 
                 /* Pick a supported MIME type */
-                var mimeType = "";
-                var types = [
+                let mimeType = "";
+                const types = [
                     "video/webm;codecs=vp8,opus", "video/webm;codecs=vp9,opus",
                     "video/webm", "video/mp4"
                 ];
-                for (var i = 0; i < types.length; i++) {
+                for (let i = 0; i < types.length; i++) {
                     if (MediaRecorder.isTypeSupported(types[i])) { mimeType = types[i]; break; }
                 }
-                var options = mimeType ? { mimeType: mimeType } : {};
+                const options = mimeType ? { mimeType: mimeType } : {};
                 _recRecorder = new MediaRecorder(stream, options);
                 _recMimeType = _recRecorder.mimeType || "video/webm";
                 _recRecorder.ondataavailable = function (e) {
@@ -2255,10 +2255,10 @@ PassifloraIO = {
             }
             return new Promise(function (resolve) {
                 _recRecorder.onstop = function () {
-                    var blob = new Blob(_recChunks, { type: _recMimeType });
+                    const blob = new Blob(_recChunks, { type: _recMimeType });
                     _recChunks = [];
                     _recCleanup();
-                    var reader = new FileReader();
+                    const reader = new FileReader();
                     reader.onload = function () {
                         resolve({ data: new Uint8Array(reader.result), mimeType: _recMimeType });
                     };

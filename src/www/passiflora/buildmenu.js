@@ -209,7 +209,7 @@ const PassifloraMenu = (function () {
 
     /* Wire up hamburger click listener */
     document.addEventListener("DOMContentLoaded", function () {
-        var hamburgers = [].slice.call(
+        const hamburgers = [].slice.call(
             document.querySelectorAll(".hamburgermenu"));
         for (let i = 0; i < hamburgers.length; i++) {
             hamburgers[i].addEventListener("click", function () {
@@ -225,7 +225,7 @@ const PassifloraMenu = (function () {
     let activePanelSrc = null;
 
     function showPanel(id) {
-        var src = document.getElementById(id);
+        const src = document.getElementById(id);
         if (!src || !src.classList.contains("passiflora_menu_screen")) return false;
 
         if (!panelOverlay) {
@@ -239,7 +239,7 @@ const PassifloraMenu = (function () {
             panelWrapper = document.createElement("div");
             panelWrapper.className = "passiflora_panel_wrapper";
 
-            var back = document.createElement("div");
+            const back = document.createElement("div");
             back.className = "passiflora_menu_back";
             back.addEventListener("click", hidePanel);
             panelWrapper.appendChild(back);

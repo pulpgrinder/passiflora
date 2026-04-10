@@ -1401,8 +1401,8 @@ setCurrentTheme: function(themeName) {
  */
 _loadConfig: async function() {
     try {
-        var fh = await fopen("/.passiflora/config.json", "r");
-        var raw = await fgets(fh);
+        const fh = await fopen("/.passiflora/config.json", "r");
+        const raw = await fgets(fh);
         await fclose(fh);
         return raw ? JSON.parse(raw) : {};
     } catch(e) { return {}; }
@@ -1414,10 +1414,10 @@ _loadConfig: async function() {
  */
 _saveConfig: async function(fields) {
     try {
-        var cfg = await PassifloraThemes._loadConfig();
-        for (var k in fields) { cfg[k] = fields[k]; }
+        const cfg = await PassifloraThemes._loadConfig();
+        for (const k in fields) { cfg[k] = fields[k]; }
         try { await PassifloraIO.mkdir("/.passiflora"); } catch(e) { /* exists */ }
-        var fh = await fopen("/.passiflora/config.json", "w");
+        const fh = await fopen("/.passiflora/config.json", "w");
         await fputs(fh, JSON.stringify(cfg));
         await fclose(fh);
     } catch(e) {
@@ -1436,7 +1436,7 @@ if (!PassifloraThemes.applyPassifloraTheme(PassifloraConfig.theme)) {
 
 /* Then check VFS for a saved preference and override if found */
 (async function() {
-    var cfg = await PassifloraThemes._loadConfig();
+    const cfg = await PassifloraThemes._loadConfig();
     if (cfg.theme) {
         if (PassifloraThemes.themeData[cfg.theme]) {
             PassifloraThemes.applyPassifloraTheme(cfg.theme);

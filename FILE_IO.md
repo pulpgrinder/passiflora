@@ -130,10 +130,10 @@ Opens a sliding file-browser panel that lets the user navigate the VFS and pick 
 Returns a Promise that resolves to the chosen file's full path, or `null` if the user cancelled.
 
 ```javascript
-var path = await PassifloraIO.menuOpen(['.txt', '.md'], '');
+let path = await PassifloraIO.menuOpen(['.txt', '.md'], '');
 if (path) {
-    var fh = await fopen(path, 'r');
-    var contents = await fgets(fh);
+    let fh = await fopen(path, 'r');
+    let contents = await fgets(fh);
     await fclose(fh);
 }
 ```
@@ -160,9 +160,9 @@ Opens a sliding Save As panel that lets the user navigate to a directory, type a
 Returns a Promise that resolves to the chosen file's full path, or `null` if cancelled.
 
 ```javascript
-var path = await PassifloraIO.menuSaveAs(['.txt'], 'document.txt');
+let path = await PassifloraIO.menuSaveAs(['.txt'], 'document.txt');
 if (path) {
-    var fh = await fopen(path, 'w');
+    let fh = await fopen(path, 'w');
     await fputs(fh, 'Hello, world!\n');
     await fclose(fh);
 }
