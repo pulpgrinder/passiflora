@@ -35,7 +35,7 @@ Unlike Electron, Passiflora uses the system's own embeddable web browser control
 
 The sample program weighs 1.5 MB when built for macOS, 1.1 MB of which is accounted for by the .icns icon file, leaving around 400 KB for the actual binary executable. 
 
-By comparison, the same program when built for macOS using Electron/Electron Forge weighs **211 MB**. Yikes!
+By comparison, the same program when built for macOS using Electron/Electron Forge weighs **211 MB** --  more than **500 times larger**. Yikes!
 
 
 Electron and Electron Forge also install **342** (!) npm packages, which generate scads of deprecation/security warnings (and, yes, I'm following the installation/compilation instructions on the Electron website that are current as of today, March 7, 2026).
