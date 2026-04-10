@@ -11,7 +11,17 @@ android {
     ndkVersion '29.0.14206865'
 
     defaultConfig {
-        applicationId "com.example.HeckinChonker"
+        // Read config file for applicationId and permissions
+        def configFile = rootProject.file("../../src/config")
+        def configMap = [:]
+        if (configFile.exists()) {
+            configFile.eachLine { line ->
+                def parts = line.trim().split(/\s+/)
+                if (parts.length >= 2) configMap[parts[0]] = parts[1]
+            }
+        }
+
+        applicationId configMap.getOrDefault("BUNDLE_ID", "com.pulpgrinder.HeckinChonker")
         minSdk 24
         targetSdk 35
         versionCode 1
@@ -23,14 +33,6 @@ android {
 
         // Permission flags: use -P Gradle properties (set by mkandroid.sh)
         // with fallback to reading src/config directly (Android Studio).
-        def configFile = rootProject.file("../../src/config")
-        def configMap = [:]
-        if (configFile.exists()) {
-            configFile.eachLine { line ->
-                def parts = line.trim().split(/\s+/)
-                if (parts.length >= 2) configMap[parts[0]] = parts[1]
-            }
-        }
         def perm = { String name ->
             def val = project.findProperty("PERM_${name.toUpperCase()}")
             if (val == null) val = configMap.get(name, 'false')
@@ -50,19 +52,19 @@ android {
         // Set environment variables to sign release builds:
         //   RELEASE_KEYSTORE, RELEASE_KEYSTORE_PASSWORD,
         //   RELEASE_KEY_ALIAS, RELEASE_KEY_PASSWORD
-        release {
-            def ksFile = System.getenv("RELEASE_KEYSTORE")
-            def ksPass = System.getenv("RELEASE_KEYSTORE_PASSWORD")
-            def ksAlias = System.getenv("RELEASE_KEY_ALIAS")
-            def ksKeyPass = System.getenv("RELEASE_KEY_PASSWORD")
-            if (ksFile && ksPass && ksAlias && ksKeyPass) {
+        def ksFile = System.getenv("RELEASE_KEYSTORE")
+        def ksPass = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+        def ksAlias = System.getenv("RELEASE_KEY_ALIAS")
+        def ksKeyPass = System.getenv("RELEASE_KEY_PASSWORD")
+        if (ksFile && ksPass && ksAlias && ksKeyPass) {
+            release {
                 storeFile     file(ksFile)
                 storePassword ksPass
                 keyAlias      ksAlias
                 keyPassword   ksKeyPass
-            } else {
-                logger.warn("WARNING: No signing config. Set RELEASE_KEYSTORE env vars or use 'make sign-android'.")
             }
+        } else {
+            logger.warn("WARNING: No release signing config. Set RELEASE_KEYSTORE env vars for a distributable build.")
         }
     }
 
@@ -77,7 +79,9 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
+            if (signingConfigs.hasProperty('release')) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 

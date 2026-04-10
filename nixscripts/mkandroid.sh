@@ -167,23 +167,25 @@ if [ -f "$STRINGS" ]; then
     rm -f "$STRINGS.bak"
 fi
 
-# ── Update applicationId / versionName if non-default ──────────────
-# NOTE: namespace must stay 'com.example.zipserve' to match the Java
-# package.  Only applicationId (the Play Store identity) changes.
+# ── Update versionName if non-default ──────────────────────────────
+# NOTE: applicationId is read from src/config by build.gradle directly.
+# namespace must stay 'com.example.zipserve' to match the Java package.
 APP_GRADLE="$ANDROID_DIR/app/build.gradle"
-if [ "$BUNDLE_ID" != "com.example.passiflora" ]; then
-    sed -i.bak "s|applicationId \"com.example.passiflora\"|applicationId \"$BUNDLE_ID\"|" \
-        "$APP_GRADLE"
-    rm -f "$APP_GRADLE.bak"
-fi
 if [ "$VERSION" != "1.0.0" ]; then
     sed -i.bak "s|versionName \"1.0.0\"|versionName \"$VERSION\"|" "$APP_GRADLE"
     rm -f "$APP_GRADLE.bak"
 fi
 
 # ── Build ──────────────────────────────────────────────────────────
-GRADLE_TASK="assemble$(echo "$BUILD_TYPE" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
-echo "mkandroid: building $BUILD_TYPE APK ($GRADLE_TASK)..."
+BUILD_FORMAT="${BUILD_FORMAT:-apk}"
+_BT_CAP="$(echo "$BUILD_TYPE" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
+if [ "$BUILD_FORMAT" = "aab" ]; then
+    GRADLE_TASK="bundle${_BT_CAP}"
+    echo "mkandroid: building $BUILD_TYPE AAB ($GRADLE_TASK)..."
+else
+    GRADLE_TASK="assemble${_BT_CAP}"
+    echo "mkandroid: building $BUILD_TYPE APK ($GRADLE_TASK)..."
+fi
 (cd "$ANDROID_DIR" && "$GRADLE" "$GRADLE_TASK" --quiet \
     -PPERM_LOCATION="$PERM_LOCATION" \
     -PPERM_CAMERA="$PERM_CAMERA" \
@@ -191,14 +193,26 @@ echo "mkandroid: building $BUILD_TYPE APK ($GRADLE_TASK)..."
     -PPERM_REMOTEDEBUGGING="$PERM_REMOTEDEBUGGING" \
     --project-cache-dir "$PROJECT_ROOT/bin/Android/gradle-cache")
 
-# ── Copy APK to bin/Android/ ───────────────────────────────────────
-APK=$(find "$PROJECT_ROOT/bin/Android/gradle-build/app/outputs/apk/$BUILD_TYPE" \
-      -name "*.apk" 2>/dev/null | head -1)
-if [ -n "$APK" ]; then
-    mkdir -p "$PROJECT_ROOT/bin/Android"
-    cp "$APK" "$PROJECT_ROOT/bin/Android/${PROGNAME}.apk"
-    echo "mkandroid: bin/Android/${PROGNAME}.apk created"
+# ── Copy output to bin/Android/ ────────────────────────────────────
+mkdir -p "$PROJECT_ROOT/bin/Android"
+if [ "$BUILD_FORMAT" = "aab" ]; then
+    AAB=$(find "$PROJECT_ROOT/bin/Android/gradle-build/app/outputs/bundle/$BUILD_TYPE" \
+          -name "*.aab" 2>/dev/null | head -1)
+    if [ -n "$AAB" ]; then
+        cp "$AAB" "$PROJECT_ROOT/bin/Android/${PROGNAME}.aab"
+        echo "mkandroid: bin/Android/${PROGNAME}.aab created"
+    else
+        echo "mkandroid: AAB not found in build output" >&2
+        exit 1
+    fi
 else
-    echo "mkandroid: APK not found in build output" >&2
-    exit 1
+    APK=$(find "$PROJECT_ROOT/bin/Android/gradle-build/app/outputs/apk/$BUILD_TYPE" \
+          -name "*.apk" 2>/dev/null | head -1)
+    if [ -n "$APK" ]; then
+        cp "$APK" "$PROJECT_ROOT/bin/Android/${PROGNAME}.apk"
+        echo "mkandroid: bin/Android/${PROGNAME}.apk created"
+    else
+        echo "mkandroid: APK not found in build output" >&2
+        exit 1
+    fi
 fi

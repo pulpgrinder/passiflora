@@ -18,8 +18,6 @@ REM   - PowerShell                  (for zip/hex conversion)
 REM
 setlocal enabledelayedexpansion
 
-set PROGNAME=HeckinChonker
-set BUNDLE_ID=com.example.%PROGNAME%
 set VERSION=1.0.0
 set CONTENT=src\www
 
@@ -30,20 +28,30 @@ set WIN_BINDIR=%SCRIPT_DIR%\bin\Windows
 if "%WIN_CC%"=="" set WIN_CC=gcc
 if "%WIN_WINDRES%"=="" set WIN_WINDRES=windres
 
-set WIN_CFLAGS=-Wall -Wextra -O2 -DPROGNAME_STR=\"%PROGNAME%\"
-set WIN_LDFLAGS=-lws2_32 -lshell32 -lgdi32 -lole32 -luuid -mwindows -static -lpthread
-
-REM ── Read permissions from src\config ──
+REM ── Read settings from src\config ──
+set PROGNAME=
+set BUNDLE_ID=
 if exist "%SCRIPT_DIR%\src\config" (
     for /F "tokens=1,*" %%A in (%SCRIPT_DIR%\src\config) do (
-        if /I "%%A"=="uselocation"          if /I "%%B"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_LOCATION
-        if /I "%%A"=="usecamera"            if /I "%%B"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_CAMERA
-        if /I "%%A"=="usemicrophone"        if /I "%%B"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_MICROPHONE
-        if /I "%%A"=="allowremotedebugging" if /I "%%B"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_REMOTEDEBUGGING
+        if /I "%%A"=="PROGNAME"             set PROGNAME=%%B
+        if /I "%%A"=="BUNDLE_ID"            set BUNDLE_ID=%%B
+        if /I "%%A"=="uselocation"          if /I "%%B"=="true" set PERM_LOCATION=true
+        if /I "%%A"=="usecamera"            if /I "%%B"=="true" set PERM_CAMERA=true
+        if /I "%%A"=="usemicrophone"        if /I "%%B"=="true" set PERM_MICROPHONE=true
+        if /I "%%A"=="allowremotedebugging" if /I "%%B"=="true" set PERM_REMOTEDEBUGGING=true
         if /I "%%A"=="theme" set THEME=%%B
         if /I "%%A"=="port" set CFGPORT=%%B
     )
 )
+if "!PROGNAME!"=="" set PROGNAME=HeckinChonker
+if "!BUNDLE_ID!"=="" set BUNDLE_ID=com.pulpgrinder.!PROGNAME!
+
+set WIN_CFLAGS=-Wall -Wextra -O2 -DPROGNAME_STR=\"!PROGNAME!\"
+set WIN_LDFLAGS=-lws2_32 -lshell32 -lgdi32 -lole32 -luuid -mwindows -static -lpthread
+if "!PERM_LOCATION!"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_LOCATION
+if "!PERM_CAMERA!"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_CAMERA
+if "!PERM_MICROPHONE!"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_MICROPHONE
+if "!PERM_REMOTEDEBUGGING!"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_REMOTEDEBUGGING
 if "%THEME%"=="" set THEME=default
 if defined CFGPORT (
     set WIN_CFLAGS=!WIN_CFLAGS! -DDEFAULT_PORT=!CFGPORT!
@@ -59,11 +67,12 @@ if /I "%TARGET%"=="clean" goto :do_clean
 if /I "%TARGET%"=="icons" goto :do_icons
 if /I "%TARGET%"=="android" goto :do_android
 if /I "%TARGET%"=="sign-android" goto :do_sign_android
+if /I "%TARGET%"=="googleplay-android" goto :do_googleplay_android
 if /I "%TARGET%"=="www" goto :do_www
 if /I "%TARGET%"=="all" goto :do_all
 if /I "%TARGET%"=="windows" goto :do_windows
 echo Unknown target: %TARGET%
-echo Usage: %~nx0 [windows^|android^|sign-android^|www^|icons^|clean^|all]
+echo Usage: %~nx0 [windows^|android^|sign-android^|googleplay-android^|www^|icons^|clean^|all]
 exit /b 1
 
 REM ================================================================
@@ -82,6 +91,7 @@ if exist "%WIN_BINDIR%" (
 )
 if exist "%SCRIPT_DIR%\bin\Android" (
     del /Q "%SCRIPT_DIR%\bin\Android\*.apk" 2>nul
+    del /Q "%SCRIPT_DIR%\bin\Android\*.aab" 2>nul
     rmdir "%SCRIPT_DIR%\bin\Android" 2>nul
 )
 if exist "%SCRIPT_DIR%\bin\Android\gradle-build" rmdir /S /Q "%SCRIPT_DIR%\bin\Android\gradle-build" 2>nul
@@ -209,6 +219,32 @@ if errorlevel 1 (
 )
 
 echo [sign-android] %ANDROID_APK% signed successfully.
+goto :eof
+
+REM ================================================================
+REM  googleplay-android
+REM ================================================================
+:do_googleplay_android
+mkdir src\www\generated 2>nul
+mkdir src\C\generated 2>nul
+echo [googleplay-android] Generating config.js from src\android\menus\menu.txt...
+call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\android\menus\menu.txt %PROGNAME% Android src\www\generated\config.js %THEME% src\config
+if errorlevel 1 exit /b 1
+echo [googleplay-android] Generating vfspreload.js...
+call "%SCRIPT_DIR%\winscripts\mkvfspreload.bat" src\vfs src\www\generated\vfspreload.js
+if errorlevel 1 exit /b 1
+echo [googleplay-android] Generating panels.js...
+call "%SCRIPT_DIR%\winscripts\mkpanels.bat" src\www\passiflora\panels src\www\generated\panels.js
+if errorlevel 1 exit /b 1
+echo [googleplay-android] Generating zipdata.h...
+call "%SCRIPT_DIR%\winscripts\mkzipfile.bat" %CONTENT% src\C\generated\zipdata.h
+if errorlevel 1 exit /b 1
+echo [googleplay-android] Building AAB...
+set BUILD_TYPE=release
+set BUILD_FORMAT=aab
+call "%SCRIPT_DIR%\winscripts\mkandroid.bat" %PROGNAME% %BUNDLE_ID% %VERSION%
+if errorlevel 1 exit /b 1
+echo [googleplay-android] Done.
 goto :eof
 
 REM ================================================================

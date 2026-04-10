@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **`PROGNAME` and `BUNDLE_ID` centralized in `src/config`**: The program name and bundle identifier are now read from `src/config` by all build scripts (Makefile, build.bat, and Android build.gradle) instead of being hardcoded. Set `PROGNAME` and `BUNDLE_ID` in `src/config` and every platform picks them up automatically. The Android `applicationId` is now read from config at Gradle evaluation time, replacing the old sed/PowerShell rewriting hack in the mkandroid scripts.
+
+### Added
+
+- ** `make googleplay-android`** (`.\build googleplay-android` on Windows): New **Experimental** build target that produces a release Android App Bundle (`.aab`) for upload to the Google Play Console. Uses Gradle's `bundleRelease` task. The signed APK target (`make sign-android`) is unchanged. `make sign-all` now includes both the signed APK and the Google Play AAB.
+
 ### Added
 
 - **Configurable server port** (`src/config`): The `port` setting controls which localhost port the embedded HTTP server uses. If no port is set, the build system auto-generates a random port in the 40000–62000 range and writes it to `src/config` for reuse. A stable port ensures IndexedDB-persisted VFS data survives between runs. If the configured port is unavailable at runtime, the server automatically tries other random ports in the same range.

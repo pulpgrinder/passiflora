@@ -1,3 +1,5 @@
+PROGNAME HeckinChonker
+BUNDLE_ID com.pulpgrinder.HeckinChonker
 uselocation true
 usecamera true
 usemicrophone true

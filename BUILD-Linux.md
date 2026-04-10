@@ -43,6 +43,8 @@ Produces `bin/Linux/<progname>`.
 | Command | Description |
 |---------|-------------|
 | `make` or `make linux` | Build native Linux binary |
+| `make android` | Build Android APK |
+| `make googleplay-android` | Build a release AAB for Google Play upload. Experimental! |
 | `make www` | Build plain-browser version into `bin/WWW/` — useful for debugging using browser tools |
 | `make icons` | Generate icon sets for all platforms |
 | `make clean` | Remove all build artifacts |
@@ -193,6 +195,16 @@ To build a signed release APK:
 ```
 BUILD_TYPE=release make android
 ```
+
+### Google Play (AAB)
+
+Google Play requires an Android App Bundle (AAB) instead of an APK:
+
+```
+make googleplay-android
+```
+
+Produces `bin/Android/<progname>.aab` — a signed release bundle ready for upload to the Google Play Console. Requires `RELEASE_KEYSTORE`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, and `RELEASE_KEY_PASSWORD` environment variables to be set (see [Code Signing for Android](#code-signing-for-android)).
 
 ---
 

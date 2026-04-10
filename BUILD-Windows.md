@@ -71,6 +71,9 @@ Produces `bin\Windows\<progname>.exe`. The build automatically downloads and emb
 | Command | Description |
 |---------|-------------|
 | `.\build` or `.\build windows` | Build Windows exe |
+| `.\build android` | Build Android APK (debug) |
+| `.\build sign-android` | Build + sign Android APK |
+| `.\build googleplay-android` | Build release AAB for Google Play (experimental)|
 | `.\build www` | Build plain-browser version into `bin\WWW\` — useful for debugging using browser tools |
 | `.\build icons` | Generate icon sets for all platforms |
 | `.\build clean` | Remove all build artifacts |
@@ -173,6 +176,16 @@ To build a signed release APK:
 set BUILD_TYPE=release
 .\build android
 ```
+
+### Google Play (AAB)
+
+Google Play requires an Android App Bundle (AAB) instead of an APK:
+
+```
+.\build googleplay-android
+```
+
+Produces `bin\Android\<progname>.aab` — a signed release bundle ready for upload to the Google Play Console. Requires `RELEASE_KEYSTORE`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, and `RELEASE_KEY_PASSWORD` environment variables to be set (see [Code Signing for Android](#code-signing-for-android)).
 
 ---
 

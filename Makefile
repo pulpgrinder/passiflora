@@ -1,4 +1,4 @@
-PROGNAME = HeckinChonker
+PROGNAME := $(shell awk '/^PROGNAME / {print $$2}' src/config 2>/dev/null)
 CC      ?= cc
 CFLAGS  ?= -Wall -Wextra -O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2
 LDFLAGS ?= -lpthread
@@ -51,7 +51,7 @@ ifeq ($(UNAME_S),Darwin)
     UI_LDFLAGS  += -framework CoreLocation
   endif
   MENU_TEMPLATE  = src/macOS/menus/menu.txt
-  BUNDLE_ID     ?= com.pulpgrinder.$(PROGNAME)
+  BUNDLE_ID     := $(shell awk '/^BUNDLE_ID / {print $$2}' src/config 2>/dev/null)
   VERSION       ?= 1.0.0
   ICNS           = src/icons/builticons/macos/AppIcon.icns
   APP_BUNDLE     = $(BINDIR)/$(PROGNAME).app
@@ -166,6 +166,7 @@ ifeq ($(UNAME_S),Darwin)
 	$(MAKE) sign-ios
 	$(MAKE) windows
 	$(MAKE) sign-android
+	$(MAKE) googleplay-android
 	$(MAKE) linux-docker
 	$(MAKE) www
 else
@@ -506,6 +507,15 @@ android: $(GENDIR)/menu.h
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 	sh nixscripts/mkandroid.sh $(PROGNAME) $(BUNDLE_ID) $(VERSION)
 
+# ── Android App Bundle (Google Play) ───────────────────────
+googleplay-android: $(GENDIR)/menu.h
+	@mkdir -p $(dir $(CONFIG_JS))
+	sh nixscripts/mkmenu_json.sh src/android/menus/menu.txt $(PROGNAME) Android $(CONFIG_JS) "$(THEME)" src/config
+	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
+	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
+	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
+	BUILD_TYPE=release BUILD_FORMAT=aab sh nixscripts/mkandroid.sh $(PROGNAME) $(BUNDLE_ID) $(VERSION)
+
 # ── Android signing (local keystore) ───────────────────────
 ANDROID_APK = bin/Android/$(PROGNAME).apk
 
@@ -601,7 +611,7 @@ clean:
 	rm -rf src/www/generated
 	rm -rf $(WWW_BINDIR)
 	rm -rf bin/Android/gradle-build bin/Android/gradle-cache src/android/.gradle src/android/app/.cxx
-	rm -f bin/Android/*.apk
+	rm -f bin/Android/*.apk bin/Android/*.aab
 ifeq ($(UNAME_S),Linux)
 	rm -f $(HOME)/.local/share/icons/hicolor/256x256/apps/$(PROGNAME).png
 	rm -f $(HOME)/.local/share/applications/$(PROGNAME).desktop

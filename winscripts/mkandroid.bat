@@ -99,12 +99,9 @@ if exist "%STRINGS%" (
         "$f = '%STRINGS%'; $c = [IO.File]::ReadAllText($f); $c = $c -replace '(?m)>.*?</string>', '>%PROGNAME%</string>'; [IO.File]::WriteAllText($f, $c)"
 )
 
-REM ── Update applicationId / versionName if non-default ──
+REM ── Update versionName if non-default ──
+REM NOTE: applicationId is read from src\config by build.gradle directly.
 set APP_GRADLE=%ANDROID_DIR%\app\build.gradle
-if not "%BUNDLE_ID%"=="com.example.passiflora" (
-    powershell -NoProfile -Command ^
-        "$f = '%APP_GRADLE%'; $c = [IO.File]::ReadAllText($f); $c = $c -replace 'applicationId \""com.example.passiflora\""', 'applicationId \""%BUNDLE_ID%\""'; [IO.File]::WriteAllText($f, $c)"
-)
 if not "%VERSION%"=="1.0.0" (
     powershell -NoProfile -Command ^
         "$f = '%APP_GRADLE%'; $c = [IO.File]::ReadAllText($f); $c = $c -replace 'versionName \""1.0.0\""', 'versionName \""%VERSION%\""'; [IO.File]::WriteAllText($f, $c)"
@@ -186,8 +183,13 @@ REM Capitalize first letter of BUILD_TYPE for Gradle task name
 set _BT_FIRST=%BUILD_TYPE:~0,1%
 set _BT_REST=%BUILD_TYPE:~1%
 for %%A in (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) do set _BT_FIRST=!_BT_FIRST:%%A=%%A!
-set GRADLE_TASK=assemble!_BT_FIRST!!_BT_REST!
-echo mkandroid: building %BUILD_TYPE% APK (!GRADLE_TASK!)...
+if /I "%BUILD_FORMAT%"=="aab" (
+    set GRADLE_TASK=bundle!_BT_FIRST!!_BT_REST!
+    echo mkandroid: building %BUILD_TYPE% AAB ^(!GRADLE_TASK!^)...
+) else (
+    set GRADLE_TASK=assemble!_BT_FIRST!!_BT_REST!
+    echo mkandroid: building %BUILD_TYPE% APK ^(!GRADLE_TASK!^)...
+)
 pushd "%ANDROID_DIR%"
 call "%GRADLE%" !GRADLE_TASK! --quiet --project-cache-dir "%PROJECT_ROOT%\bin\Android\gradle-cache"
 if !errorlevel! neq 0 (
@@ -197,20 +199,33 @@ if !errorlevel! neq 0 (
 )
 popd
 
-REM ── Copy APK to bin\Android\ ──
-set APK_DIR=%PROJECT_ROOT%\bin\Android\gradle-build\app\outputs\apk\%BUILD_TYPE%
-set APK=
-for %%F in ("%APK_DIR%\*.apk") do (
-    set APK=%%F
-    goto :found_apk
-)
-:found_apk
-if "%APK%"=="" (
-    echo mkandroid: APK not found in build output >&2
-    exit /b 1
-)
+REM ── Copy output to bin\Android\ ──
 mkdir "%PROJECT_ROOT%\bin\Android" 2>nul
-copy /Y "%APK%" "%PROJECT_ROOT%\bin\Android\%PROGNAME%.apk" >nul
-echo mkandroid: bin\Android\%PROGNAME%.apk created
+if /I "%BUILD_FORMAT%"=="aab" (
+    set AAB_DIR=%PROJECT_ROOT%\bin\Android\gradle-build\app\outputs\bundle\%BUILD_TYPE%
+    set AAB=
+    for %%F in ("!AAB_DIR!\*.aab") do (
+        set AAB=%%F
+        goto :found_output
+    )
+) else (
+    set APK_DIR=%PROJECT_ROOT%\bin\Android\gradle-build\app\outputs\apk\%BUILD_TYPE%
+    set APK=
+    for %%F in ("!APK_DIR!\*.apk") do (
+        set APK=%%F
+        goto :found_output
+    )
+)
+echo mkandroid: Build output not found >&2
+exit /b 1
+
+:found_output
+if /I "%BUILD_FORMAT%"=="aab" (
+    copy /Y "!AAB!" "%PROJECT_ROOT%\bin\Android\%PROGNAME%.aab" >nul
+    echo mkandroid: bin\Android\%PROGNAME%.aab created
+) else (
+    copy /Y "!APK!" "%PROJECT_ROOT%\bin\Android\%PROGNAME%.apk" >nul
+    echo mkandroid: bin\Android\%PROGNAME%.apk created
+)
 
 endlocal

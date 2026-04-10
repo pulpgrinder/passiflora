@@ -38,26 +38,23 @@ This produces `bin/macOS/<progname>.app` — a standard macOS application bundle
 | `make` | Build macOS app bundle |
 | `make macos` | Build macOS app bundle (same as plain `make` on this platform) |
 | `make all` | Build every platform: macOS, iOS, Windows, Android, Linux (via Docker) |
-| `make sign-all` | Build + sign every platform (iOS and Android prompt for credentials) |
+| `make sign-all` | Build + sign every platform, including Google Play AAB (experimental) (iOS and Android prompt for credentials) |
 | `make linux-docker` | Build Linux binary inside a Docker container (requires Docker) |
 | `make www` | Build plain-browser version into `bin/WWW/` — useful for debugging using browser tools |
 | `make sign-macos` | Sign, notarize, and package for distribution (see [Code Signing for macOS](#code-signing-for-macos)) |
 | `make icons` | Generate icon sets for all platforms |
+| `make googleplay-android` | Build a release AAB for Google Play upload |
 | `make clean` | Remove all build artifacts |
 
 ### Bundle Identifier
 
-Every macOS and iOS app needs a **bundle identifier** — a reverse-DNS string that uniquely identifies your app (e.g., `com.yourcompany.YourApp`). The Makefile defaults to:
+Every macOS and iOS app needs a **bundle identifier** — a reverse-DNS string that uniquely identifies your app (e.g., `com.yourcompany.YourApp`). Set it in `src/config`:
 
 ```
-BUNDLE_ID ?= com.example.$(PROGNAME)
+BUNDLE_ID com.yourcompany.YourApp
 ```
 
-You should change this before distributing your app. Override it in the Makefile or on the command line:
-
-```
-make BUNDLE_ID=com.yourcompany.YourApp
-```
+The Makefile, build.bat, and Android `build.gradle` all read `BUNDLE_ID` from this file. You should change this before distributing your app.
 
 **Rules for bundle identifiers:**
 
@@ -66,7 +63,7 @@ make BUNDLE_ID=com.yourcompany.YourApp
 * Each component must start with a letter.
 * The `com.example.*` prefix is reserved for examples and will be rejected by the App Store.
 * The identifier must match what you register in your Apple Developer account (for signed/distributed apps) and in your provisioning profile (for iOS).
-* For Android, the same `BUNDLE_ID` is passed to build.gradle as the `applicationId`. Google Play uses it to identify your app, and it cannot be changed after publishing.
+* For Android, the same `BUNDLE_ID` is used as the `applicationId` in build.gradle. Google Play uses it to identify your app, and it cannot be changed after publishing.
 
 Pick your bundle identifier early — changing it later means the OS treats it as a different app (losing user data, preferences, keychain items, etc.).
 
@@ -245,6 +242,18 @@ To build a signed release APK:
 BUILD_TYPE=release make android
 ```
 
+### Google Play (AAB)
+
+Google Play requires an Android App Bundle (AAB) instead of an APK:
+
+```
+make googleplay-android
+```
+
+This is currently **EXPERIMENTAL**. Produces `bin/Android/<progname>.aab` — a signed release bundle ready for upload to the Google Play Console. Requires `RELEASE_KEYSTORE`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, and `RELEASE_KEY_PASSWORD` environment variables to be set (see [Code Signing for Android](#code-signing-for-android)).
+
+This target is also included in `make sign-all`.
+
 ---
 
 ## Cross-Compiling for Linux (via Docker)
@@ -300,7 +309,7 @@ Runs `make clean`, then builds macOS, iOS, Windows (cross-compile), Android, and
 make sign-all
 ```
 
-Same as `make all`, but uses `make sign-macos`, `make sign-ios`, and `make sign-android` for platforms that support code signing. iOS and Android will prompt interactively for signing credentials (provisioning profile, keystore, etc.). Windows and Linux builds are identical to the unsigned versions since they don't have a signing step.
+Same as `make all`, but uses `make sign-macos`, `make sign-ios`, `make sign-android`, and `make googleplay-android` for platforms that support code signing. iOS and Android will prompt interactively for signing credentials (provisioning profile, keystore, etc.). Windows and Linux builds are identical to the unsigned versions since they don't have a signing step.
 
 Produces:
 
@@ -310,6 +319,7 @@ Produces:
 | iOS | `bin/iOS/<progname>.ipa` (signed) |
 | Windows | `bin/Windows/<progname>.exe` |
 | Android | `bin/Android/<progname>.apk` (signed) |
+| Android (Google Play) | `bin/Android/<progname>.aab` |
 | Linux | `bin/Linux/<progname>` |
 | WWW | `bin/WWW/` |
 
