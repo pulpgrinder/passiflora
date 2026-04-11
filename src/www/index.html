@@ -4,17 +4,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Test App</title>
+    <title>Passiflora Test App</title>
     <link rel="stylesheet" href="passiflora/theme.css">
 </head>
 
 <body>
     <div class="hamburgermenu">≡</div>
-    <h1>Test App</h1>
-    <p>This is a test app for Passiflora.</p>
+    <h1>Passiflora Test App</h1>
     <p>
         <img src="test.png" alt="Test Image">
     </p>
+    <textarea id="result" rows="5" readonly style="width:100%"></textarea>
 
     <h2>Navigation</h2>
     <p>
@@ -60,10 +60,6 @@
         </span>
     </p>
     <div id="mediaContainer"></div>
-    <p id="result">
-
-
-    </p>
 <script>
     let activeStream = null;
     let recordedBlob = null;
@@ -261,9 +257,9 @@
     }
     function logResult(result) {
         const resultElem = document.getElementById('result');
-        const line = document.createElement('div');
-        line.textContent = result;
-        resultElem.appendChild(line);
+        if (resultElem.value) resultElem.value += '\n';
+        resultElem.value += result;
+        resultElem.scrollTop = resultElem.scrollHeight;
     }
     async function testMenuOpen() {
         logResult('Opening file picker for frompassiflora.txt...');
