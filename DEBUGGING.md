@@ -1,6 +1,6 @@
-# Remote Debugging
+# Debugging
 
-Passiflora includes a built-in remote debugging facility that lets you execute JavaScript in a running app from an external browser. This is useful for inspecting app state, testing code snippets, and diagnosing issues on platforms where browser DevTools aren't available (iOS, Android, etc.).
+If you build for the WWW target, you'll be able to use normal browser dev tools for debugging. For binaries, Passiflora includes a built-in remote debugging facility that lets you execute JavaScript in a running app from an external browser. This is useful for inspecting app state, testing code snippets, and diagnosing issues on platforms where browser dev tools aren't available (iOS, Android, etc.).
 
 Remote debugging is compile-gated. It is only available when `allowremotedebugging` is set to `true` in `src/config`.
 

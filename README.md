@@ -54,7 +54,7 @@ Detailed installation, build, cross-compilation, and code signing instructions a
 
 1. Install the prerequisites for your host system (see the guide above).
 2. Check out a fresh copy of this repo.
-3. Put your HTML/JavaScript/CSS in `src/www` (making sure to leave the `passiflora` folder intact). As one would expect, the index.html file is loaded at program startup.
+3. Put your HTML/JavaScript/CSS in `src/www` (making sure to leave the `passiflora` folder intact). Your startup file should be named `index.html`.
 4. Build:
 
 **macOS / Linux:**
@@ -74,67 +74,18 @@ For information on cross-compiling (e.g., building iOS apps on macOS), all avail
 
 ## Making the App Your Own
 
-Obviously you're gonna want to put your own HTML, JavaScript, CSS, images, and such inside the src/www folder.  Use whatever framework, UI library, etc. you want --- or just plain vanilla HTML/JS/CSS. It's all good, mang (or womang, as you prefer).
+Obviously you're gonna want to put your own HTML, JavaScript, CSS, images, and such inside the src/www folder.  Use whatever framework, UI library, etc. you want --- or just plain vanilla HTML/JS/CSS. It's all good, mang (or womang, as you prefer). You may also want to cross-compile for a different system. See the per-platform guides for that.
 
 Here are some other customizations you'll probably want to make before building something for release.
 
 ### Config
 
-The file `src/config` controls the program name, bundle identifier, permissions, orientation, and other app-level settings. Each line has the form `key value` (case-insensitive). Permissions use `true` / `false` values and default to `false` if omitted. The supplied sample config file has pretty much everything turned on so you can test things. For apps you're planning to distribute, you should set everything to `false` except the ones you actually need (good security policy in general, plus app stores frown on unnecessary permissions).
-
-- **`PROGNAME`** — Values: any name — Default: `HeckinChonker`
-  The program name used for the output binary, app bundle, APK, and window title. All build scripts (Makefile, build.bat, Gradle) read this from `src/config`.
-
-- **`BUNDLE_ID`** — Values: reverse-DNS string — Default: `com.example.HeckinChonker`
-  The bundle identifier is used as the Apple bundle ID (macOS/iOS) and Android `applicationId`. Must be unique — app stores reject `com.example.*`. See the [macOS Build Guide](BUILD-macOS.md) for rules.
-
-- **`uselocation`** — Values: `true`, `false` — Default: `false`
-  Enables GPS / geolocation. On iOS and macOS this links CoreLocation and adds the required `NSLocation*` plist keys. On Android it adds `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` to the manifest and enables the WebView geolocation prompt.
-
-- **`usecamera`** — Values: `true`, `false` — Default: `false`
-  Enables camera access (screenshots, image capture, video recording). On iOS / macOS this links AVFoundation and adds `NSCameraUsageDescription`. On Android it adds the `CAMERA` manifest permission.
-
-- **`usemicrophone`** — Values: `true`, `false` — Default: `false`
-  Enables microphone access (audio recording, video with audio). On iOS / macOS this adds `NSMicrophoneUsageDescription`. On Android it adds `RECORD_AUDIO` to the manifest.
-
-- **`allowremotedebugging`** — Values: `true`, `false` — Default: `false`
-  When `true`, the embedded HTTP server listens on all network interfaces (`0.0.0.0`), allowing remote debugging connections from other devices on the same network. When `false` (default for production), the server binds to `127.0.0.1` (localhost only) and remote debugging is not possible.
-
-- **`orientation`** — Values: `portrait`, `landscape`, `both` — Default: `both`
-  Controls whether the app is locked to portrait or landscape orientation, or rotates freely. On iOS this sets `UISupportedInterfaceOrientations` in the Info.plist. On Android it sets `android:screenOrientation` on the main activity. Desktop platforms ignore this setting.
-
-- **`theme`** — Values: theme name — Default: `Northern Lights`
-  The color theme applied on startup. Must match a key in `PassifloraThemes.themeData`. See [MENUS-AND-THEMES.md](MENUS-AND-THEMES.md) for the full list of built-in themes.
-
-- **`body-font-stack`** — Values: font stack name — Default: `System UI`
-  Default font stack for body text. Must match a key in `PassifloraThemes.baseFontStackOptions`. See [MENUS-AND-THEMES.md](MENUS-AND-THEMES.md#font-stacks).
-
-- **`heading-font-stack`** — Values: font stack name — Default: `Antique`
-  Default font stack for headings. Same values as `body-font-stack`.
-
-- **`code-font-stack`** — Values: font stack name — Default: `Monospace Code`
-  Default font stack for code blocks. Same values as `body-font-stack`.
-
-- **`port`** — Values: `40000`–`62000` — Default: auto-generated
-  The localhost port the embedded HTTP server listens on. If omitted, the build system picks a random port in the 40000–62000 range and writes it back to `src/config` so subsequent builds reuse the same port. A stable port is important because IndexedDB storage is scoped by origin (including port) — changing it loses persisted VFS data. If the configured port is unavailable at runtime, the server tries random ports in the same range.
+The file `src/config` controls the program name, bundle identifier, permissions (such as whether the app is allowed to use the camera), orientation, and so on. See **[Config.md](Config.md)** for details.
 
 ### Icons
 
-Change `roundicon.png` and `squareicon.png` in `src/icons` to whatever PNG images you like. These should be pretty big — around 1,000 pixels square. More is better! The `squareicon.png` file should be square (duh!), while the `roundicon.png` should be a square image with an inscribed round image on a transparent background (I realize that may sound a little confusing... look at the supplied `roundicon.png` if you need clarification).
+Passiflora can auto-generate the dozens of icons needed by the different platforms starting from a couple of large template icons. See **[Icons.md](Icons.md).
 
-All of the zillions of other icons for the various different systems are generated from these.
-
-Once you've updated the base icons, run:
-
-`make icons` (macOS and Linux)
-
-or
-
-`.\build icons` (Windows)
-
-to generate a new icon set.
-
-Note that these may need some manual tweaking for legibility, particularly at the smaller sizes, but it's still a substantial time savings over generating them all individually. Icons are *not* regenerated automatically during a normal build (not even after `make clean`). This is so any hand-tuned versions you've created won't be overwritten. If you *do* want to wipe out all existing icons and start over, run `make icons` or `.\build icons` again.
 
 ### Menus, Themes, and Font Stacks
 
@@ -154,17 +105,14 @@ There are numerous utility functions defined on the PassifloraIO object. See  **
 
 ## Debugging
 
-If you build for the WWW target, you'll be able to use normal browser dev tools for debugging. For binaries, Passiflora includes a built-in remote debugging facility that lets you execute JavaScript in a running app from an external browser. This is useful for inspecting app state, testing code snippets, and diagnosing issues on platforms where browser dev tools aren't available (iOS, Android, etc.).
 
-Remote debugging is compile-gated — set `allowremotedebugging` to `true` in `src/config` to enable it. When enabled, a setup overlay appears at app startup where you enter a shared passphrase and copy the debugger URL. Open that URL in a browser on another device to send JavaScript commands to the running app.
+The WWW target produces a normal web page, allowing you to use standard browser dev tools for debugging. There's also a remote debugging system that can be enabled in the config file. This lets you execute JavaScript in a running app from an external browser window.
 
-For the full protocol details, security notes, and usage tips, see **[DEBUGGING.md](DEBUGGING.md)**.
+For details, see **[DEBUGGING.md](DEBUGGING.md)**.
 
 ## About this project
 
 This code was developed through an iterative process involving human-guided prompting of a large language model (LLM), followed by review, editing, refinement, and original contributions by the author. To the extent the work contains copyrightable human-authored elements (including structure, modifications, arrangements, and additions), it is Copyright (c) 2026 by Anthony W. Hursh. The project is distributed under the terms of the MIT License (see LICENSE file for full text). Portions generated directly by AI may not be independently copyrightable under current U.S. law.
-
-### Details
 
 The basic idea for this has been hanging around my todo list, along with code snippets, for several years. I finally decided to use it as a proof of concept for vibe coding. If it's of interest, the code per se was mostly written with GitHub Copilot using Claude Opus 4.6. Configuration questions and similar (e.g., "Why aren't location services working on my Ubuntu Linux system running in a Parallels Desktop VM?") were mostly handled with Grok 4.0.
 
