@@ -84,7 +84,7 @@ The file `src/config` controls the program name, bundle identifier, permissions,
 | Setting | Values | Default | Description |
 |---------|--------|---------|-------------|
 | `PROGNAME` | any name | `HeckinChonker` | The program name used for the output binary, app bundle, APK, and window title. All build scripts (Makefile, build.bat, Gradle) read this from `src/config`. |
-| `BUNDLE_ID` | reverse-DNS string | `com.example.HeckinChonker` | The bundle identifier used as the Apple bundle ID (macOS/iOS) and Android `applicationId`. Must be unique — app stores reject `com.example.*`. See the [macOS Build Guide](BUILD-macOS.md) for rules. |
+| `BUNDLE_ID` | reverse-DNS string | com.example.HeckinChonker | The bundle identifier used as the Apple bundle ID (macOS/iOS) and Android `applicationId`. Must be unique — app stores reject `com.example.*`. See the [macOS Build Guide](BUILD-macOS.md) for rules. |
 | `uselocation` | `true`, `false` | `false` | Enables GPS / geolocation. On iOS and macOS this links CoreLocation and adds the required `NSLocation*` plist keys. On Android it adds `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` to the manifest and enables the WebView geolocation prompt. |
 | `usecamera` | `true`, `false` | `false` | Enables camera access (screenshots, image capture, video recording). On iOS / macOS this links AVFoundation and adds `NSCameraUsageDescription`. On Android it adds the `CAMERA` manifest permission. |
 | `usemicrophone` | `true`, `false` | `false` | Enables microphone access (audio recording, video with audio). On iOS / macOS this adds `NSMicrophoneUsageDescription`. On Android it adds `RECORD_AUDIO` to the manifest. |
