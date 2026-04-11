@@ -74,17 +74,17 @@ For information on cross-compiling (e.g., building iOS apps on macOS), all avail
 
 ## Making the App Your Own
 
-Obviously you're gonna want to put your own HTML, JavaScript, CSS, images, and such inside the src/www folder.  Use whatever framework, UI library, etc. you want --- or just plain vanilla HTML/JS/CSS. It's all good, mang (or womang, as you prefer). You may also want to cross-compile for a different system. See the per-platform guides for that.
+Obviously you'll want to put your own HTML, JavaScript, CSS, images, and such inside the src/www folder.  Use whatever framework, UI library, etc. you want --- or just plain vanilla HTML/JS/CSS. It's all good, mang (or womang, as you prefer). You may also want to cross-compile for a different system. See the per-platform guides for that.
 
 Here are some other customizations you'll probably want to make before building something for release.
 
 ### Config
 
-The file `src/config` controls the program name, bundle identifier, permissions (such as whether the app is allowed to use the camera), orientation, and so on. See **[Config.md](Config.md)** for details.
+The file `src/config` controls the program name, bundle identifier, permissions (such as whether the app is allowed to use the camera), orientation, and so on. See **[CONFIG.md](CONFIG.md)** for details.
 
 ### Icons
 
-Passiflora can auto-generate the dozens of icons needed by the different platforms starting from a couple of large template icons. See **[Icons.md](Icons.md).
+Passiflora can auto-generate the dozens of icons needed by the different platforms starting from a couple of large template icons. See **[ICONS.md](ICONS.md)**.
 
 
 ### Menus, Themes, and Font Stacks
@@ -93,15 +93,15 @@ Passiflora includes a basic menu system (native menu bar + sliding menu + panel 
 
 ## PassifloraConfig
 
-Each build generates `src/www/generated/config.js`, which defines a `PassifloraConfig` object containing numerous useful values. See **[PassifloraConfig.md](PassifloraConfig.md)**.
+Each build generates `src/www/generated/config.js`, which defines a `PassifloraConfig` object containing numerous useful values. See **[PASSIFLORA-CONFIG.md](PASSIFLORA-CONFIG.md)**.
 
 ## File I/O
 
-Passiflora includes POSIX-style file functions, Open/Save As/File Browser dialogs, and a virtual file system backed by IndexedDB. Full documentation is in **[FILE_IO.md](FILE_IO.md)**.
+Passiflora includes POSIX-style file functions, Open/Save As/File Browser dialogs, and a virtual file system backed by IndexedDB. Full documentation is in **[FILE-IO.md](FILE-IO.md)**.
 
 ## Utility Functions
 
-There are numerous utility functions defined on the PassifloraIO object. See  **[UtilityFunctions.md](UtilityFunctions.md)**.
+There are numerous utility functions defined on the PassifloraIO object. See  **[UTILITY-FUNCTIONNS.md](UTILITY-FUNCTIONS.md)**.
 
 ## Debugging
 
