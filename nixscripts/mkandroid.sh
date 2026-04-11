@@ -142,7 +142,7 @@ echo "sdk.dir=$ANDROID_HOME" > "$ANDROID_DIR/local.properties"
 # ── Generate gradle wrapper if missing ─────────────────────────────
 if [ ! -x "$ANDROID_DIR/gradlew" ]; then
     echo "mkandroid: generating gradle wrapper..."
-    (cd "$ANDROID_DIR" && "$GRADLE" wrapper --gradle-version=8.5 \
+    (cd "$ANDROID_DIR" && "$GRADLE" wrapper --gradle-version=9.1.0 \
         --quiet 2>/dev/null || "$GRADLE" wrapper --quiet)
     GRADLE="$ANDROID_DIR/gradlew"
 fi

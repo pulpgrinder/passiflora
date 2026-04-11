@@ -10,3 +10,8 @@
 
 # Keep the Bridge inner class (referenced by addJavascriptInterface)
 -keep class com.example.zipserve.MainActivity$Bridge { *; }
+
+# Keep methods called from native code via JNI reflection
+-keepclassmembers class com.example.zipserve.MainActivity {
+    void evalJsFromNative(java.lang.String);
+}
