@@ -133,6 +133,18 @@ public class MainActivity extends Activity {
 
             @Override
             public void onPageFinished(WebView view, String url) {
+                /* Inject status bar height as CSS variable;
+                   env(safe-area-inset-top) returns 0 in Android WebView
+                   even with FLAG_LAYOUT_NO_LIMITS. */
+                int resId = getResources().getIdentifier(
+                    "status_bar_height", "dimen", "android");
+                if (resId > 0) {
+                    float px = getResources().getDimensionPixelSize(resId);
+                    float dp = px / getResources().getDisplayMetrics().density;
+                    view.evaluateJavascript(
+                        "document.documentElement.style.setProperty("
+                        + "'--safe-area-top','" + dp + "px')", null);
+                }
                 if (BuildConfig.PERM_REMOTEDEBUGGING) {
                     String ip = getLocalIp().replaceAll("[^0-9a-fA-F.:]", "");
                     view.evaluateJavascript(
