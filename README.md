@@ -4,13 +4,13 @@
 
 Passiflora is a no-nonsense cross-platform packager that wraps HTML/JavaScript/CSS/etc. in an executable (similar to Electron and its ilk, but far, far more efficiently). 
 
-Follow on X: https://x.com/TonyHursh
+Follow me on X for updates: https://x.com/TonyHursh
 
 Much of this project was vibe coded as an experiment (see below).
 
-I'm still moving fast, though it's to a stage where I'm going to try to avoid breaking things. I expect to have a release candidate by the end of this week (April 17, 2026). However, I'm sure there are still some uglinesses and infelicities present. Please raise an issue if you notice anything amiss (especially security issues).
+Things are still moving fast, though it's to a point where I'm going to try to avoid breaking things. I expect to have a release candidate by the end of this week (April 17, 2026). I'm sure there are still some uglinesses and infelicities present. Please raise an issue if you notice anything amiss (especially security issues).
 
-Supported host platforms include:
+Supported host platforms:
 
 * macOS  -- available targets: macOS, iOS, Android, Windows, WWW, and Linux (via Docker)
 * Windows -- available targets: Windows, Android, and WWW
@@ -34,7 +34,7 @@ Unlike Electron, Passiflora uses the host system's own embeddable WebView object
 
 ### Executable Size
 
-The sample program weighs 1.5 MB when built for macOS, 1.1 MB of which is accounted for by the .icns icon file, leaving around 400 KB for the actual binary executable. 
+The sample program weighs 1.5 MB when built for macOS, 1.1 MB of which is accounted for by the .icns icon file. The actual executable code is only around 400 KB. 
 
 By comparison, the same program when built for macOS using Electron/Electron Forge weighs **211 MB** --  more than **500 times larger**. Yikes!
 
@@ -54,7 +54,7 @@ Detailed installation, build, cross-compilation, and code signing instructions a
 
 1. Install the prerequisites for your host system (see the guide above).
 2. Check out a fresh copy of this repo.
-3. Put your HTML/JavaScript/CSS in `src/www` (making sure to leave the `passiflora` folder intact). Your startup file should be named `index.html`.
+3. Put your HTML/JavaScript/CSS in `src/www` (making sure to leave the `passiflora` folder intact). As one might expect, your startup file should be named `index.html`.
 4. Build:
 
 **macOS / Linux:**
@@ -89,7 +89,7 @@ Passiflora can auto-generate the dozens of icons needed by the different platfor
 
 ### Menus, Themes, and Font Stacks
 
-Passiflora includes a basic menu system (native menu bar + sliding menu + panel screens), 122 built-in color themes, and a curated set of font stacks. Full documentation is in **[MENUS-AND-THEMES.md](MENUS-AND-THEMES.md)**. Of course, you're welcome to ignore this and roll your own UI, including the menu system.
+Passiflora includes a (very basic) menu system (native menu bar + sliding menu + panel screens), 122 built-in color themes, and a curated set of font stacks. Full documentation is in **[MENUS-AND-THEMES.md](MENUS-AND-THEMES.md)**. Of course, you're welcome to ignore this and roll your own UI, including the menu system.
 
 ## PassifloraConfig
 
@@ -101,10 +101,9 @@ Passiflora includes POSIX-style file functions, Open/Save As/File Browser dialog
 
 ## Utility Functions
 
-There are numerous utility functions defined on the PassifloraIO object. See  **[UTILITY-FUNCTIONNS.md](UTILITY-FUNCTIONS.md)**.
+There are numerous utility functions defined on the PassifloraIO object. See  **[UTILITY-FUNCTIONS.md](UTILITY-FUNCTIONS.md)**.
 
 ## Debugging
-
 
 The WWW target produces a normal web page, allowing you to use standard browser dev tools for debugging. There's also a remote debugging system that can be enabled in the config file. This lets you execute JavaScript in a running app from an external browser window.
 
