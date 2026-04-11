@@ -2,7 +2,7 @@
 
 # Passiflora
 
-Passiflora is a no-nonsense cross-platform packager that wraps HTML/JavaScript/CSS/etc. in an executable (similar to Electron and its ilk, but far, far more efficiently). 
+Passiflora is a low-configuration cross-platform packager that wraps HTML/JavaScript/CSS/etc. in an executable (similar to Electron and its ilk, but far, far more efficiently). 
 
 **Follow for updates: https://x.com/TonyHursh**
 
@@ -22,7 +22,7 @@ Features:
 * Access to device location data, cameras, mics, etc.
 * Remote debugging
 * POSIX(-ish) file system
-* Code signing for macOS, iOS, and Android (support for the Google Play app store is under construction). These are still experimental. Please report any issues. Code signing for Windows is expected in a future release. See [#2](https://github.com/pulpgrinder/passiflora/issues/2).
+* Code signing (generating ready-for-app-store packages) for macOS, iOS, and Android (support for the Google Play app store is under construction). These are still experimental. Please report any issues. Code signing for Windows is expected in a future release. See [#2](https://github.com/pulpgrinder/passiflora/issues/2).
 
 What it *doesn't* do:
 
@@ -80,7 +80,7 @@ Here are some other customizations you'll probably want to make before building 
 
 ### Config
 
-The file `src/config` controls the program name, bundle identifier, permissions (e.g., whether the app is allowed to use the camera), orientation, and so on. See **[CONFIG.md](CONFIG.md)** for details.
+The file `src/config` controls the program name, bundle identifier, permissions (e.g., whether the app is allowed to use the camera), allowed screen orientations, and so on. See **[CONFIG.md](CONFIG.md)** for details.
 
 ### Icons
 
@@ -89,25 +89,29 @@ Passiflora can auto-generate the dozens of icons needed by the different platfor
 
 ### Menus, Themes, and Font Stacks
 
-Passiflora includes a (very basic) menu system (native menu bar + sliding menu + panel screens), 122 built-in color themes, and a curated set of font stacks. Full documentation is in **[MENUS-AND-THEMES.md](MENUS-AND-THEMES.md)**. Of course, you're welcome to ignore all this and roll your own UI, themese, menus, etc. It's all just standard HTML/JS/CSS. Churn out another boring-ass Bootstrap clone. Make it look like a Geocities page built by an 11-year-old back in 1994. The power is yours, my friend. You can rebuild it. You have the technology.
+Passiflora includes a (very basic) menu system (native menu bar + sliding menu + panel screens), 122 built-in color themes, and a curated set of font stacks. Full documentation is in **[MENUS-AND-THEMES.md](MENUS-AND-THEMES.md)**. Of course, you're welcome to ignore all this and roll your own UI, themes, menus, etc. It's all just standard HTML/JS/CSS. Churn out another boring-ass Bootstrap clone. Make it look like a Geocities page built by an 11-year-old back in 1994. The power is yours, my friend. You can rebuild it. You have the technology.
 
-## PassifloraConfig
-
-Each build generates `src/www/generated/config.js`, which defines a `PassifloraConfig` object containing numerous values that may be useful at runtime. See **[PASSIFLORA-CONFIG.md](PASSIFLORA-CONFIG.md)**.
 
 ## File I/O
 
 Passiflora includes POSIX-style file functions, Open/Save As/File Browser dialogs, and a virtual file system backed by IndexedDB. Full documentation is in **[FILE-IO.md](FILE-IO.md)**.
-
-## Utility Functions
-
-There are numerous utility functions defined on the PassifloraIO object. See  **[UTILITY-FUNCTIONS.md](UTILITY-FUNCTIONS.md)**.
 
 ## Debugging
 
 The WWW target produces a normal web page, allowing you to use standard browser dev tools for debugging. There's also a remote debugging system that can be enabled in the config file. This lets you execute JavaScript in a running app from an external browser window.
 
 For details, see **[DEBUGGING.md](DEBUGGING.md)**.
+
+
+## PassifloraConfig
+
+Each build generates `src/www/generated/config.js`, which defines a runtime `PassifloraConfig` object containing numerous values that may be useful at runtime. See **[PASSIFLORA-CONFIG.md](PASSIFLORA-CONFIG.md)**. Note that this is not the same as `src/config`, where you set the icons, name, etc. That's *compile-time* information. The build process uses the `src/config` file (and other compile-time information) to generate the `src/www/generated/config.js` file for use at runtime. You shouldn't edit `src/www/generated/config.js`, as any changes will be wiped out the next time you build.
+
+
+## Utility Functions
+
+There are numerous utility functions defined on the PassifloraIO object. See  **[UTILITY-FUNCTIONS.md](UTILITY-FUNCTIONS.md)**.
+
 
 ## About this project
 
