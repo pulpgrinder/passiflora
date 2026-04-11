@@ -4,7 +4,7 @@
 
 Passiflora is a no-nonsense cross-platform packager that wraps HTML/JavaScript/CSS/etc. in an executable (similar to Electron and its ilk, but far, far more efficiently). 
 
-Follow me on X for updates: https://x.com/TonyHursh
+**Follow for updates: https://x.com/TonyHursh**
 
 Much of this project was vibe coded as an experiment (see below).
 
@@ -22,13 +22,13 @@ Features:
 * Access to device location data, cameras, mics, etc.
 * Remote debugging
 * POSIX(-ish) file system
-* Code signing for macOS, iOS, and Android (support for the Google Play app store is under construction). These are still experimental. Please report any issues. Code signing for Windows is expected in a future release.
+* Code signing for macOS, iOS, and Android (support for the Google Play app store is under construction). These are still experimental. Please report any issues. Code signing for Windows is expected in a future release. See [#2](https://github.com/pulpgrinder/passiflora/issues/2).
 
 What it *doesn't* do:
 
 * Require that you install 50 million dubious npm packages (or a whole freakin' Rust ecosystem)
 * Generate 60 petabyte binaries for a "Hello, world!" program
-* Require configuration gymnastics -- there's no need to fool with nasty-ass package.json scripts or even nastier-ass XML files -- no Maven, Ant, or Gradle config. Passiflora does *use* Gradle (technically gradlew) for Android builds, but you don't have to get the stench of it on you.
+* Require configuration gymnastics -- there are no nasty-ass package.json scripts or even nastier-ass XML files -- no Maven, Ant, or Gradle config. Passiflora does *use* Gradle (technically gradlew) for Android builds, but you don't have to get the stench of it on you.
 
 Unlike Electron, Passiflora uses the host system's own embeddable WebView object rather than bundling an entire browser into the executable. Bundling a web browser made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then.
 
@@ -80,7 +80,7 @@ Here are some other customizations you'll probably want to make before building 
 
 ### Config
 
-The file `src/config` controls the program name, bundle identifier, permissions (such as whether the app is allowed to use the camera), orientation, and so on. See **[CONFIG.md](CONFIG.md)** for details.
+The file `src/config` controls the program name, bundle identifier, permissions (e.g., whether the app is allowed to use the camera), orientation, and so on. See **[CONFIG.md](CONFIG.md)** for details.
 
 ### Icons
 
@@ -89,11 +89,11 @@ Passiflora can auto-generate the dozens of icons needed by the different platfor
 
 ### Menus, Themes, and Font Stacks
 
-Passiflora includes a (very basic) menu system (native menu bar + sliding menu + panel screens), 122 built-in color themes, and a curated set of font stacks. Full documentation is in **[MENUS-AND-THEMES.md](MENUS-AND-THEMES.md)**. Of course, you're welcome to ignore this and roll your own UI, including the menu system.
+Passiflora includes a (very basic) menu system (native menu bar + sliding menu + panel screens), 122 built-in color themes, and a curated set of font stacks. Full documentation is in **[MENUS-AND-THEMES.md](MENUS-AND-THEMES.md)**. Of course, you're welcome to ignore all this and roll your own UI, themese, menus, etc. It's all just standard HTML/JS/CSS. Churn out another boring-ass Bootstrap clone. Make it look like a Geocities page built by an 11-year-old back in 1994. The power is yours, my friend. You can rebuild it. You have the technology.
 
 ## PassifloraConfig
 
-Each build generates `src/www/generated/config.js`, which defines a `PassifloraConfig` object containing numerous useful values. See **[PASSIFLORA-CONFIG.md](PASSIFLORA-CONFIG.md)**.
+Each build generates `src/www/generated/config.js`, which defines a `PassifloraConfig` object containing numerous values that may be useful at runtime. See **[PASSIFLORA-CONFIG.md](PASSIFLORA-CONFIG.md)**.
 
 ## File I/O
 

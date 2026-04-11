@@ -37,13 +37,15 @@ This produces `bin/macOS/<progname>.app` — a standard macOS application bundle
 |---------|-------------|
 | `make` | Build macOS app bundle |
 | `make macos` | Build macOS app bundle (same as plain `make` on this platform) |
+| `make sign-macos` | Sign, notarize, and package for distribution (see [Code Signing for macOS](#code-signing-for-macos)) |
+| `make android` | Builds an Android .apk|
+| `make sign-android` | Builds an Android apk |
+| `make googleplay-android` | Build a release AAB for Google Play upload (under construction) |
+| `make www` | Build plain-browser version into `bin/WWW/` — useful for debugging using browser tools |
+| `make linux-docker` | Build Linux binary using a Docker container (requires Docker) |
 | `make all` | Build every platform: macOS, iOS, Windows, Android, Linux (via Docker) |
 | `make sign-all` | Build + sign every platform, including Google Play AAB (experimental) (iOS and Android prompt for credentials) |
-| `make linux-docker` | Build Linux binary using a Docker container (requires Docker) |
-| `make www` | Build plain-browser version into `bin/WWW/` — useful for debugging using browser tools |
-| `make sign-macos` | Sign, notarize, and package for distribution (see [Code Signing for macOS](#code-signing-for-macos)) |
 | `make icons` | Generate icon sets for all platforms |
-| `make googleplay-android` | Build a release AAB for Google Play upload (under construction) |
 | `make clean` | Remove all build artifacts |
 
 ### Bundle Identifier
@@ -236,6 +238,13 @@ make android
 
 Produces `bin/Android/<progname>.apk` (debug build by default).
 
+
+```
+make sign-android
+```
+
+Produces a signed `bin/Android/<progname>.apk` (debug build by default).
+
 To build a signed release APK:
 
 ```
@@ -309,7 +318,7 @@ Runs `make clean`, then builds macOS, iOS, Windows (cross-compile), Android, and
 make sign-all
 ```
 
-Same as `make all`, but uses `make sign-macos`, `make sign-ios`, `make sign-android`, and `make googleplay-android` for platforms that support code signing. iOS and Android will prompt interactively for signing credentials (provisioning profile, keystore, etc.). Windows and Linux builds are identical to the unsigned versions since they don't have a signing step.
+Same as `make all`, but uses `make sign-macos`, `make sign-ios`, `make sign-android`, and `make googleplay-android` for platforms that support code signing. iOS and Android will prompt interactively for signing credentials (provisioning profile, keystore, etc.). Windows and Linux builds are identical to the unsigned versions since signing isn't (yet) supported on those platforms.
 
 Produces:
 
