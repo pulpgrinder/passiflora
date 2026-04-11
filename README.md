@@ -30,7 +30,7 @@ What it *doesn't* do:
 * Generate 60 petabyte binaries for a "Hello, world!" program
 * Require configuration gymnastics -- there's no need to fool with nasty-ass package.json scripts or even nastier-ass XML files -- no Maven, Ant, or Gradle config. Passiflora does *use* Gradle (technically gradlew) for Android builds, but you don't have to get the stench of it on you.
 
-Unlike Electron, Passiflora uses the system's own embeddable web view object rather than bundling an entire browser into the executable. Bundling a web browser made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then.
+Unlike Electron, Passiflora uses the host system's own embeddable WebView object rather than bundling an entire browser into the executable. Bundling a web browser made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then.
 
 ### Executable Size
 
@@ -54,7 +54,7 @@ Detailed installation, build, cross-compilation, and code signing instructions a
 
 1. Install the prerequisites for your host system (see the guide above).
 2. Check out a fresh copy of this repo.
-3. Put your HTML/JavaScript/CSS in `src/www` (making sure to leave the `passiflora` folder intact).
+3. Put your HTML/JavaScript/CSS in `src/www` (making sure to leave the `passiflora` folder intact). As one would expect, the index.html file is loaded at program startup.
 4. Build:
 
 **macOS / Linux:**
