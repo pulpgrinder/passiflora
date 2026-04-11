@@ -18,25 +18,31 @@
 
     <h2>Navigation</h2>
     <p>
+        <span class="buttonbar">
         <button onclick="window.location.href='test.html'">Open Internal HTML Page in App</button>
         <button onclick="PassifloraIO.openExternal('https://google.com')">Open External Page in Browser</button>
         <button onclick="checkLocation()">Check Location</button>
+        </span>
     </p>
 
     <h2>File System</h2>
     <p>
+        <span class="buttonbar">
         <button onclick="testFileSystem()">Test File System</button>
         <button onclick="testMenuOpen()">Test Menu Open</button>
         <button onclick="testMenuSaveAs()">Test Save As</button>
         <button onclick="testFileBrowser()">Test File Browser</button>
+        </span>
     </p>
     <p>
+        <span class="buttonbar">
         <button onclick="testImportFile()">Import File</button>
         <button onclick="testExportFile()">Export File</button>
         <button onclick="testExportVFS()">Export VFS</button>
         <button onclick="testImportVFS()">Import VFS</button>
         <button onclick="testEraseVFS()">Erase VFS</button>
         <button onclick="testResetVFS()">Reset VFS</button>
+        </span>
     </p>
 
     <h2>Record &amp; Playback</h2>
@@ -48,8 +54,10 @@
         <button onclick="refreshDevices()">Refresh Devices</button>
     </p>
     <p>
+        <span class="buttonbar">
         <button id="recordBtn" onclick="toggleRecording()">Record Video + Audio</button>
         <button id="playBtn" onclick="playRecording()" disabled>Play Recording</button>
+        </span>
     </p>
     <div id="mediaContainer"></div>
     <p id="result">
