@@ -14,10 +14,10 @@
 | `make windows` | Cross-compile Windows exe (from macOS or Linux) |
 | `make android` | Build Android APK |
 | `make sign-android` | Sign the Android APK with a local keystore (macOS and Linux)|
-| `make googleplay-android` | Build a release AAB for Google Play upload |
+| `make googleplay-android` | Build a release AAB for Google Play upload (under construction) |
 | `make linux` | Build Linux binary (Linux only) -- same as `make` if you're on Linux |
-| `make linux-docker` | Build Linux binary inside a Docker container (macOS only — requires Docker) |
-| `make www` | Build plain-browser version into `bin/WWW/` -- useful for debugging using browser tools |
+| `make linux-docker` | Build Linux binary using a Docker container (macOS only — requires Docker) |
+| `make www` | Build plain-browser version in `bin/WWW/` -- useful for debugging using browser tools |
 | `make all` | Build *every* platform: macOS, iOS, Windows, Android, Linux via Docker (macOS only) |
 | `make sign-all` | Build + sign *every* platform, including Google Play AAB (macOS only — iOS and Android prompt for credentials). Note that Windows signing is not yet supported.|
 | `make icons` | Generate icon sets for all platforms |
@@ -29,9 +29,9 @@
 |--------|-------------|
 | `.\build` or `.\build windows` | Build Windows exe (Windows) |
 | `.\build android` | Build Android APK (Windows) |
-| `.\build sign-android` | Sign the Android APK (Windows) |
-| `.\build googleplay-android` | Build a release AAB for Google Play upload (Windows) |
-| `.\build www` | Build plain-browser version into `bin\WWW\` (Windows) -- useful for debugging using browser tools |
+| `.\build sign-android` |Build a signed Android APK (Windows) |
+| `.\build googleplay-android` | Build a release AAB for Google Play upload (Windows) (under construction)|
+| `.\build www` | Build plain-browser version in `bin\WWW\` (Windows) -- useful for debugging using browser tools |
 | `.\build icons` | Generate icon sets (Windows) |
 | `.\build clean` | Remove all build artifacts (Windows) |
 

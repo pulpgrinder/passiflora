@@ -39,11 +39,11 @@ This produces `bin/macOS/<progname>.app` — a standard macOS application bundle
 | `make macos` | Build macOS app bundle (same as plain `make` on this platform) |
 | `make all` | Build every platform: macOS, iOS, Windows, Android, Linux (via Docker) |
 | `make sign-all` | Build + sign every platform, including Google Play AAB (experimental) (iOS and Android prompt for credentials) |
-| `make linux-docker` | Build Linux binary inside a Docker container (requires Docker) |
+| `make linux-docker` | Build Linux binary using a Docker container (requires Docker) |
 | `make www` | Build plain-browser version into `bin/WWW/` — useful for debugging using browser tools |
 | `make sign-macos` | Sign, notarize, and package for distribution (see [Code Signing for macOS](#code-signing-for-macos)) |
 | `make icons` | Generate icon sets for all platforms |
-| `make googleplay-android` | Build a release AAB for Google Play upload |
+| `make googleplay-android` | Build a release AAB for Google Play upload (under construction) |
 | `make clean` | Remove all build artifacts |
 
 ### Bundle Identifier
@@ -61,11 +61,11 @@ The Makefile, build.bat, and Android `build.gradle` all read `BUNDLE_ID` from th
 * Use reverse-DNS notation: `com.yourcompany.appname` or `org.yourproject.appname`.
 * Only alphanumeric characters, hyphens, and periods are allowed.
 * Each component must start with a letter.
-* The `com.example.*` prefix is reserved for examples and will be rejected by the App Store.
+* The `com.example.*` prefix is reserved for examples and will be rejected by app stores.
 * The identifier must match what you register in your Apple Developer account (for signed/distributed apps) and in your provisioning profile (for iOS).
 * For Android, the same `BUNDLE_ID` is used as the `applicationId` in build.gradle. Google Play uses it to identify your app, and it cannot be changed after publishing.
 
-Pick your bundle identifier early — changing it later means the OS treats it as a different app (losing user data, preferences, keychain items, etc.).
+Pick your bundle identifier wisely and early — changing it later means the OS treats it as a different app (losing user data, preferences, keychain items, etc.).
 
 ---
 
