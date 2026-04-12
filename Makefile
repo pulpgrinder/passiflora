@@ -147,7 +147,6 @@ ifeq ($(UNAME_S),Darwin)
 	$(MAKE) $(IOS_BINARY)
 	$(MAKE) windows
 	$(MAKE) android
-	$(MAKE) linux-docker
 	$(MAKE) www
 else ifeq ($(UNAME_S),Linux)
 	$(MAKE) clean
@@ -167,7 +166,6 @@ ifeq ($(UNAME_S),Darwin)
 	$(MAKE) windows
 	$(MAKE) sign-android
 	$(MAKE) googleplay-android
-	$(MAKE) linux-docker
 	$(MAKE) www
 else
 	@echo "sign-all target requires macOS." >&2; exit 1
@@ -479,33 +477,6 @@ else
 	@echo "  Install: sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev" >&2; exit 1
 endif
 
-# ── Linux via Docker (cross-build from macOS) ──────────────────────
-LINUX_DOCKER_IMAGE ?= ubuntu:24.04
-LINUX_DOCKER_BUILD_IMAGE = passiflora-linux-build
-
-linux-docker:
-ifeq ($(UNAME_S),Darwin)
-	@if ! docker image inspect $(LINUX_DOCKER_BUILD_IMAGE) >/dev/null 2>&1; then \
-		echo "linux-docker: building Docker image with build dependencies..."; \
-		printf '%s\n' \
-			"FROM $(LINUX_DOCKER_IMAGE)" \
-			"RUN apt-get update && \\" \
-			"    apt-get install -y --no-install-recommends \\" \
-			"        gcc make pkg-config \\" \
-			"        libgtk-3-dev libwebkit2gtk-4.1-dev \\" \
-			"        libgstreamer1.0-dev xxd zip && \\" \
-			"    rm -rf /var/lib/apt/lists/*" \
-		| docker build -t $(LINUX_DOCKER_BUILD_IMAGE) -f - .; \
-	fi
-	docker run --rm \
-		-v "$(CURDIR)":/workspace \
-		-w /workspace \
-		$(LINUX_DOCKER_BUILD_IMAGE) \
-		make linux
-else
-	@echo "linux-docker target is intended for macOS (use 'make linux' on Linux)." >&2; exit 1
-endif
-
 # ── Android (Gradle + NDK) ─────────────────────────────────
 android: $(GENDIR)/menu.h
 	@mkdir -p $(dir $(CONFIG_JS))
@@ -626,4 +597,4 @@ ifeq ($(UNAME_S),Linux)
 	-gtk-update-icon-cache -f -t $(HOME)/.local/share/icons/hicolor 2>/dev/null || true
 endif
 
-.PHONY: default all sign-all clean icons bundle macos sign-macos sign-ios sim-ios windows linux linux-docker android sign-android www
+.PHONY: default all sign-all clean icons bundle macos sign-macos sign-ios sim-ios windows linux android sign-android www

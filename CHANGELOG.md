@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.
 
 - ** `make googleplay-android`** (`.\build googleplay-android` on Windows): New **Experimental** build target that produces a release Android App Bundle (`.aab`) for upload to the Google Play Console. Uses Gradle's `bundleRelease` task. The signed APK target (`make sign-android`) is unchanged. `make sign-all` now includes both the signed APK and the Google Play AAB.
 
-- **`.\build linux-docker`** (Windows): New build target that builds a native Linux binary inside a Docker container from Windows. Uses the same cached Docker image approach as the macOS `make linux-docker` target. Requires Docker Desktop.
+
 
 ### Added
 
@@ -24,9 +24,7 @@ All notable changes to this project will be documented in this file.
 
 - **`make all` and `make sign-all`**: These targets now actually build all platforms as documented. Previously `make all` only built the macOS app, and `make sign-all` did not exist.
 
-- **`make linux-docker`**: Added missing target to build the Linux binary inside a Docker container from macOS.
 
-- **`make linux-docker` image caching**: Build dependencies are now installed into a cached local Docker image (`passiflora-linux-build`) on the first run. Subsequent builds reuse the cached image instead of re-downloading hundreds of megabytes of packages every time. Run `docker rmi passiflora-linux-build` to force a rebuild of the image.
 
 ### Changed
 

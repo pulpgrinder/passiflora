@@ -189,34 +189,6 @@ Produces `bin\Android\<progname>.aab` — a signed release bundle ready for uplo
 
 ---
 
-## Cross-Compiling for Linux (via Docker)
-
-Builds a native Linux binary inside a Docker container, without needing a Linux toolchain on Windows.
-
-### Prerequisites
-
-* **Docker Desktop** (https://www.docker.com/products/docker-desktop/). Make sure the Docker daemon is running.
-
-### Build
-
-```
-.\build linux-docker
-```
-
-On the first run, this builds a local Docker image (`passiflora-linux-build`) with all required build dependencies pre-installed. Subsequent runs reuse the cached image, so only the actual compilation runs — no re-downloading packages.
-
-The project directory is bind-mounted into the container, so the output lands directly in `bin\Linux\` on your Windows machine.
-
-To force a rebuild of the Docker image (e.g. after changing the base image or package list):
-
-```
-docker rmi passiflora-linux-build
-```
-
-> **Note:** The resulting binary is a native Linux ELF executable — it won't run directly on Windows. Transfer it to a Linux machine (or run it inside the same Docker container) to test.
-
----
-
 ## Code Signing
 
 **IMPORTANT: Never put your signing certificates, keystores, passwords, etc. into a folder managed by git or another version control system. Ever.**

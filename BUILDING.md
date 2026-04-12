@@ -16,9 +16,8 @@
 | `make sign-android` | Sign the Android APK with a local keystore (macOS and Linux)|
 | `make googleplay-android` | Build a release AAB for Google Play upload (under construction) |
 | `make linux` | Build Linux binary (Linux only) -- same as `make` if you're on Linux |
-| `make linux-docker` | Build Linux binary using a Docker container (macOS only — requires Docker) |
 | `make www` | Build plain-browser version in `bin/WWW/` -- useful for debugging using browser tools |
-| `make all` | Build *every* platform: macOS, iOS, Windows, Android, Linux via Docker (macOS only) |
+| `make all` | Build *every* platform: macOS, iOS, Windows, Android (macOS only) |
 | `make sign-all` | Build + sign *every* platform, including Google Play AAB (macOS only — iOS and Android prompt for credentials). Note that Windows signing is not yet supported.|
 | `make icons` | Generate icon sets for all platforms |
 | `make clean` | Remove all build artifacts |
@@ -32,7 +31,7 @@
 | `.\build sign-android` |Build a signed Android APK (Windows) |
 | `.\build googleplay-android` | Build a release AAB for Google Play upload (Windows) (under construction)|
 | `.\build www` | Build plain-browser version in `bin\WWW\` (Windows) -- useful for debugging using browser tools |
-| `.\build linux-docker` | Build Linux binary using a Docker container (Windows — requires Docker) |
+
 | `.\build icons` | Generate icon sets (Windows) |
 | `.\build clean` | Remove all build artifacts (Windows) |
 

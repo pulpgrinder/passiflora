@@ -42,8 +42,7 @@ This produces `bin/macOS/<progname>.app` — a standard macOS application bundle
 | `make sign-android` | Builds an Android apk |
 | `make googleplay-android` | Build a release AAB for Google Play upload (under construction) |
 | `make www` | Build plain-browser version into `bin/WWW/` — useful for debugging using browser tools |
-| `make linux-docker` | Build Linux binary using a Docker container (requires Docker) |
-| `make all` | Build every platform: macOS, iOS, Windows, Android, Linux (via Docker) |
+| `make all` | Build every platform: macOS, iOS, Windows, Android |
 | `make sign-all` | Build + sign every platform, including Google Play AAB (experimental) (iOS and Android prompt for credentials) |
 | `make icons` | Generate icon sets for all platforms |
 | `make clean` | Remove all build artifacts |
@@ -265,40 +264,6 @@ This target is also included in `make sign-all`.
 
 ---
 
-## Cross-Compiling for Linux (via Docker)
-
-Builds a native Linux (x86_64 or arm64) binary inside a Docker container, without needing a Linux toolchain on macOS.
-
-### Additional Prerequisites
-
-* **Docker Desktop** (https://www.docker.com/products/docker-desktop/) or **OrbStack** (https://orbstack.dev/). Make sure the Docker daemon is running.
-
-### Build
-
-```
-make linux-docker
-```
-
-On the first run, this builds a local Docker image (`passiflora-linux-build`) with all required build dependencies (`gcc`, `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libgstreamer1.0-dev`, etc.) pre-installed. Subsequent runs reuse the cached image, so only the actual compilation runs — no re-downloading packages.
-
-The project directory is bind-mounted into the container, so the output lands directly in `bin/Linux/<progname>` on your Mac.
-
-To use a different base image:
-
-```
-make linux-docker LINUX_DOCKER_IMAGE=ubuntu:22.04
-```
-
-To force a rebuild of the Docker image (e.g. after changing the base image or package list):
-
-```
-docker rmi passiflora-linux-build
-```
-
-> **Note:** The resulting binary is a native Linux ELF executable — it won't run directly on macOS. Transfer it to a Linux machine (or run it inside the same Docker container) to test.
-
----
-
 ## Building All Platforms at Once
 
 Two convenience targets build every platform from a single command on macOS:
@@ -309,7 +274,7 @@ Two convenience targets build every platform from a single command on macOS:
 make all
 ```
 
-Runs `make clean`, then builds macOS, iOS, Windows (cross-compile), Android, and Linux (Docker) in sequence, cleaning intermediate files between each platform. Produces:
+Runs `make clean`, then builds macOS, iOS, Windows (cross-compile), and Android in sequence, cleaning intermediate files between each platform. Produces:
 
 | Platform | Output |
 |----------|--------|
@@ -317,7 +282,6 @@ Runs `make clean`, then builds macOS, iOS, Windows (cross-compile), Android, and
 | iOS | `bin/iOS/<progname>.app` (unsigned) |
 | Windows | `bin/Windows/<progname>.exe` |
 | Android | `bin/Android/<progname>.apk` |
-| Linux | `bin/Linux/<progname>` |
 | WWW | `bin/WWW/` |
 
 ### `make sign-all` — signed builds
@@ -326,7 +290,7 @@ Runs `make clean`, then builds macOS, iOS, Windows (cross-compile), Android, and
 make sign-all
 ```
 
-Same as `make all`, but uses `make sign-macos`, `make sign-ios`, `make sign-android`, and `make googleplay-android` for platforms that support code signing. iOS and Android will prompt interactively for signing credentials (provisioning profile, keystore, etc.). Windows and Linux builds are identical to the unsigned versions since signing isn't (yet) supported on those platforms.
+Same as `make all`, but uses `make sign-macos`, `make sign-ios`, `make sign-android`, and `make googleplay-android` for platforms that support code signing. iOS and Android will prompt interactively for signing credentials (provisioning profile, keystore, etc.). The Windows build is identical to the unsigned version since signing isn't (yet) supported.
 
 Produces:
 
@@ -337,10 +301,9 @@ Produces:
 | Windows | `bin/Windows/<progname>.exe` |
 | Android | `bin/Android/<progname>.apk` (signed) |
 | Android (Google Play) | `bin/Android/<progname>.aab` |
-| Linux | `bin/Linux/<progname>` |
 | WWW | `bin/WWW/` |
 
-> **Prerequisites:** These targets require all cross-compilation prerequisites to be installed (Xcode, MinGW-w64, Android SDK/NDK, Docker). See the sections above for each platform's requirements.
+> **Prerequisites:** These targets require all cross-compilation prerequisites to be installed (Xcode, MinGW-w64, Android SDK/NDK). See the sections above for each platform's requirements.
 
 ---
 
