@@ -32,6 +32,7 @@
 | `.\build sign-android` |Build a signed Android APK (Windows) |
 | `.\build googleplay-android` | Build a release AAB for Google Play upload (Windows) (under construction)|
 | `.\build www` | Build plain-browser version in `bin\WWW\` (Windows) -- useful for debugging using browser tools |
+| `.\build linux-docker` | Build Linux binary using a Docker container (Windows — requires Docker) |
 | `.\build icons` | Generate icon sets (Windows) |
 | `.\build clean` | Remove all build artifacts (Windows) |
 

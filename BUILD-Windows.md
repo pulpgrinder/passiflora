@@ -1,6 +1,6 @@
 # Building Passiflora Apps on Windows
 
-This guide covers building Passiflora apps natively on Windows, plus cross-compiling for Android and WWW.
+This guide covers building Passiflora apps natively on Windows, plus cross-compiling for Android, WWW, and Linux (via Docker).
 
 > **Note:** On Windows, use `.\build` (or `.\build.bat`) instead of `make`. If you are using PowerShell (the default terminal on modern Windows), you **must** prefix the command with `.\` — e.g. `.\build windows`. In cmd.exe you can just type `build windows`.
 
@@ -186,6 +186,34 @@ Google Play requires an Android App Bundle (AAB) instead of an APK:
 ```
 
 Produces `bin\Android\<progname>.aab` — a signed release bundle ready for upload to the Google Play Console. Requires `RELEASE_KEYSTORE`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, and `RELEASE_KEY_PASSWORD` environment variables to be set (see [Code Signing for Android](#code-signing-for-android)).
+
+---
+
+## Cross-Compiling for Linux (via Docker)
+
+Builds a native Linux binary inside a Docker container, without needing a Linux toolchain on Windows.
+
+### Prerequisites
+
+* **Docker Desktop** (https://www.docker.com/products/docker-desktop/). Make sure the Docker daemon is running.
+
+### Build
+
+```
+.\build linux-docker
+```
+
+On the first run, this builds a local Docker image (`passiflora-linux-build`) with all required build dependencies pre-installed. Subsequent runs reuse the cached image, so only the actual compilation runs — no re-downloading packages.
+
+The project directory is bind-mounted into the container, so the output lands directly in `bin\Linux\` on your Windows machine.
+
+To force a rebuild of the Docker image (e.g. after changing the base image or package list):
+
+```
+docker rmi passiflora-linux-build
+```
+
+> **Note:** The resulting binary is a native Linux ELF executable — it won't run directly on Windows. Transfer it to a Linux machine (or run it inside the same Docker container) to test.
 
 ---
 

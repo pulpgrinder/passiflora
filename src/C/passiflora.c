@@ -291,9 +291,12 @@ static void save_persisted_port(int port)
         DWORD dlen = GetEnvironmentVariableA("LOCALAPPDATA", dir, MAX_PATH);
         if (dlen == 0 || dlen >= MAX_PATH) return;
         char appdir[MAX_PATH + 64], path[MAX_PATH + 64];
-        snprintf(appdir, sizeof appdir, "%s\\%s", dir, PROGNAME_STR);
+        int n;
+        n = snprintf(appdir, sizeof appdir, "%s\\%s", dir, PROGNAME_STR);
+        if (n < 0 || (size_t)n >= sizeof appdir) return;
         CreateDirectoryA(appdir, NULL);
-        snprintf(path, sizeof path, "%s\\port", appdir);
+        n = snprintf(path, sizeof path, "%s\\port", appdir);
+        if (n < 0 || (size_t)n >= sizeof path) return;
         FILE *f = fopen(path, "w");
         if (f) {
             fprintf(f, "%d\n", port);
@@ -318,11 +321,15 @@ static void save_persisted_port(int port)
     }
     if (!home) return;
     char cfgdir[PATH_BUF], dir[PATH_BUF], path[PATH_BUF];
-    snprintf(cfgdir, sizeof cfgdir, "%s/.config", home);
+    int n;
+    n = snprintf(cfgdir, sizeof cfgdir, "%s/.config", home);
+    if (n < 0 || (size_t)n >= sizeof cfgdir) return;
     mkdir(cfgdir, 0755);
-    snprintf(dir, sizeof dir, "%s/%s", cfgdir, PROGNAME_STR);
+    n = snprintf(dir, sizeof dir, "%s/%s", cfgdir, PROGNAME_STR);
+    if (n < 0 || (size_t)n >= sizeof dir) return;
     mkdir(dir, 0755);
-    snprintf(path, sizeof path, "%s/port", dir);
+    n = snprintf(path, sizeof path, "%s/port", dir);
+    if (n < 0 || (size_t)n >= sizeof path) return;
     FILE *f = fopen(path, "w");
     if (f) {
         fprintf(f, "%d\n", port);

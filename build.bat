@@ -9,6 +9,7 @@ REM   android   — Build the Android APK
 REM   www       — Build plain-browser version into bin\WWW\
 REM   icons     — Generate icon sets
 REM   clean     — Remove build artifacts
+REM   linux-docker — Build Linux binary using a Docker container (requires Docker)
 REM   all       — windows (alias)
 REM
 REM Requires (for windows target):
@@ -46,7 +47,7 @@ if exist "%SCRIPT_DIR%\src\config" (
 if "!PROGNAME!"=="" set PROGNAME=HeckinChonker
 if "!BUNDLE_ID!"=="" set BUNDLE_ID=com.pulpgrinder.!PROGNAME!
 
-set WIN_CFLAGS=-Wall -Wextra -O2 -DPROGNAME_STR=\"!PROGNAME!\"
+set WIN_CFLAGS=-Wall -Wextra -O2 -D__USE_MINGW_ANSI_STDIO=1 -DPROGNAME_STR=\"!PROGNAME!\"
 set WIN_LDFLAGS=-lws2_32 -lshell32 -lgdi32 -lole32 -luuid -mwindows -static -lpthread
 if "!PERM_LOCATION!"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_LOCATION
 if "!PERM_CAMERA!"=="true" set WIN_CFLAGS=!WIN_CFLAGS! -DPERM_CAMERA
@@ -69,10 +70,11 @@ if /I "%TARGET%"=="android" goto :do_android
 if /I "%TARGET%"=="sign-android" goto :do_sign_android
 if /I "%TARGET%"=="googleplay-android" goto :do_googleplay_android
 if /I "%TARGET%"=="www" goto :do_www
+if /I "%TARGET%"=="linux-docker" goto :do_linux_docker
 if /I "%TARGET%"=="all" goto :do_all
 if /I "%TARGET%"=="windows" goto :do_windows
 echo Unknown target: %TARGET%
-echo Usage: %~nx0 [windows^|android^|sign-android^|googleplay-android^|www^|icons^|clean^|all]
+echo Usage: %~nx0 [windows^|android^|sign-android^|googleplay-android^|www^|linux-docker^|icons^|clean^|all]
 exit /b 1
 
 REM ================================================================
@@ -117,7 +119,7 @@ REM ================================================================
 mkdir src\www\generated 2>nul
 mkdir src\C\generated 2>nul
 echo [android] Generating config.js from src\android\menus\menu.txt...
-call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\android\menus\menu.txt %PROGNAME% Android src\www\generated\config.js %THEME% src\config
+call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\android\menus\menu.txt %PROGNAME% Android src\www\generated\config.js "%THEME%" src\config
 if errorlevel 1 exit /b 1
 echo [android] Generating vfspreload.js...
 call "%SCRIPT_DIR%\winscripts\mkvfspreload.bat" src\vfs src\www\generated\vfspreload.js
@@ -228,7 +230,7 @@ REM ================================================================
 mkdir src\www\generated 2>nul
 mkdir src\C\generated 2>nul
 echo [googleplay-android] Generating config.js from src\android\menus\menu.txt...
-call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\android\menus\menu.txt %PROGNAME% Android src\www\generated\config.js %THEME% src\config
+call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\android\menus\menu.txt %PROGNAME% Android src\www\generated\config.js "%THEME%" src\config
 if errorlevel 1 exit /b 1
 echo [googleplay-android] Generating vfspreload.js...
 call "%SCRIPT_DIR%\winscripts\mkvfspreload.bat" src\vfs src\www\generated\vfspreload.js
@@ -256,7 +258,7 @@ set WWW_BINDIR=%SCRIPT_DIR%\bin\WWW
 mkdir src\www\generated 2>nul
 
 echo [www] Generating config.js from src\www\menus\menu.txt...
-call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\www\menus\menu.txt %PROGNAME% WWW src\www\generated\config.js %THEME% src\config
+call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\www\menus\menu.txt %PROGNAME% WWW src\www\generated\config.js "%THEME%" src\config
 if errorlevel 1 (
     echo [ERROR] mkmenu_json.bat failed >&2
     exit /b 1
@@ -295,6 +297,46 @@ echo.
 goto :eof
 
 REM ================================================================
+REM  linux-docker
+REM ================================================================
+:do_linux_docker
+where docker >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Docker is not installed or not in PATH. >&2
+    echo         Install Docker Desktop from https://www.docker.com/products/docker-desktop/ >&2
+    exit /b 1
+)
+set LINUX_DOCKER_BUILD_IMAGE=passiflora-linux-build
+
+REM Check if the build image already exists
+docker image inspect %LINUX_DOCKER_BUILD_IMAGE% >nul 2>&1
+if errorlevel 1 (
+    echo [linux-docker] Building Docker image with build dependencies...
+    (
+        echo FROM ubuntu:24.04
+        echo RUN apt-get update ^&^& \
+        echo     apt-get install -y --no-install-recommends \
+        echo         gcc make pkg-config \
+        echo         libgtk-3-dev libwebkit2gtk-4.1-dev \
+        echo         libgstreamer1.0-dev xxd zip ^&^& \
+        echo     rm -rf /var/lib/apt/lists/*
+    ) | docker build -t %LINUX_DOCKER_BUILD_IMAGE% -f - .
+    if errorlevel 1 (
+        echo [ERROR] Docker image build failed >&2
+        exit /b 1
+    )
+)
+
+echo [linux-docker] Building Linux binary in Docker container...
+docker run --rm -v "%CD%":/workspace -w /workspace %LINUX_DOCKER_BUILD_IMAGE% make linux
+if errorlevel 1 (
+    echo [ERROR] Linux Docker build failed >&2
+    exit /b 1
+)
+echo [linux-docker] Build complete: bin\Linux\
+goto :eof
+
+REM ================================================================
 REM  all
 REM ================================================================
 :do_all
@@ -312,7 +354,7 @@ mkdir src\C\generated 2>nul
 
 REM ── Step 1: Generate config.js for Windows (before zip!) ──
 echo [windows] Generating config.js from src\Windows\menus\menu.txt...
-call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\Windows\menus\menu.txt %PROGNAME% Windows src\www\generated\config.js %THEME% src\config
+call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\Windows\menus\menu.txt %PROGNAME% Windows src\www\generated\config.js "%THEME%" src\config
 if errorlevel 1 (
     echo [ERROR] mkmenu_json.bat failed >&2
     exit /b 1

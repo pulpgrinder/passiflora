@@ -279,12 +279,20 @@ Builds a native Linux (x86_64 or arm64) binary inside a Docker container, withou
 make linux-docker
 ```
 
-This spins up an Ubuntu 24.04 container, installs the required build dependencies (`gcc`, `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libgstreamer1.0-dev`, etc.), and runs `make linux` inside the container. The project directory is bind-mounted, so the output lands directly in `bin/Linux/<progname>` on your Mac.
+On the first run, this builds a local Docker image (`passiflora-linux-build`) with all required build dependencies (`gcc`, `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libgstreamer1.0-dev`, etc.) pre-installed. Subsequent runs reuse the cached image, so only the actual compilation runs — no re-downloading packages.
+
+The project directory is bind-mounted into the container, so the output lands directly in `bin/Linux/<progname>` on your Mac.
 
 To use a different base image:
 
 ```
 make linux-docker LINUX_DOCKER_IMAGE=ubuntu:22.04
+```
+
+To force a rebuild of the Docker image (e.g. after changing the base image or package list):
+
+```
+docker rmi passiflora-linux-build
 ```
 
 > **Note:** The resulting binary is a native Linux ELF executable — it won't run directly on macOS. Transfer it to a Linux machine (or run it inside the same Docker container) to test.

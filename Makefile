@@ -114,7 +114,7 @@ endif
 # Windows cross-compilation (mingw-w64)
 WIN_CC        ?= x86_64-w64-mingw32-gcc
 WIN_WINDRES   ?= x86_64-w64-mingw32-windres
-WIN_CFLAGS     = -Wall -Wextra -O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2 $(PERM_DEFS)
+WIN_CFLAGS     = -Wall -Wextra -O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2 -D__USE_MINGW_ANSI_STDIO=1 $(PERM_DEFS)
 WIN_LDFLAGS    = -lws2_32 -lshell32 -lgdi32 -lole32 -luuid -lshlwapi -mwindows -static -lpthread
 WIN_BINDIR     = bin/Windows
 WIN_BINARY     = $(WIN_BINDIR)/$(PROGNAME).exe
@@ -481,19 +481,27 @@ endif
 
 # ── Linux via Docker (cross-build from macOS) ──────────────────────
 LINUX_DOCKER_IMAGE ?= ubuntu:24.04
+LINUX_DOCKER_BUILD_IMAGE = passiflora-linux-build
 
 linux-docker:
 ifeq ($(UNAME_S),Darwin)
+	@if ! docker image inspect $(LINUX_DOCKER_BUILD_IMAGE) >/dev/null 2>&1; then \
+		echo "linux-docker: building Docker image with build dependencies..."; \
+		printf '%s\n' \
+			"FROM $(LINUX_DOCKER_IMAGE)" \
+			"RUN apt-get update && \\" \
+			"    apt-get install -y --no-install-recommends \\" \
+			"        gcc make pkg-config \\" \
+			"        libgtk-3-dev libwebkit2gtk-4.1-dev \\" \
+			"        libgstreamer1.0-dev xxd zip && \\" \
+			"    rm -rf /var/lib/apt/lists/*" \
+		| docker build -t $(LINUX_DOCKER_BUILD_IMAGE) -f - .; \
+	fi
 	docker run --rm \
 		-v "$(CURDIR)":/workspace \
 		-w /workspace \
-		$(LINUX_DOCKER_IMAGE) \
-		sh -c 'apt-get update && \
-		       apt-get install -y --no-install-recommends \
-		           gcc make pkg-config \
-		           libgtk-3-dev libwebkit2gtk-4.1-dev \
-		           libgstreamer1.0-dev xxd && \
-		       make linux'
+		$(LINUX_DOCKER_BUILD_IMAGE) \
+		make linux
 else
 	@echo "linux-docker target is intended for macOS (use 'make linux' on Linux)." >&2; exit 1
 endif
