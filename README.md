@@ -12,7 +12,7 @@ Things are still moving fast, though it's to a point where I'm going to try to a
 
 Supported host platforms:
 
-* macOS  -- available targets: macOS, iOS, Android, Windows, WWW, and Linux (via Docker)
+* macOS  -- available targets: macOS, iOS, Android, Windows, and WWW
 * Windows -- available targets: Windows, Android, and WWW
 * Linux -- available targets: Linux, Windows, Android, WWW
 * Need a different host or target? Open an issue... all suggestions will be considered, within the limits of time and efficiency.
@@ -46,7 +46,7 @@ Electron and Electron Forge also install **342** (!) npm packages, which generat
 
 Detailed installation, build, cross-compilation, and code signing instructions are in the per-platform guides:
 
-* **[Building on macOS](BUILD-macOS.md)** — native macOS builds, plus cross-compiling for iOS, Windows, Android, WWW, and Linux (via Docker)
+* **[Building on macOS](BUILD-macOS.md)** — native macOS builds, plus cross-compiling for iOS, Windows, Android, and WWW
 * **[Building on Windows](BUILD-Windows.md)** — native Windows builds, plus cross-compiling for Android and WWW
 * **[Building on Linux](BUILD-Linux.md)** — native Linux builds, plus cross-compiling for Windows, Android, and WWW
 
