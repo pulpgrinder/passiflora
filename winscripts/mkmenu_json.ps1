@@ -94,7 +94,10 @@ $content += "  `"heading-font-stack`": `"$headingFont`",`n"
 $content += "  `"code-font-stack`": `"$codeFont`",`n"
 $content += "  port: $cfgPort,`n"
 $content += "  menus: " + $json + ",`n"
-$content += "  handleMenu: function(title) { alert(`"Menu item clicked: `" + title); }`n"
+$content += "  handleMenu: function(title) {`n"
+$content += "    if (typeof PassifloraMenu !== 'undefined' && PassifloraMenu.showPanel(title)) return;`n"
+$content += "    alert(`"Menu item clicked: `" + title);`n"
+$content += "  }`n"
 $content += "};`n"
 [System.IO.File]::WriteAllText(
     $output,

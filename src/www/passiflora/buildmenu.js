@@ -87,15 +87,26 @@ const PassifloraMenu = (function () {
         return screen;
     }
 
-    /* Build the top-level list: one entry per menu, each with children */
+    /* Build the top-level list: one entry per menu, each with children.
+     * If a menu's title matches the progname, promote its children to
+     * the top level instead of nesting them under a submenu.
+     */
     function topLevelItems() {
         const menus = (PassifloraConfig && PassifloraConfig.menus) || [];
+        const progname = (PassifloraConfig && PassifloraConfig.progname) || "";
         const out = [];
         for (let i = 0; i < menus.length; i++) {
-            out.push({
-                title: menus[i].title,
-                items: menus[i].items || []
-            });
+            if (menus[i].title === progname) {
+                var children = menus[i].items || [];
+                for (var j = 0; j < children.length; j++) {
+                    out.push(children[j]);
+                }
+            } else {
+                out.push({
+                    title: menus[i].title,
+                    items: menus[i].items || []
+                });
+            }
         }
         return out;
     }

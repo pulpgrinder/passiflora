@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
 
 - ** `make googleplay-android`** (`.\build googleplay-android` on Windows): New **Experimental** build target that produces a release Android App Bundle (`.aab`) for upload to the Google Play Console. Uses Gradle's `bundleRelease` task. The signed APK target (`make sign-android`) is unchanged. `make sign-all` now includes both the signed APK and the Google Play AAB.
 
+- **`make sign-windows`** (`.\build sign-windows` on Windows): New build target that signs the Windows `.exe` using Azure Artifact Signing (formerly Azure Trusted Signing) via jsign. Requires an Azure Artifact Signing account, the Azure CLI (`az`), and jsign on PATH. Set `AZURE_SIGNING_ENDPOINT`, `AZURE_SIGNING_ACCOUNT`, and `AZURE_SIGNING_PROFILE` environment variables before running. `make sign-all` now includes `sign-windows`.
+
 
 
 ### Added

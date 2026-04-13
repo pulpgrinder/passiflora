@@ -157,7 +157,10 @@ END {
     }
 
     printf "\n  ],\n"
-    printf "  handleMenu: function(title) { alert(\"Menu item clicked: \" + title); }\n"
+    printf "  handleMenu: function(title) {\n"
+    printf "    if (typeof PassifloraMenu !== 'undefined' && PassifloraMenu.showPanel(title)) return;\n"
+    printf "    alert(\"Menu item clicked: \" + title);\n"
+    printf "  }\n"
     printf "};\n"
 }
 ' "$TEMPLATE" > "$OUTPUT"

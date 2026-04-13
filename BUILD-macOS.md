@@ -40,6 +40,7 @@ This produces `bin/macOS/<progname>.app` — a standard macOS application bundle
 | `make sign-macos` | Sign, notarize, and package for distribution (see [Code Signing for macOS](#code-signing-for-macos)) |
 | `make android` | Builds an Android .apk|
 | `make sign-android` | Builds an Android apk |
+| `make sign-windows` | Sign the Windows exe with Azure Trusted Signing (requires jsign) |
 | `make googleplay-android` | Build a release AAB for Google Play upload (under construction) |
 | `make www` | Build plain-browser version into `bin/WWW/` — useful for debugging using browser tools |
 | `make all` | Build every platform: macOS, iOS, Windows, Android |
@@ -172,6 +173,14 @@ make windows
 
 Produces `bin/Windows/<progname>.exe`. The build automatically downloads and embeds `WebView2Loader.dll` from NuGet.
 
+To build **and sign** the exe with Azure Artifact Signing:
+
+```
+make sign-windows
+```
+
+See [Code Signing for Windows](#code-signing-for-windows) for prerequisites and setup.
+
 ---
 
 ## Cross-Compiling for Android
@@ -290,7 +299,7 @@ Runs `make clean`, then builds macOS, iOS, Windows (cross-compile), and Android 
 make sign-all
 ```
 
-Same as `make all`, but uses `make sign-macos`, `make sign-ios`, `make sign-android`, and `make googleplay-android` for platforms that support code signing. iOS and Android will prompt interactively for signing credentials (provisioning profile, keystore, etc.). The Windows build is identical to the unsigned version since signing isn't (yet) supported.
+Same as `make all`, but uses `make sign-macos`, `make sign-ios`, `make sign-windows`, `make sign-android`, and `make googleplay-android` for platforms that support code signing. iOS and Android will prompt interactively for signing credentials (provisioning profile, keystore, etc.). Windows signing requires Azure Artifact Signing environment variables to be set (see [Code Signing for Windows](#code-signing-for-windows)).
 
 Produces:
 
@@ -298,12 +307,12 @@ Produces:
 |----------|--------|
 | macOS | `bin/macOS/<progname>.app` (signed + notarized) |
 | iOS | `bin/iOS/<progname>.ipa` (signed) |
-| Windows | `bin/Windows/<progname>.exe` |
+| Windows | `bin/Windows/<progname>.exe` (signed) |
 | Android | `bin/Android/<progname>.apk` (signed) |
 | Android (Google Play) | `bin/Android/<progname>.aab` |
 | WWW | `bin/WWW/` |
 
-> **Prerequisites:** These targets require all cross-compilation prerequisites to be installed (Xcode, MinGW-w64, Android SDK/NDK). See the sections above for each platform's requirements.
+> **Prerequisites:** These targets require all cross-compilation prerequisites to be installed (Xcode, MinGW-w64, Android SDK/NDK, jsign + Azure CLI for Windows signing). See the sections above for each platform's requirements.
 
 ---
 
@@ -483,6 +492,53 @@ xcrun altool --upload-app -f bin/iOS/HeckinChonker.ipa -t ios -u your@apple.id -
 Or use the **Transporter** app (free on the Mac App Store). Testers will receive the build through the TestFlight app.
 
 > **Note:** The device's UDID must be registered in the provisioning profile for ad-hoc and development builds. App Store and enterprise profiles do not have this restriction.
+
+---
+
+### Code Signing for Windows
+
+Windows code signing uses [Azure Artifact Signing](https://learn.microsoft.com/en-us/azure/trusted-signing/overview) (formerly Azure Trusted Signing) via **jsign**, a cross-platform signing tool.
+
+#### Prerequisites
+
+1. **Azure Artifact Signing account** with identity validation and a certificate profile. Your Azure account must have the **"Code Signing Certificate Profile Signer"** role.
+
+2. **Azure CLI** — for obtaining access tokens:
+
+   ```
+   brew install azure-cli
+   ```
+
+   Log in once:
+
+   ```
+   az login
+   ```
+
+3. **Java 17+** — jsign requires a Java runtime (already installed if you build for Android).
+
+4. **jsign**:
+
+   ```
+   brew install jsign
+   ```
+
+#### Sign
+
+Set the required environment variables and run:
+
+```
+export AZURE_SIGNING_ENDPOINT=https://eus.codesigning.azure.net
+export AZURE_SIGNING_ACCOUNT=MySigningAccount
+export AZURE_SIGNING_PROFILE=MyProfile
+make sign-windows
+```
+
+This builds the Windows exe, obtains an Azure access token via `az account get-access-token`, and signs the exe with jsign. Timestamping is automatic (using `http://timestamp.acs.microsoft.com`).
+
+> **Note:** Azure Artifact Signing certificates have a 3-day validity. The automatic timestamping ensures the signature remains valid long-term.
+
+The `AZURE_SIGNING_ENDPOINT` must match the region where your Artifact Signing account was created. See the [Azure docs](https://learn.microsoft.com/en-us/azure/trusted-signing/how-to-signing-integrations) for the full list of regional endpoints.
 
 ---
 

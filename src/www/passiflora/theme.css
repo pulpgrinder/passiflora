@@ -17,6 +17,11 @@ body {
     font-family:var(--body-font-stack)
 }
 
+a {
+    color: var(--slide-body-color);
+    text-decoration: underline;
+}
+
 h1, h2, h3, h4, h5, h6 {
     font-family: var(--heading-font-stack);
     margin-top: 1.5em;

@@ -8,6 +8,7 @@ REM   windows   — Build the Windows exe (default)
 REM   android   — Build the Android APK
 REM   www       — Build plain-browser version into bin\WWW\
 REM   icons     — Generate icon sets
+REM   sign-windows — Sign the Windows exe with Azure Trusted Signing (requires jsign)
 REM   clean     — Remove build artifacts
 REM   all       — windows (alias)
 REM
@@ -69,10 +70,11 @@ if /I "%TARGET%"=="android" goto :do_android
 if /I "%TARGET%"=="sign-android" goto :do_sign_android
 if /I "%TARGET%"=="googleplay-android" goto :do_googleplay_android
 if /I "%TARGET%"=="www" goto :do_www
+if /I "%TARGET%"=="sign-windows" goto :do_sign_windows
 if /I "%TARGET%"=="all" goto :do_all
 if /I "%TARGET%"=="windows" goto :do_windows
 echo Unknown target: %TARGET%
-echo Usage: %~nx0 [windows^|android^|sign-android^|googleplay-android^|www^|icons^|clean^|all]
+echo Usage: %~nx0 [windows^|sign-windows^|android^|sign-android^|googleplay-android^|www^|icons^|clean^|all]
 exit /b 1
 
 REM ================================================================
@@ -419,4 +421,55 @@ if errorlevel 1 (
 )
 
 echo [windows] Build complete: %WIN_BINDIR%\%PROGNAME%.exe
+goto :eof
+
+REM ================================================================
+REM  sign-windows (Azure Trusted Signing via jsign)
+REM ================================================================
+:do_sign_windows
+call :do_windows
+if errorlevel 1 exit /b 1
+
+if not exist "%WIN_BINDIR%\%PROGNAME%.exe" (
+    echo [sign-windows] exe not found: %WIN_BINDIR%\%PROGNAME%.exe >&2
+    exit /b 1
+)
+
+where jsign >nul 2>&1
+if errorlevel 1 (
+    echo [sign-windows] jsign not found on PATH. >&2
+    echo         Install with: scoop install jsign  or  choco install jsign >&2
+    exit /b 1
+)
+
+if "%AZURE_SIGNING_ENDPOINT%"=="" (
+    echo [sign-windows] AZURE_SIGNING_ENDPOINT not set. >&2
+    echo         Set it to your Artifact Signing endpoint, e.g. https://eus.codesigning.azure.net >&2
+    exit /b 1
+)
+if "%AZURE_SIGNING_ACCOUNT%"=="" (
+    echo [sign-windows] AZURE_SIGNING_ACCOUNT not set. >&2
+    exit /b 1
+)
+if "%AZURE_SIGNING_PROFILE%"=="" (
+    echo [sign-windows] AZURE_SIGNING_PROFILE not set. >&2
+    exit /b 1
+)
+
+echo [sign-windows] Obtaining Azure access token...
+for /F "tokens=*" %%T in ('az account get-access-token --resource https://codesigning.azure.net --query accessToken -o tsv 2^>nul') do set AZURE_TOKEN=%%T
+if "%AZURE_TOKEN%"=="" (
+    echo [sign-windows] Failed to obtain Azure access token. >&2
+    echo         Make sure the Azure CLI is installed and you are logged in (az login^). >&2
+    exit /b 1
+)
+
+echo [sign-windows] Signing %WIN_BINDIR%\%PROGNAME%.exe...
+jsign --storetype TRUSTEDSIGNING --keystore "%AZURE_SIGNING_ENDPOINT%" --storepass "%AZURE_TOKEN%" --alias "%AZURE_SIGNING_ACCOUNT%/%AZURE_SIGNING_PROFILE%" --tsaurl http://timestamp.acs.microsoft.com "%WIN_BINDIR%\%PROGNAME%.exe"
+if errorlevel 1 (
+    echo [sign-windows] Signing failed >&2
+    exit /b 1
+)
+
+echo [sign-windows] %WIN_BINDIR%\%PROGNAME%.exe signed successfully.
 goto :eof

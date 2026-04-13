@@ -163,7 +163,7 @@ ifeq ($(UNAME_S),Darwin)
 	$(MAKE) clean
 	$(MAKE) sign-macos
 	$(MAKE) sign-ios
-	$(MAKE) windows
+	$(MAKE) sign-windows
 	$(MAKE) sign-android
 	$(MAKE) googleplay-android
 	$(MAKE) www
@@ -444,6 +444,43 @@ $(WIN_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR
 		$(WIN_CC) $(WIN_CFLAGS) -I. -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(WIN_LDFLAGS); \
 	fi
 
+# ── Windows signing (Azure Trusted Signing via jsign) ──────────────
+WIN_EXE = $(WIN_BINDIR)/$(PROGNAME).exe
+
+sign-windows: windows
+	@if [ ! -f "$(WIN_EXE)" ]; then \
+		echo "sign-windows: exe not found: $(WIN_EXE)" >&2; \
+		echo "  Run 'make windows' first." >&2; \
+		exit 1; \
+	fi
+	@if ! command -v jsign >/dev/null 2>&1; then \
+		echo "sign-windows: jsign not found on PATH." >&2; \
+		echo "  Install with: brew install jsign  (macOS/Linux)" >&2; \
+		exit 1; \
+	fi
+	@if [ -z "$$AZURE_SIGNING_ENDPOINT" ] || [ -z "$$AZURE_SIGNING_ACCOUNT" ] || [ -z "$$AZURE_SIGNING_PROFILE" ]; then \
+		echo "sign-windows: missing one or more required environment variables:" >&2; \
+		echo "  AZURE_SIGNING_ENDPOINT  (e.g. https://eus.codesigning.azure.net)" >&2; \
+		echo "  AZURE_SIGNING_ACCOUNT   (your Artifact Signing account name)" >&2; \
+		echo "  AZURE_SIGNING_PROFILE   (your certificate profile name)" >&2; \
+		exit 1; \
+	fi
+	@echo "sign-windows: obtaining Azure access token..."
+	$(eval AZURE_TOKEN := $(shell az account get-access-token --resource https://codesigning.azure.net --query accessToken -o tsv))
+	@if [ -z "$(AZURE_TOKEN)" ]; then \
+		echo "sign-windows: failed to obtain Azure access token." >&2; \
+		echo "  Make sure the Azure CLI is installed and you are logged in (az login)." >&2; \
+		exit 1; \
+	fi
+	@echo "sign-windows: signing $(WIN_EXE)..."
+	jsign --storetype TRUSTEDSIGNING \
+		--keystore "$$AZURE_SIGNING_ENDPOINT" \
+		--storepass "$(AZURE_TOKEN)" \
+		--alias "$$AZURE_SIGNING_ACCOUNT/$$AZURE_SIGNING_PROFILE" \
+		--tsaurl http://timestamp.acs.microsoft.com \
+		"$(WIN_EXE)"
+	@echo "sign-windows: $(WIN_EXE) signed successfully."
+
 # ── Linux (native build on Linux) ──────────────────────────────────
 LINUX_ICON_PNG      = src/icons/builticons/linux/icon-256.png
 LINUX_ICON_FALLBACK = src/icons/builticons/macos/AppIcon.iconset/icon_256x256.png
@@ -597,4 +634,4 @@ ifeq ($(UNAME_S),Linux)
 	-gtk-update-icon-cache -f -t $(HOME)/.local/share/icons/hicolor 2>/dev/null || true
 endif
 
-.PHONY: default all sign-all clean icons bundle macos sign-macos sign-ios sim-ios windows linux android sign-android www
+.PHONY: default all sign-all clean icons bundle macos sign-macos sign-ios sim-ios windows sign-windows linux android sign-android www

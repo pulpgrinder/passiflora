@@ -72,8 +72,7 @@ Produces `bin\Windows\<progname>.exe`. The build automatically downloads and emb
 |---------|-------------|
 | `.\build` or `.\build windows` | Build Windows exe |
 | `.\build android` | Build Android APK (debug) |
-| `.\build sign-android` | Build + sign Android APK |
-| `.\build googleplay-android` | Build release AAB for Google Play (experimental)|
+| `.\build sign-android` | Build + sign Android APK || `.\.build sign-windows` | Build + sign Windows exe with Azure Trusted Signing (requires jsign) || `.\build googleplay-android` | Build release AAB for Google Play (experimental)|
 | `.\build www` | Build plain-browser version into `bin\WWW\` — useful for debugging using browser tools |
 | `.\build icons` | Generate icon sets for all platforms |
 | `.\build clean` | Remove all build artifacts |
@@ -192,6 +191,61 @@ Produces `bin\Android\<progname>.aab` — a signed release bundle ready for uplo
 ## Code Signing
 
 **IMPORTANT: Never put your signing certificates, keystores, passwords, etc. into a folder managed by git or another version control system. Ever.**
+
+---
+
+### Code Signing for Windows
+
+Windows code signing uses [Azure Artifact Signing](https://learn.microsoft.com/en-us/azure/trusted-signing/overview) (formerly Azure Trusted Signing) via **jsign**, a cross-platform signing tool.
+
+#### Prerequisites
+
+1. **Azure Artifact Signing account** with identity validation and a certificate profile. Your Azure account must have the **"Code Signing Certificate Profile Signer"** role.
+
+2. **Azure CLI** — for obtaining access tokens:
+
+   ```
+   winget install Microsoft.AzureCLI
+   ```
+
+   Log in once:
+
+   ```
+   az login
+   ```
+
+3. **Java 17+** — jsign requires a Java runtime (already installed if you build for Android).
+
+4. **jsign** — install via Scoop or Chocolatey:
+
+   ```
+   scoop install jsign
+   ```
+
+   or:
+
+   ```
+   choco install jsign
+   ```
+
+   Alternatively, download the all-in-one JAR from https://github.com/ebourg/jsign/releases and run with `java -jar jsign.jar`.
+
+#### Sign
+
+Set the required environment variables and run:
+
+```
+set AZURE_SIGNING_ENDPOINT=https://eus.codesigning.azure.net
+set AZURE_SIGNING_ACCOUNT=MySigningAccount
+set AZURE_SIGNING_PROFILE=MyProfile
+.\.build sign-windows
+```
+
+This builds the Windows exe, obtains an Azure access token via `az account get-access-token`, and signs the exe with jsign. Timestamping is automatic (using `http://timestamp.acs.microsoft.com`).
+
+> **Note:** Azure Artifact Signing certificates have a 3-day validity. The automatic timestamping ensures the signature remains valid long-term.
+
+The `AZURE_SIGNING_ENDPOINT` must match the region where your Artifact Signing account was created. See the [Azure docs](https://learn.microsoft.com/en-us/azure/trusted-signing/how-to-signing-integrations) for the full list of regional endpoints.
 
 ---
 

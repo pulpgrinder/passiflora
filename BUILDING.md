@@ -12,13 +12,14 @@
 | `make sim-ios` | Build, install, launch in iOS Simulator (macOS only) |
 | `make sign-ios` | Build, sign, and package iOS .ipa — App Store ready (macOS only) |
 | `make windows` | Cross-compile Windows exe (from macOS or Linux) |
+| `make sign-windows` | Cross-compile and sign Windows exe with Azure Trusted Signing (requires jsign) |
 | `make android` | Build Android APK |
 | `make sign-android` | Sign the Android APK with a local keystore (macOS and Linux)|
 | `make googleplay-android` | Build a release AAB for Google Play upload (under construction) |
 | `make linux` | Build Linux binary (Linux only) -- same as `make` if you're on Linux |
 | `make www` | Build plain-browser version in `bin/WWW/` -- useful for debugging using browser tools |
 | `make all` | Build *every* platform: macOS, iOS, Windows, Android (macOS only) |
-| `make sign-all` | Build + sign *every* platform, including Google Play AAB (macOS only — iOS and Android prompt for credentials). Note that Windows signing is not yet supported.|
+| `make sign-all` | Build + sign *every* platform, including Google Play AAB (macOS only — iOS, Android, and Windows prompt for/require credentials).|
 | `make icons` | Generate icon sets for all platforms |
 | `make clean` | Remove all build artifacts |
 
@@ -26,8 +27,7 @@
 
 | Target | Description |
 |--------|-------------|
-| `.\build` or `.\build windows` | Build Windows exe (Windows) |
-| `.\build android` | Build Android APK (Windows) |
+| `.\build` or `.\build windows` | Build Windows exe (Windows) || `.\.build sign-windows` | Build + sign Windows exe with Azure Trusted Signing (requires jsign) || `.\build android` | Build Android APK (Windows) |
 | `.\build sign-android` |Build a signed Android APK (Windows) |
 | `.\build googleplay-android` | Build a release AAB for Google Play upload (Windows) (under construction)|
 | `.\build www` | Build plain-browser version in `bin\WWW\` (Windows) -- useful for debugging using browser tools |
