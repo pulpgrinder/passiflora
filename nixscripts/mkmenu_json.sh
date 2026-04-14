@@ -11,6 +11,7 @@
 #   - Blank lines are skipped
 #   - Items starting with * are native-only and are excluded from the JS menu
 #   - {{progname}} is replaced with the progname argument
+#   - {{displayname}} is replaced with the display name from src/config
 #
 # Output: a JS file defining PassifloraConfig with os_name, menus, and handleMenu.
 #
@@ -28,6 +29,7 @@ BODY_FONT_STACK="System UI"
 HEADING_FONT_STACK="System UI"
 CODE_FONT_STACK="Monospace Code"
 CFG_PORT="0"
+DISPLAYNAME="$PROGNAME"
 if [ -f "$CONFIGFILE" ]; then
     _val=$(awk '/^body-font-stack / {sub(/^body-font-stack /, ""); print}' "$CONFIGFILE")
     [ -n "$_val" ] && BODY_FONT_STACK="$_val"
@@ -37,6 +39,8 @@ if [ -f "$CONFIGFILE" ]; then
     [ -n "$_val" ] && CODE_FONT_STACK="$_val"
     _val=$(awk '/^port / {print $2}' "$CONFIGFILE")
     [ -n "$_val" ] && CFG_PORT="$_val"
+    _val=$(awk '/^DISPLAYNAME / {sub(/^DISPLAYNAME /, ""); print}' "$CONFIGFILE")
+    [ -n "$_val" ] && DISPLAYNAME="$_val"
 fi
 
 if [ -z "$TEMPLATE" ] || [ ! -f "$TEMPLATE" ]; then
@@ -48,7 +52,7 @@ fi
 # Ensure output directory exists
 mkdir -p "$(dirname "$OUTPUT")"
 
-awk -v progname="$PROGNAME" -v os_name="$OS_NAME" -v theme="$THEME" \
+awk -v progname="$PROGNAME" -v displayname="$DISPLAYNAME" -v os_name="$OS_NAME" -v theme="$THEME" \
     -v body_font="$BODY_FONT_STACK" -v heading_font="$HEADING_FONT_STACK" -v code_font="$CODE_FONT_STACK" \
     -v cfg_port="$CFG_PORT" '
 function pad(n,    s, k) { s = ""; for (k = 0; k < n; k++) s = s "  "; return s }
@@ -82,6 +86,11 @@ function pad(n,    s, k) { s = ""; for (k = 0; k < n; k++) s = s "  "; return s 
         line = substr(line, 1, idx - 1) progname substr(line, idx + 12)
     }
 
+    # Replace {{displayname}} with the display name (may contain spaces)
+    while ((idx = index(line, "{{displayname}}")) > 0) {
+        line = substr(line, 1, idx - 1) displayname substr(line, idx + 15)
+    }
+
     # Items starting with * are native-only; skip them from JS output
     if (substr(line, 1, 1) == "*") next
 
@@ -97,6 +106,7 @@ END {
     printf "// Auto-generated file \xe2\x80\x94 DO NOT EDIT. This file is overwritten on every build.\n"
     printf "var PassifloraConfig = {\n"
     printf "  progname: \"%s\",\n", progname
+    printf "  displayname: \"%s\",\n", displayname
     printf "  os_name: \"%s\",\n", os_name
     printf "  theme: \"%s\",\n", theme
     printf "  \"body-font-stack\": \"%s\",\n", body_font

@@ -1,4 +1,8 @@
 PROGNAME := $(shell awk '/^PROGNAME / {print $$2}' src/config 2>/dev/null)
+DISPLAYNAME := $(shell awk '/^DISPLAYNAME / {sub(/^DISPLAYNAME /, ""); print}' src/config 2>/dev/null)
+ifeq ($(DISPLAYNAME),)
+  DISPLAYNAME := $(PROGNAME)
+endif
 CC      ?= cc
 CFLAGS  ?= -Wall -Wextra -O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2
 LDFLAGS ?= -lpthread
@@ -54,7 +58,7 @@ ifeq ($(UNAME_S),Darwin)
   BUNDLE_ID     := $(shell awk '/^BUNDLE_ID / {print $$2}' src/config 2>/dev/null)
   VERSION       ?= 1.0.0
   ICNS           = src/icons/builticons/macos/AppIcon.icns
-  APP_BUNDLE     = $(BINDIR)/$(PROGNAME).app
+  APP_BUNDLE     = $(BINDIR)/$(DISPLAYNAME).app
 
   # iOS cross-compilation settings
   IOS_SDK       := $(shell xcrun --sdk iphoneos --show-sdk-path 2>/dev/null)
@@ -75,7 +79,7 @@ ifeq ($(UNAME_S),Darwin)
   endif
   IOS_BINDIR     = bin/iOS
   IOS_BINARY     = $(IOS_BINDIR)/$(PROGNAME)
-  IOS_APP_BUNDLE = $(IOS_BINDIR)/$(PROGNAME).app
+  IOS_APP_BUNDLE = $(IOS_BINDIR)/$(DISPLAYNAME).app
 
   # iOS Simulator settings
   SIMOS_SDK     := $(shell xcrun --sdk iphonesimulator --show-sdk-path 2>/dev/null)
@@ -95,7 +99,7 @@ ifeq ($(UNAME_S),Darwin)
   endif
   SIMOS_BINDIR   = bin/iOS-sim
   SIMOS_BINARY   = $(SIMOS_BINDIR)/$(PROGNAME)
-  SIMOS_APP_BUNDLE = $(SIMOS_BINDIR)/$(PROGNAME).app
+  SIMOS_APP_BUNDLE = $(SIMOS_BINDIR)/$(DISPLAYNAME).app
 else ifeq ($(UNAME_S),Linux)
   OS_NAME        = Linux
   WEBKIT_PKG    := $(shell pkg-config --exists webkit2gtk-4.1 2>/dev/null && echo webkit2gtk-4.1 || echo webkit2gtk-4.0)
@@ -224,7 +228,7 @@ icons:
 
 bundle: $(BINARY)
 ifeq ($(UNAME_S),Darwin)
-	sh nixscripts/mkbundle.sh "$(PROGNAME)" "$(BINARY)" "$(ICNS)" "$(BUNDLE_ID)" "$(VERSION)"
+	sh nixscripts/mkbundle.sh "$(PROGNAME)" "$(BINARY)" "$(ICNS)" "$(BUNDLE_ID)" "$(VERSION)" "$(DISPLAYNAME)"
 endif
 
 sign: bundle
@@ -254,7 +258,7 @@ IOS_IPA = $(IOS_BINDIR)/$(PROGNAME).ipa
 
 sign-ios: $(IOS_BINARY)
 ifeq ($(UNAME_S),Darwin)
-	sh nixscripts/mkiosbundle.sh "$(PROGNAME)" "$(IOS_BINARY)" src/icons/builticons/ios/AppIcon-1024.png "$(BUNDLE_ID)" "$(VERSION)"
+	sh nixscripts/mkiosbundle.sh "$(PROGNAME)" "$(IOS_BINARY)" src/icons/builticons/ios/AppIcon-1024.png "$(BUNDLE_ID)" "$(VERSION)" "" "$(DISPLAYNAME)"
 	@PROV="$(IOS_PROVISIONING_PROFILE)"; \
 	if [ -z "$$PROV" ]; then \
 		PROV=~/passiflora-keys/$(PROGNAME).mobileprovision; \
@@ -339,22 +343,22 @@ ifeq ($(UNAME_S),Darwin)
 	\
 	TMPDIR_IPA=$$(mktemp -d /tmp/sign-ios-ipa-XXXXXX); \
 	echo "sign-ios: copying bundle to $$TMPDIR_IPA (avoids iCloud xattr interference)..."; \
-	ditto $(IOS_APP_BUNDLE) "$$TMPDIR_IPA/$(PROGNAME).app"; \
-	xattr -cr "$$TMPDIR_IPA/$(PROGNAME).app"; \
+	ditto "$(IOS_APP_BUNDLE)" "$$TMPDIR_IPA/$(DISPLAYNAME).app"; \
+	xattr -cr "$$TMPDIR_IPA/$(DISPLAYNAME).app"; \
 	codesign --force \
 		--sign "$$SIGN_ID" \
 		--entitlements "$$ENT_FILE" \
 		--generate-entitlement-der \
-		"$$TMPDIR_IPA/$(PROGNAME).app"; \
+		"$$TMPDIR_IPA/$(DISPLAYNAME).app"; \
 	\
 	echo ""; \
 	echo "sign-ios: bundle signed."; \
-	codesign -dvv "$$TMPDIR_IPA/$(PROGNAME).app" 2>&1 | grep -E '^(Authority|TeamIdentifier|Signature)'; \
+	codesign -dvv "$$TMPDIR_IPA/$(DISPLAYNAME).app" 2>&1 | grep -E '^(Authority|TeamIdentifier|Signature)'; \
 	\
 	echo ""; \
 	echo "sign-ios: packaging $(IOS_IPA)..."; \
 	mkdir -p "$$TMPDIR_IPA/Payload"; \
-	mv "$$TMPDIR_IPA/$(PROGNAME).app" "$$TMPDIR_IPA/Payload/"; \
+	mv "$$TMPDIR_IPA/$(DISPLAYNAME).app" "$$TMPDIR_IPA/Payload/"; \
 	ditto -c -k --keepParent \
 		"$$TMPDIR_IPA/Payload" "$(CURDIR)/$(IOS_IPA)"; \
 	echo "sign-ios: $(IOS_IPA) created."
@@ -378,7 +382,7 @@ endif
 
 sim-ios: $(SIMOS_BINARY)
 ifeq ($(UNAME_S),Darwin)
-	sh nixscripts/mkiosbundle.sh "$(PROGNAME)" "$(SIMOS_BINARY)" src/icons/builticons/ios/AppIcon-1024.png "$(BUNDLE_ID)" "$(VERSION)" "$(SIMOS_BINDIR)"
+	sh nixscripts/mkiosbundle.sh "$(PROGNAME)" "$(SIMOS_BINARY)" src/icons/builticons/ios/AppIcon-1024.png "$(BUNDLE_ID)" "$(VERSION)" "$(SIMOS_BINDIR)" "$(DISPLAYNAME)"
 	@# Boot the most recent available iPhone if nothing is booted
 	@if ! xcrun simctl list devices booted 2>/dev/null | grep -q Booted; then \
 		UDID=$$(xcrun simctl list devices available -j \
@@ -392,7 +396,7 @@ ifeq ($(UNAME_S),Darwin)
 		fi; \
 	fi
 	open -a Simulator 2>/dev/null || true
-	xcrun simctl install booted $(SIMOS_APP_BUNDLE)
+	xcrun simctl install booted "$(SIMOS_APP_BUNDLE)"
 	xcrun simctl launch booted $(BUNDLE_ID)
 	@echo "Launched $(PROGNAME) in iOS Simulator."
 else
@@ -443,9 +447,10 @@ $(WIN_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR
 	else \
 		$(WIN_CC) $(WIN_CFLAGS) -I. -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(WIN_LDFLAGS); \
 	fi
+	@mv "$@" "$(WIN_BINDIR)/$(DISPLAYNAME).exe"
 
 # ── Windows signing (Azure Trusted Signing via jsign) ──────────────
-WIN_EXE = $(WIN_BINDIR)/$(PROGNAME).exe
+WIN_EXE = $(WIN_BINDIR)/$(DISPLAYNAME).exe
 
 sign-windows: windows
 	@if [ ! -f "$(WIN_EXE)" ]; then \
@@ -509,6 +514,7 @@ ifeq ($(UNAME_S),Linux)
 	fi
 	mkdir -p $(BINDIR)
 	$(CC) $(CFLAGS) $(UI_CFLAGS) -o $(BINARY) $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(LDFLAGS) $(UI_LDFLAGS)
+	@mv "$(BINARY)" "$(BINDIR)/$(DISPLAYNAME)"
 else
 	@echo "Linux target requires building on a Linux system." >&2
 	@echo "  Install: sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev" >&2; exit 1
@@ -613,6 +619,7 @@ www:
 
 clean:
 	rm -f $(BINARY)
+	rm -f "$(BINDIR)/$(DISPLAYNAME)"
 	rm -rf $(GENDIR)
 	rm -rf $(APP_BUNDLE)
 	rm -f $(IOS_BINARY)
@@ -622,6 +629,7 @@ clean:
 	rm -f $(SIMOS_BINARY)
 	rm -rf $(SIMOS_APP_BUNDLE)
 	rm -f $(WIN_BINARY)
+	rm -f "$(WIN_EXE)"
 	rm -f $(WIN_BINDIR)/app.rc $(WIN_BINDIR)/app_res.o
 	rm -f wv2loader.h
 	rm -rf src/www/generated

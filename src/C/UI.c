@@ -1827,7 +1827,7 @@ void ui_open(int port)
     RegisterClassExA(&wc);
 
     g_wv2.hwnd = CreateWindowExA(
-        0, "PassifloraWnd", "",
+        0, "PassifloraWnd", MENU_DISPLAYNAME,
         WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT, 1024, 768,
         NULL, NULL, hInst, NULL);
@@ -2671,7 +2671,7 @@ static void linux_ensure_desktop_integration(void)
                  "Terminal=false\n"
                  "Categories=Utility;\n"
                  "StartupWMClass=%s\n",
-                 MENU_PROGNAME, exe_path, MENU_PROGNAME, MENU_PROGNAME);
+                 MENU_DISPLAYNAME, exe_path, MENU_PROGNAME, MENU_PROGNAME);
         g_file_set_contents(desktop_path, contents, -1, NULL);
         g_free(contents);
         g_installed_desktop = TRUE;
@@ -2933,7 +2933,7 @@ void ui_open(int port)
 
     /* Main window */
     GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(window), MENU_PROGNAME);
+    gtk_window_set_title(GTK_WINDOW(window), MENU_DISPLAYNAME);
     gtk_window_set_default_size(GTK_WINDOW(window), 1024, 768);
 
     /* Set window icon from embedded PNG */

@@ -94,9 +94,10 @@ const PassifloraMenu = (function () {
     function topLevelItems() {
         const menus = (PassifloraConfig && PassifloraConfig.menus) || [];
         const progname = (PassifloraConfig && PassifloraConfig.progname) || "";
+        const displayname = (PassifloraConfig && PassifloraConfig.displayname) || "";
         const out = [];
         for (let i = 0; i < menus.length; i++) {
-            if (menus[i].title === progname) {
+            if (menus[i].title === progname || menus[i].title === displayname) {
                 var children = menus[i].items || [];
                 for (var j = 0; j < children.length; j++) {
                     out.push(children[j]);

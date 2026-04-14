@@ -27,6 +27,7 @@ PERM_CAMERA=false
 PERM_MICROPHONE=false
 PERM_REMOTEDEBUGGING=false
 CFG_ORIENTATION="both"
+DISPLAYNAME="$PROGNAME"
 CFG_FILE="$PROJECT_ROOT/src/config"
 if [ -f "$CFG_FILE" ]; then
     while IFS=' ' read -r name val rest || [ -n "$name" ]; do
@@ -40,6 +41,9 @@ if [ -f "$CFG_FILE" ]; then
             orientation)          CFG_ORIENTATION="$val" ;;
         esac
     done < "$CFG_FILE"
+    # Read DISPLAYNAME separately (preserves case and spaces)
+    _val=$(awk '/^DISPLAYNAME / {sub(/^DISPLAYNAME /, ""); print}' "$CFG_FILE")
+    [ -n "$_val" ] && DISPLAYNAME="$_val"
 fi
 
 # Map orientation config to Android screenOrientation attribute
@@ -163,7 +167,7 @@ fi
 # ── Update app_name from PROGNAME ──────────────────────────────────
 STRINGS="$RES_DIR/values/strings.xml"
 if [ -f "$STRINGS" ]; then
-    sed -i.bak "s|>.*</string>|>$PROGNAME</string>|" "$STRINGS"
+    sed -i.bak "s|>.*</string>|>$DISPLAYNAME</string>|" "$STRINGS"
     rm -f "$STRINGS.bak"
 fi
 

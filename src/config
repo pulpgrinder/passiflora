@@ -1,4 +1,5 @@
 PROGNAME HeckinChonker
+DISPLAYNAME Heckin Chonker
 BUNDLE_ID com.pulpgrinder.HeckinChonker
 uselocation true
 usecamera true

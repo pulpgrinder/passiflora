@@ -14,12 +14,14 @@ $bodyFont = "System-UI"
 $headingFont = "System-UI"
 $codeFont = "Monospace Code"
 $cfgPort = "0"
+$displayname = $progname
 if (Test-Path $configFile) {
     foreach ($cfgLine in (Get-Content $configFile -Encoding UTF8)) {
         if ($cfgLine -match '^body-font-stack\s+(.+)$') { $bodyFont = $Matches[1].Trim() }
         if ($cfgLine -match '^heading-font-stack\s+(.+)$') { $headingFont = $Matches[1].Trim() }
         if ($cfgLine -match '^code-font-stack\s+(.+)$') { $codeFont = $Matches[1].Trim() }
         if ($cfgLine -match '^port\s+(\d+)') { $cfgPort = $Matches[1].Trim() }
+        if ($cfgLine -match '^DISPLAYNAME\s+(.+)$') { $displayname = $Matches[1].Trim() }
     }
 }
 
@@ -67,6 +69,7 @@ foreach ($raw in $lines) {
     $line = $line.Trim()
     if ($line -eq '') { continue }
     $line = $line.Replace('{{progname}}', $progname)
+    $line = $line.Replace('{{displayname}}', $displayname)
     # Items starting with * are native-only; skip from JS output
     if ($line.StartsWith('*')) { continue }
     $parsedTexts += $line
@@ -87,6 +90,7 @@ $json = $menus | ConvertTo-Json -Depth 10
 $header = "// Auto-generated file `u{2014} DO NOT EDIT. This file is overwritten on every build.`n"
 $content = $header + "var PassifloraConfig = {`n"
 $content += "  progname: `"$progName`",`n"
+$content += "  displayname: `"$displayname`",`n"
 $content += "  os_name: `"$osName`",`n"
 $content += "  theme: `"$theme`",`n"
 $content += "  `"body-font-stack`": `"$bodyFont`",`n"

@@ -1,7 +1,13 @@
 The file `src/config` controls the program name, bundle identifier, permissions, orientation, and other app-level settings. Each line has the form `key value` (case-insensitive). Permissions use `true` / `false` values and default to `false` if omitted. The supplied sample config file has pretty much everything turned on so you can test things. For apps you're planning to distribute, you should set everything to `false` except the ones you actually need (good security policy in general, plus app stores frown on unnecessary permissions).
 
-- **`PROGNAME`** — Values: any name — Default: `HeckinChonker`
+- **`PROGNAME`** — Values: any name (no spaces) — Default: `HeckinChonker`
   The program name used for the output binary, app bundle, APK, and window title. All build scripts (Makefile, build.bat, Gradle) read this from `src/config`.
+
+- **`DISPLAYNAME`** — Values: any name — Default: value of `PROGNAME`
+  The user-visible application name shown in window titles, under icons, in the
+  macOS/iOS `CFBundleDisplayName`, the Android launcher label, the Linux `.desktop`
+  `Name=` field, and the Windows title bar. May contain spaces. If omitted, falls
+  back to `PROGNAME`.
 
 - **`BUNDLE_ID`** — Values: reverse-DNS string — Default: `com.example.HeckinChonker`
   The bundle identifier is used as the Apple bundle ID (macOS/iOS) and Android `applicationId`. Must be unique — app stores reject `com.example.*`. See the [macOS Build Guide](BUILD-macOS.md) for rules.

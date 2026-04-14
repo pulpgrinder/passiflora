@@ -1,7 +1,7 @@
 #!/bin/sh
 # mkiosbundle.sh — Create an iOS application bundle (.app)
 #
-# Usage: mkiosbundle.sh <progname> <binary> <icon1024> <bundleid> [version] [outdir]
+# Usage: mkiosbundle.sh <progname> <binary> <icon1024> <bundleid> [version] [outdir] [displayname]
 #
 # Produces:  bin/iOS/<progname>.app/
 #   <progname>           (the executable)
@@ -19,6 +19,7 @@ ICON1024="$3"
 BUNDLE_ID="${4:-com.example.$PROGNAME}"
 VERSION="${5:-1.0.0}"
 OUTDIR="$6"
+DISPLAYNAME="${7:-$PROGNAME}"
 
 if [ -z "$PROGNAME" ] || [ -z "$BINARY" ]; then
     echo "Usage: $0 <progname> <binary> <icon1024> [bundleid] [version] [outdir]" >&2
@@ -63,10 +64,13 @@ if [ -n "$OUTDIR" ]; then
 else
     IOS_DIR="$(dirname "$BINDIR")/iOS"
 fi
-APP="$IOS_DIR/${PROGNAME}.app"
+APP="$IOS_DIR/${DISPLAYNAME}.app"
 
 # Clean previous bundle
 rm -rf "$APP"
+if [ "$DISPLAYNAME" != "$PROGNAME" ]; then
+    rm -rf "$IOS_DIR/${PROGNAME}.app"
+fi
 mkdir -p "$APP"
 
 # Copy executable (flat bundle — no Contents/MacOS on iOS)
@@ -101,10 +105,10 @@ cat > "$APP/Info.plist" << PLIST
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>${PROGNAME}</string>
+    <string>${DISPLAYNAME}</string>
 
     <key>CFBundleDisplayName</key>
-    <string>${PROGNAME}</string>
+    <string>${DISPLAYNAME}</string>
 
     <key>CFBundleIdentifier</key>
     <string>${BUNDLE_ID}</string>

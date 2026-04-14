@@ -186,6 +186,22 @@ Google Play requires an Android App Bundle (AAB) instead of an APK:
 
 Produces `bin\Android\<progname>.aab` — a signed release bundle ready for upload to the Google Play Console. Requires `RELEASE_KEYSTORE`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, and `RELEASE_KEY_PASSWORD` environment variables to be set (see [Code Signing for Android](#code-signing-for-android)).
 
+### Testing in the Android Emulator
+
+If you have Android Studio installed, you can load the built APK into the Android Emulator:
+
+1. Open Android Studio.
+2. Open the **Device Manager** (the phone+tablet icon in the toolbar, or **Tools → Device Manager**).
+3. Create a virtual device if you haven't already: click **Create Device**, choose a hardware profile (e.g., Pixel 8), select a system image, and click **Finish**.
+4. Start the emulator by clicking the **Play** button next to your virtual device.
+5. Once the emulator is running, drag and drop the `.apk` file from `bin\Android\` onto the emulator window. Android will install and launch it automatically.
+
+   Alternatively, you can install from the command line with `adb`:
+
+   ```
+   adb install bin\Android\<progname>.apk
+   ```
+
 ---
 
 ## Code Signing

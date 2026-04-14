@@ -10,6 +10,7 @@ REM   - Level 1+ entries become items within that menu
 REM   - "-" alone means a separator
 REM   - Blank lines are skipped
 REM   - {{progname}} is replaced with the progname argument
+REM   - {{displayname}} is replaced with the display name from src\config
 REM
 REM Requires: PowerShell 5+
 REM

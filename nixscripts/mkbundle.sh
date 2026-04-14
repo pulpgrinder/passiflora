@@ -1,7 +1,7 @@
 #!/bin/sh
 # mkbundle.sh — Create a macOS application bundle (.app)
 #
-# Usage: mkbundle.sh <progname> <binary> <icns> <bundleid> [version]
+# Usage: mkbundle.sh <progname> <binary> <icns> <bundleid> [version] [displayname]
 #
 # Produces:  bin/macOS/<progname>.app/
 #   Contents/
@@ -17,6 +17,7 @@ BINARY="$2"
 ICNS="$3"
 BUNDLE_ID="${4:-com.example.$PROGNAME}"
 VERSION="${5:-1.0.0}"
+DISPLAYNAME="${6:-$PROGNAME}"
 
 if [ -z "$PROGNAME" ] || [ -z "$BINARY" ]; then
     echo "Usage: $0 <progname> <binary> <icns> [bundleid] [version]" >&2
@@ -41,10 +42,13 @@ if [ -f "$_cfgfile" ]; then
 fi
 
 BINDIR="$(dirname "$BINARY")"
-APP="$BINDIR/${PROGNAME}.app"
+APP="$BINDIR/${DISPLAYNAME}.app"
 
 # Clean previous bundle
 rm -rf "$APP"
+if [ "$DISPLAYNAME" != "$PROGNAME" ]; then
+    rm -rf "$BINDIR/${PROGNAME}.app"
+fi
 
 # Create bundle structure
 mkdir -p "$APP/Contents/MacOS"
@@ -70,10 +74,10 @@ cat > "$APP/Contents/Info.plist" << PLIST
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>${PROGNAME}</string>
+    <string>${DISPLAYNAME}</string>
 
     <key>CFBundleDisplayName</key>
-    <string>${PROGNAME}</string>
+    <string>${DISPLAYNAME}</string>
 
     <key>CFBundleIdentifier</key>
     <string>${BUNDLE_ID}</string>

@@ -35,6 +35,7 @@ set BUNDLE_ID=
 if exist "%SCRIPT_DIR%\src\config" (
     for /F "tokens=1,*" %%A in (%SCRIPT_DIR%\src\config) do (
         if /I "%%A"=="PROGNAME"             set PROGNAME=%%B
+        if /I "%%A"=="DISPLAYNAME"          set DISPLAYNAME=%%B
         if /I "%%A"=="BUNDLE_ID"            set BUNDLE_ID=%%B
         if /I "%%A"=="uselocation"          if /I "%%B"=="true" set PERM_LOCATION=true
         if /I "%%A"=="usecamera"            if /I "%%B"=="true" set PERM_CAMERA=true
@@ -45,6 +46,7 @@ if exist "%SCRIPT_DIR%\src\config" (
     )
 )
 if "!PROGNAME!"=="" set PROGNAME=HeckinChonker
+if "!DISPLAYNAME!"=="" set DISPLAYNAME=!PROGNAME!
 if "!BUNDLE_ID!"=="" set BUNDLE_ID=com.pulpgrinder.!PROGNAME!
 
 set WIN_CFLAGS=-Wall -Wextra -O2 -D__USE_MINGW_ANSI_STDIO=1 -DPROGNAME_STR=\"!PROGNAME!\"
@@ -86,7 +88,7 @@ if exist "%SCRIPT_DIR%\src\C\generated" rmdir /S /Q "%SCRIPT_DIR%\src\C\generate
 del /Q "%SCRIPT_DIR%\wv2loader.h" 2>nul
 if exist "%SCRIPT_DIR%\src\www\generated" rmdir /S /Q "%SCRIPT_DIR%\src\www\generated" 2>nul
 if exist "%WIN_BINDIR%" (
-    del /Q "%WIN_BINDIR%\%PROGNAME%.exe" 2>nul
+    del /Q "%WIN_BINDIR%\%DISPLAYNAME%.exe" 2>nul
     del /Q "%WIN_BINDIR%\app.rc" 2>nul
     del /Q "%WIN_BINDIR%\app_res.o" 2>nul
     rmdir "%WIN_BINDIR%" 2>nul
@@ -396,17 +398,41 @@ if not exist "%SCRIPT_DIR%\wv2loader.h" (
 )
 
 REM ── Step 4: Compile ──
-echo [windows] Compiling %PROGNAME%.exe...
+echo [windows] Compiling %DISPLAYNAME%.exe...
 mkdir "%WIN_BINDIR%" 2>nul
 
-REM Check for icon and windres for embedding app icon
+REM Check for icon and windres for embedding app icon + VERSIONINFO
 set RES_OBJ=
 set _ICON_PATH=%SCRIPT_DIR%\src\icons\builticons\windows\app.ico
 if exist "%_ICON_PATH%" (
     where %WIN_WINDRES% >nul 2>&1
     if !errorlevel! equ 0 (
         set "_ICON_FWD=!_ICON_PATH:\=/!"
-        echo 1 ICON "!_ICON_FWD!"> "%WIN_BINDIR%\app.rc"
+        > "%WIN_BINDIR%\app.rc" (
+            echo 1 ICON "!_ICON_FWD!"
+            echo.
+            echo 1 VERSIONINFO
+            echo FILEVERSION 1,0,0,0
+            echo PRODUCTVERSION 1,0,0,0
+            echo BEGIN
+            echo   BLOCK "StringFileInfo"
+            echo   BEGIN
+            echo     BLOCK "040904b0"
+            echo     BEGIN
+            echo       VALUE "ProductName", "!DISPLAYNAME!\0"
+            echo       VALUE "FileDescription", "!DISPLAYNAME!\0"
+            echo       VALUE "FileVersion", "!VERSION!\0"
+            echo       VALUE "ProductVersion", "!VERSION!\0"
+            echo       VALUE "InternalName", "!PROGNAME!\0"
+            echo       VALUE "OriginalFilename", "!DISPLAYNAME!.exe\0"
+            echo     END
+            echo   END
+            echo   BLOCK "VarFileInfo"
+            echo   BEGIN
+            echo     VALUE "Translation", 0x0409, 0x04B0
+            echo   END
+            echo END
+        )
         %WIN_WINDRES% "%WIN_BINDIR%\app.rc" -o "%WIN_BINDIR%\app_res.o"
         if !errorlevel! equ 0 (
             set RES_OBJ=%WIN_BINDIR%\app_res.o
@@ -414,13 +440,13 @@ if exist "%_ICON_PATH%" (
     )
 )
 
-%WIN_CC% %WIN_CFLAGS% -I. -o "%WIN_BINDIR%\%PROGNAME%.exe" src\C\passiflora.c src\C\UI.c %RES_OBJ% %WIN_LDFLAGS%
+%WIN_CC% %WIN_CFLAGS% -I. -o "%WIN_BINDIR%\%DISPLAYNAME%.exe" src\C\passiflora.c src\C\UI.c %RES_OBJ% %WIN_LDFLAGS%
 if errorlevel 1 (
     echo [ERROR] Compilation failed >&2
     exit /b 1
 )
 
-echo [windows] Build complete: %WIN_BINDIR%\%PROGNAME%.exe
+echo [windows] Build complete: %WIN_BINDIR%\%DISPLAYNAME%.exe
 goto :eof
 
 REM ================================================================
@@ -430,8 +456,8 @@ REM ================================================================
 call :do_windows
 if errorlevel 1 exit /b 1
 
-if not exist "%WIN_BINDIR%\%PROGNAME%.exe" (
-    echo [sign-windows] exe not found: %WIN_BINDIR%\%PROGNAME%.exe >&2
+if not exist "%WIN_BINDIR%\%DISPLAYNAME%.exe" (
+    echo [sign-windows] exe not found: %WIN_BINDIR%\%DISPLAYNAME%.exe >&2
     exit /b 1
 )
 
@@ -464,12 +490,12 @@ if "%AZURE_TOKEN%"=="" (
     exit /b 1
 )
 
-echo [sign-windows] Signing %WIN_BINDIR%\%PROGNAME%.exe...
-jsign --storetype TRUSTEDSIGNING --keystore "%AZURE_SIGNING_ENDPOINT%" --storepass "%AZURE_TOKEN%" --alias "%AZURE_SIGNING_ACCOUNT%/%AZURE_SIGNING_PROFILE%" --tsaurl http://timestamp.acs.microsoft.com "%WIN_BINDIR%\%PROGNAME%.exe"
+echo [sign-windows] Signing %WIN_BINDIR%\%DISPLAYNAME%.exe...
+jsign --storetype TRUSTEDSIGNING --keystore "%AZURE_SIGNING_ENDPOINT%" --storepass "%AZURE_TOKEN%" --alias "%AZURE_SIGNING_ACCOUNT%/%AZURE_SIGNING_PROFILE%" --tsaurl http://timestamp.acs.microsoft.com "%WIN_BINDIR%\%DISPLAYNAME%.exe"
 if errorlevel 1 (
     echo [sign-windows] Signing failed >&2
     exit /b 1
 )
 
-echo [sign-windows] %WIN_BINDIR%\%PROGNAME%.exe signed successfully.
+echo [sign-windows] %WIN_BINDIR%\%DISPLAYNAME%.exe signed successfully.
 goto :eof

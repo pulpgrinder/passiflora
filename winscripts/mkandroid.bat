@@ -92,11 +92,18 @@ if exist "%ICON_SRC%" (
     )
 )
 
-REM ── Update app_name from PROGNAME ──
+REM ── Update app_name from DISPLAYNAME ──
+REM ── Read DISPLAYNAME from src\config (fallback to PROGNAME) ──
+set DISPLAYNAME=%PROGNAME%
+if exist "%PROJECT_ROOT%\src\config" (
+    for /F "tokens=1,*" %%A in (%PROJECT_ROOT%\src\config) do (
+        if /I "%%A"=="DISPLAYNAME" set DISPLAYNAME=%%B
+    )
+)
 set STRINGS=%RES_DIR%\values\strings.xml
 if exist "%STRINGS%" (
     powershell -NoProfile -Command ^
-        "$f = '%STRINGS%'; $c = [IO.File]::ReadAllText($f); $c = $c -replace '(?m)>.*?</string>', '>%PROGNAME%</string>'; [IO.File]::WriteAllText($f, $c)"
+        "$f = '%STRINGS%'; $c = [IO.File]::ReadAllText($f); $c = $c -replace '(?m)>.*?</string>', '>%DISPLAYNAME%</string>'; [IO.File]::WriteAllText($f, $c)"
 )
 
 REM ── Update versionName if non-default ──
