@@ -37,6 +37,8 @@
 
 ## Per-Platform Guides
 
+Output filenames use the `DISPLAYNAME` from `src/config` (which may contain spaces) for macOS `.app` bundles, Windows `.exe` files, and Linux binaries. Android APKs and iOS `.ipa` files use `PROGNAME` (no spaces). See [CONFIG.md](CONFIG.md) for details.
+
 * **[Building on macOS](BUILD-macOS.md)** — native macOS builds, plus cross-compiling for iOS, iOS Simulator, Windows, Android, and WWW
 * **[Building on Windows](BUILD-Windows.md)** — native Windows builds, plus cross-compiling for Android and WWW
 * **[Building on Linux](BUILD-Linux.md)** — native Linux builds, plus cross-compiling for Windows, Android, and WWW

@@ -26,7 +26,9 @@ Misc
         Stuff at an even lower level
 ```
 
-`{{progname}}` is replaced with the program name at build time.
+`{{progname}}` is replaced with the internal program name (`PROGNAME` from `src/config`) at build time. `{{displayname}}` is also available and is replaced with the user-visible name (`DISPLAYNAME` from `src/config`, which may contain spaces). On platforms with a native menu bar (macOS, Windows, Linux), `{{displayname}}` is the typical choice for the app menu heading, giving the menu a human-readable title like "Heckin Chonker" instead of "HeckinChonker".
+
+For the **sliding menu** (iOS, Android, WWW), if a top-level menu's title matches either `progname` or `displayname`, its children are promoted to the top level rather than being nested under a submenu. This means the app-name menu items (About, Settings, etc.) appear directly in the menu rather than buried under an extra heading.
 
 ### Native vs. JavaScript routing (`*` prefix)
 

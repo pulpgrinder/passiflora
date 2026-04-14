@@ -66,7 +66,7 @@ or equivalently:
 .\build windows
 ```
 
-Produces `bin\Windows\<progname>.exe`. The build automatically downloads and embeds `WebView2Loader.dll` from NuGet.
+Produces `bin\Windows\<displayname>.exe`. The build automatically downloads and embeds `WebView2Loader.dll` from NuGet.
 
 | Command | Description |
 |---------|-------------|
@@ -339,26 +339,26 @@ Then use Method 2 above with the appropriate environment variables.
 Connect your Android device via USB with [USB debugging enabled](https://developer.android.com/studio/debug/dev-options#enable), then use `adb`:
 
 ```
-adb install bin\Android\HeckinChonker.apk
+adb install bin\Android\<progname>.apk
 ```
 
 If `adb` is not on your PATH:
 
 ```
-%ANDROID_HOME%\platform-tools\adb install bin\Android\HeckinChonker.apk
+%ANDROID_HOME%\platform-tools\adb install bin\Android\<progname>.apk
 ```
 
 To install on a specific device when multiple are connected:
 
 ```
 adb devices
-adb -s DEVICE_SERIAL install bin\Android\HeckinChonker.apk
+adb -s DEVICE_SERIAL install bin\Android\<progname>.apk
 ```
 
 To replace an existing installation (keeping app data):
 
 ```
-adb install -r bin\Android\HeckinChonker.apk
+adb install -r bin\Android\<progname>.apk
 ```
 
 Alternatively, copy the signed `.apk` to the device (via USB, email, cloud storage, web server, etc.) and open it — Android will prompt to install. You may need to enable **Install from unknown sources** in the device settings.

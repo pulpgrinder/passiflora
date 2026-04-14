@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **`DISPLAYNAME` support**: New `DISPLAYNAME` setting in `src/config` allows multi-word application names (e.g., "Heckin Chonker"). `DISPLAYNAME` is used for window titles, macOS/iOS `.app` bundle names, the Windows `.exe` filename, the Linux binary filename, the Android launcher label, the Linux `.desktop` `Name=` field, and the Windows VERSIONINFO block. `PROGNAME` (no spaces) remains the internal name used for Apple `CFBundleExecutable`, Android APK filenames, and bundle identifiers. If `DISPLAYNAME` is not set, it falls back to `PROGNAME`.
+
+- **`{{displayname}}` menu template variable**: Menu `.txt` files can now use `{{displayname}}` in addition to `{{progname}}`. On desktop platforms (macOS, Windows, Linux), `{{displayname}}` is the typical choice for the app menu heading. The sliding menu (iOS, Android, WWW) automatically promotes children of any menu whose title matches `progname` or `displayname` to the top level, so app-name items appear directly without an extra submenu.
+
+- **`PassifloraConfig.progname` and `PassifloraConfig.displayname`**: The generated `config.js` now includes both `progname` (internal, no spaces) and `displayname` (user-visible, may contain spaces) fields.
+
+- **Android Emulator instructions**: BUILD-macOS.md, BUILD-Windows.md, and BUILD-Linux.md now include a "Testing in the Android Emulator" section with step-by-step instructions for loading an APK via Android Studio's Device Manager or `adb install`.
+
 ### Changed
 
 - **`PROGNAME` and `BUNDLE_ID` centralized in `src/config`**: The program name and bundle identifier are now read from `src/config` by all build scripts (Makefile, build.bat, and Android build.gradle) instead of being hardcoded. Set `PROGNAME` and `BUNDLE_ID` in `src/config` and every platform picks them up automatically. The Android `applicationId` is now read from config at Gradle evaluation time, replacing the old sed/PowerShell rewriting hack in the mkandroid scripts.

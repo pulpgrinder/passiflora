@@ -2,6 +2,8 @@ The `www/generated/config.js` file is auto-generated on every build and should n
 
 ```javascript
 let PassifloraConfig = {
+  progname: "HeckinChonker",   // internal name (no spaces), from src/config PROGNAME
+  displayname: "Heckin Chonker", // user-visible name (may have spaces), from src/config DISPLAYNAME
   os_name: "iOS",          // or "macOS", "Windows", "Linux", "Android", "WWW"
   theme: "Northern Lights",      // default theme from src/config
   "body-font-stack": "System UI",     // default body font stack name
@@ -13,6 +15,8 @@ let PassifloraConfig = {
 };
 ```
 
+- **`PassifloraConfig.progname`** — the internal program name from `src/config` (no spaces). Useful for identifiers, file paths, and bundle IDs.
+- **`PassifloraConfig.displayname`** — the user-visible name from `src/config`. May contain spaces (e.g., "Heckin Chonker"). Falls back to `progname` if `DISPLAYNAME` is not set in `src/config`.
 - **`PassifloraConfig.os_name`** — the target platform, useful if your JavaScript needs to do different things on different platforms.
 - **`PassifloraConfig.theme`** — the default theme name from `src/config`. Applied on startup; may be overridden by VFS-persisted choice.
 - **`PassifloraConfig["body-font-stack"]`**, **`PassifloraConfig["heading-font-stack"]`**, **`PassifloraConfig["code-font-stack"]`** — default font stack names from `src/config`. Must match keys in `PassifloraThemes.baseFontStackOptions`.

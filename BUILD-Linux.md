@@ -38,7 +38,7 @@ or equivalently:
 make linux
 ```
 
-Produces `bin/Linux/<progname>`.
+Produces `bin/Linux/<displayname>`.
 
 | Command | Description |
 |---------|-------------|
@@ -56,6 +56,8 @@ The first time you run the Linux binary, it automatically installs its icon and 
 
 * **Icon** → `~/.local/share/icons/hicolor/256x256/apps/<progname>.png`
 * **Desktop entry** → `~/.local/share/applications/<progname>.desktop`
+
+The `.desktop` file’s `Name=` field uses `DISPLAYNAME` (e.g., "Heckin Chonker"), so the app appears with its full multi-word name in the GNOME launcher.
 
 If you move the binary, the next launch updates the `Exec=` path automatically. No manual steps are needed.
 
@@ -105,7 +107,7 @@ sudo apt install curl
 make windows
 ```
 
-Produces `bin/Windows/<progname>.exe`. The build automatically downloads and embeds `WebView2Loader.dll` from NuGet.
+Produces `bin/Windows/<displayname>.exe`. The build automatically downloads and embeds `WebView2Loader.dll` from NuGet.
 
 To build **and sign** the exe with Azure Artifact Signing:
 
@@ -360,26 +362,26 @@ Then use Method 2 above with the appropriate environment variables.
 Connect your Android device via USB with [USB debugging enabled](https://developer.android.com/studio/debug/dev-options#enable), then use `adb`:
 
 ```
-adb install bin/Android/HeckinChonker.apk
+adb install bin/Android/<progname>.apk
 ```
 
 If `adb` is not on your PATH:
 
 ```
-$ANDROID_HOME/platform-tools/adb install bin/Android/HeckinChonker.apk
+$ANDROID_HOME/platform-tools/adb install bin/Android/<progname>.apk
 ```
 
 To install on a specific device when multiple are connected:
 
 ```
 adb devices                          # list connected devices
-adb -s DEVICE_SERIAL install bin/Android/HeckinChonker.apk
+adb -s DEVICE_SERIAL install bin/Android/<progname>.apk
 ```
 
 To replace an existing installation (keeping app data):
 
 ```
-adb install -r bin/Android/HeckinChonker.apk
+adb install -r bin/Android/<progname>.apk
 ```
 
 Alternatively, copy the signed `.apk` to the device (via USB, email, cloud storage, web server, etc.) and open it — Android will prompt to install. You may need to enable **Install from unknown sources** in the device settings.

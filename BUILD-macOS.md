@@ -31,7 +31,7 @@ or:
 make macos
 ```
 
-This produces `bin/macOS/<progname>.app` — a standard macOS application bundle.
+This produces `bin/macOS/<displayname>.app` — a standard macOS application bundle.
 
 | Command | Description |
 |---------|-------------|
@@ -171,7 +171,7 @@ brew install mingw-w64
 make windows
 ```
 
-Produces `bin/Windows/<progname>.exe`. The build automatically downloads and embeds `WebView2Loader.dll` from NuGet.
+Produces `bin/Windows/<displayname>.exe`. The build automatically downloads and embeds `WebView2Loader.dll` from NuGet.
 
 To build **and sign** the exe with Azure Artifact Signing:
 
@@ -303,9 +303,9 @@ Runs `make clean`, then builds macOS, iOS, Windows (cross-compile), and Android 
 
 | Platform | Output |
 |----------|--------|
-| macOS | `bin/macOS/<progname>.app` |
-| iOS | `bin/iOS/<progname>.app` (unsigned) |
-| Windows | `bin/Windows/<progname>.exe` |
+| macOS | `bin/macOS/<displayname>.app` |
+| iOS | `bin/iOS/<displayname>.app` (unsigned) |
+| Windows | `bin/Windows/<displayname>.exe` |
 | Android | `bin/Android/<progname>.apk` |
 | WWW | `bin/WWW/` |
 
@@ -321,9 +321,9 @@ Produces:
 
 | Platform | Output |
 |----------|--------|
-| macOS | `bin/macOS/<progname>.app` (signed + notarized) |
+| macOS | `bin/macOS/<displayname>.app` (signed + notarized) |
 | iOS | `bin/iOS/<progname>.ipa` (signed) |
-| Windows | `bin/Windows/<progname>.exe` (signed) |
+| Windows | `bin/Windows/<displayname>.exe` (signed) |
 | Android | `bin/Android/<progname>.apk` (signed) |
 | Android (Google Play) | `bin/Android/<progname>.aab` |
 | WWW | `bin/WWW/` |
@@ -494,7 +494,7 @@ Once you have the signed `.ipa`, there are several ways to get it onto an iPhone
 
 ```
 brew install ideviceinstaller
-ideviceinstaller -i bin/iOS/HeckinChonker.ipa
+ideviceinstaller -i bin/iOS/<progname>.ipa
 ```
 
 **TestFlight / App Store Connect:**
@@ -502,7 +502,7 @@ ideviceinstaller -i bin/iOS/HeckinChonker.ipa
 When signed with an Apple Distribution certificate and an App Store provisioning profile, the `.ipa` is ready for upload:
 
 ```
-xcrun altool --upload-app -f bin/iOS/HeckinChonker.ipa -t ios -u your@apple.id -p @keychain:AC_PASSWORD
+xcrun altool --upload-app -f bin/iOS/<progname>.ipa -t ios -u your@apple.id -p @keychain:AC_PASSWORD
 ```
 
 Or use the **Transporter** app (free on the Mac App Store). Testers will receive the build through the TestFlight app.
@@ -630,26 +630,26 @@ Then use Method 2 above with the appropriate environment variables.
 Connect your Android device via USB with [USB debugging enabled](https://developer.android.com/studio/debug/dev-options#enable), then use `adb`:
 
 ```
-adb install bin/Android/HeckinChonker.apk
+adb install bin/Android/<progname>.apk
 ```
 
 If `adb` is not on your PATH:
 
 ```
-$ANDROID_HOME/platform-tools/adb install bin/Android/HeckinChonker.apk
+$ANDROID_HOME/platform-tools/adb install bin/Android/<progname>.apk
 ```
 
 To install on a specific device when multiple are connected:
 
 ```
 adb devices                          # list connected devices
-adb -s DEVICE_SERIAL install bin/Android/HeckinChonker.apk
+adb -s DEVICE_SERIAL install bin/Android/<progname>.apk
 ```
 
 To replace an existing installation (keeping app data):
 
 ```
-adb install -r bin/Android/HeckinChonker.apk
+adb install -r bin/Android/<progname>.apk
 ```
 
 Alternatively, copy the signed `.apk` to the device (via USB, email, cloud storage, web server, etc.) and open it — Android will prompt to install. You may need to enable **Install from unknown sources** in the device settings.

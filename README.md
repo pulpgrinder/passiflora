@@ -80,7 +80,7 @@ Here are some other customizations you'll probably want to make before building 
 
 ### Config
 
-The file `src/config` controls the program name, bundle identifier, permissions (e.g., whether the app is allowed to use the camera), allowed screen orientations, and so on. See **[CONFIG.md](CONFIG.md)** for details.
+The file `src/config` controls the program name, display name, bundle identifier, permissions (e.g., whether the app is allowed to use the camera), allowed screen orientations, and so on. Multi-word display names (e.g., "Heckin Chonker") are fully supported — set `DISPLAYNAME` in `src/config` and Passiflora uses it for window titles, `.app` bundle names, `.exe` filenames, Linux binary names, and launcher labels across all platforms. See **[CONFIG.md](CONFIG.md)** for details.
 
 ### Icons
 
