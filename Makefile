@@ -230,7 +230,7 @@ endif
 sign: bundle
 sign-macos: bundle
 ifeq ($(UNAME_S),Darwin)
-	sh nixscripts/signapp.sh macos $(APP_BUNDLE) $(BUNDLE_ID)
+	sh nixscripts/signapp.sh macos "$(APP_BUNDLE)" $(BUNDLE_ID)
 else
 	@echo "sign-macos target requires macOS." >&2; exit 1
 endif
@@ -265,7 +265,7 @@ ifeq ($(UNAME_S),Darwin)
 		exit 1; \
 	fi; \
 	echo "sign-ios: embedding provisioning profile..."; \
-	cp "$$PROV" $(IOS_APP_BUNDLE)/embedded.mobileprovision; \
+	cp "$$PROV" "$(IOS_APP_BUNDLE)/embedded.mobileprovision"; \
 	\
 	echo "sign-ios: extracting entitlements from profile..."; \
 	ENT_FILE=$$(mktemp /tmp/sign-ios-ent-XXXXXX); \
@@ -282,7 +282,7 @@ ifeq ($(UNAME_S),Darwin)
 	\
 	PROFILE_APPID=$$(/usr/libexec/PlistBuddy -c "Print :application-identifier" "$$ENT_FILE" 2>/dev/null \
 		| sed 's/^[A-Z0-9]*\.//'); \
-	PLIST_BUNDLEID=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" $(IOS_APP_BUNDLE)/Info.plist 2>/dev/null); \
+	PLIST_BUNDLEID=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$(IOS_APP_BUNDLE)/Info.plist" 2>/dev/null); \
 	if [ -n "$$PROFILE_APPID" ] && [ -n "$$PLIST_BUNDLEID" ] && [ "$$PROFILE_APPID" != "$$PLIST_BUNDLEID" ]; then \
 		echo "" >&2; \
 		echo "sign-ios: ERROR — bundle ID mismatch:" >&2; \
@@ -621,13 +621,13 @@ clean:
 	rm -f $(BINARY)
 	rm -f "$(BINDIR)/$(DISPLAYNAME)"
 	rm -rf $(GENDIR)
-	rm -rf $(APP_BUNDLE)
+	rm -rf "$(APP_BUNDLE)"
 	rm -f $(IOS_BINARY)
-	rm -rf $(IOS_APP_BUNDLE)
+	rm -rf "$(IOS_APP_BUNDLE)"
 	rm -f bin/iOS/$(PROGNAME).ipa
 	rm -rf bin/iOS/_ipa_staging
 	rm -f $(SIMOS_BINARY)
-	rm -rf $(SIMOS_APP_BUNDLE)
+	rm -rf "$(SIMOS_APP_BUNDLE)"
 	rm -f $(WIN_BINARY)
 	rm -f "$(WIN_EXE)"
 	rm -f $(WIN_BINDIR)/app.rc $(WIN_BINDIR)/app_res.o
