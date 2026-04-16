@@ -75,8 +75,9 @@ if /I "%TARGET%"=="www" goto :do_www
 if /I "%TARGET%"=="sign-windows" goto :do_sign_windows
 if /I "%TARGET%"=="all" goto :do_all
 if /I "%TARGET%"=="windows" goto :do_windows
+if /I "%TARGET%"=="newproject" goto :do_newproject
 echo Unknown target: %TARGET%
-echo Usage: %~nx0 [windows^|sign-windows^|android^|sign-android^|googleplay-android^|www^|icons^|clean^|all]
+echo Usage: %~nx0 [windows^|sign-windows^|android^|sign-android^|googleplay-android^|www^|icons^|clean^|newproject^|all]
 exit /b 1
 
 REM ================================================================
@@ -457,4 +458,42 @@ if errorlevel 1 (
 )
 
 echo [sign-windows] %WIN_BINDIR%\%DISPLAYNAME%.exe signed successfully.
+goto :eof
+
+REM ================================================================
+REM  newproject
+REM ================================================================
+:do_newproject
+where gh >nul 2>&1
+if errorlevel 1 (
+    echo [newproject] GitHub CLI ^(gh^) is required but not found. >&2
+    echo         Install from: https://cli.github.com/ >&2
+    exit /b 1
+)
+where git >nul 2>&1
+if errorlevel 1 (
+    echo [newproject] git is required but not found. >&2
+    exit /b 1
+)
+set NEWNAME=
+set /p NEWNAME="New project name: "
+if "!NEWNAME!"=="" (
+    echo [newproject] No name provided. >&2
+    exit /b 1
+)
+echo [newproject] Creating new GitHub repository: !NEWNAME!
+if exist ".git" rmdir /S /Q ".git"
+git init
+if errorlevel 1 exit /b 1
+git add .
+if errorlevel 1 exit /b 1
+git commit -m "Initial commit"
+if errorlevel 1 exit /b 1
+gh repo create "!NEWNAME!" --private --source=. --remote=origin --push
+if errorlevel 1 (
+    echo [newproject] Failed to create GitHub repository. >&2
+    exit /b 1
+)
+echo.
+echo [newproject] New project '!NEWNAME!' created and pushed to GitHub.
 goto :eof

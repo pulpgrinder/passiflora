@@ -592,6 +592,31 @@ www:
 	@echo "Then open http://localhost:8000 in your browser."
 	@echo ""
 
+# ── New project (disconnect from upstream and push to a new GitHub repo) ──
+newproject:
+	@if ! command -v gh >/dev/null 2>&1; then \
+		echo "newproject: GitHub CLI (gh) is required but not found." >&2; \
+		echo "  Install from: https://cli.github.com/" >&2; \
+		exit 1; \
+	fi
+	@if ! command -v git >/dev/null 2>&1; then \
+		echo "newproject: git is required but not found." >&2; \
+		exit 1; \
+	fi
+	@printf 'New project name: '; read NEWNAME; \
+	if [ -z "$$NEWNAME" ]; then \
+		echo "newproject: no name provided." >&2; \
+		exit 1; \
+	fi; \
+	echo "Creating new GitHub repository: $$NEWNAME"; \
+	rm -rf .git; \
+	git init; \
+	git add .; \
+	git commit -m "Initial commit"; \
+	gh repo create "$$NEWNAME" --private --source=. --remote=origin --push; \
+	echo ""; \
+	echo "New project '$$NEWNAME' created and pushed to GitHub."
+
 clean:
 	rm -f $(BINARY)
 	rm -f "$(BINDIR)/$(DISPLAYNAME)"
@@ -617,4 +642,4 @@ ifeq ($(UNAME_S),Linux)
 	-gtk-update-icon-cache -f -t $(HOME)/.local/share/icons/hicolor 2>/dev/null || true
 endif
 
-.PHONY: default all sign-all clean icons bundle macos sign-macos sign-ios sim-ios windows sign-windows linux android sign-android www
+.PHONY: default all sign-all clean icons bundle macos sign-macos sign-ios sim-ios windows sign-windows linux android sign-android www newproject

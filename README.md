@@ -54,8 +54,22 @@ Detailed installation, build, cross-compilation, and code signing instructions a
 
 1. Install the prerequisites for your host system (see the guide above).
 2. Check out a fresh copy of this repo.
-3. Put your HTML/JavaScript/CSS in `src/www`. As one might expect, your startup file should be named `index.html`.
-4. Build:
+3. Create your own project from the checkout (requires the [GitHub CLI](https://cli.github.com/)):
+
+**macOS / Linux:**
+```
+make newproject
+```
+
+**Windows (PowerShell):**
+```
+.\build newproject
+```
+
+You'll be prompted for a new project name. This removes the connection to the Passiflora repo, creates a fresh Git history, and pushes to a new private GitHub repository under your account.
+
+4. Put your HTML/JavaScript/CSS in `src/www`. As one might expect, your startup file should be named `index.html`.
+5. Build:
 
 **macOS / Linux:**
 ```
@@ -67,7 +81,7 @@ make
 .\build
 ```
 
-5. There is no step 5, at least in the sense of building a functioning binary. You'll probably want to customize some of the settings to (e.g.) set your app's name, icon, and so on (see below).
+5. There is no step 6, at least in the sense of building a functioning binary. You'll probably want to customize some of the settings to (e.g.) set your app's name, icon, and so on (see below).
 
 For information on cross-compiling (e.g., building iOS apps on macOS), all available make/build targets, and per-platform guides, see **[BUILDING.md](BUILDING.md)**.
 
