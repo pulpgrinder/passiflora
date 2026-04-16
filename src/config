@@ -12,7 +12,4 @@ heading-font-stack Antique
 code-font-stack Monospace Code
 port 55381
 usefilesystem true
-usefileui true
-usemenus true
-usethemes true
-usepanels true
+usepassifloraui true

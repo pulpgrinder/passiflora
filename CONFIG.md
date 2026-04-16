@@ -52,14 +52,5 @@ The file `src/config` controls the program name, bundle identifier, permissions,
 - **`usefilesystem`** — Values: `true`, `false` — Default: `false`
   When `true`, the build includes the virtual file system (VFS) and `PassifloraIO` core I/O library in `generated.js`. This provides POSIX-style file functions (`fopen`, `fread`, `fwrite`, etc.) backed by IndexedDB, plus VFS preloading of files from `src/vfs/`. See [FILE-IO.md](FILE-IO.md).
 
-- **`usefileui`** — Values: `true`, `false` — Default: `false`
-  When `true`, the build includes the file UI components (Open, Save As, and File Browser dialogs) in `generated.js`. Requires `usefilesystem true`. See [FILE-IO.md](FILE-IO.md).
-
-- **`usemenus`** — Values: `true`, `false` — Default: `false`
-  When `true`, the build includes the sliding menu system (`buildmenu.js`) in `generated.js`. The menu is built automatically from `PassifloraConfig.menus` at page load. See [MENUS-AND-THEMES.md](MENUS-AND-THEMES.md).
-
-- **`usethemes`** — Values: `true`, `false` — Default: `false`
-  When `true`, the build includes the theme engine (`themes.js`) and base theme CSS (`theme.css`) in `generated.js` and `generated.css` respectively. Provides 122 built-in color themes. See [MENUS-AND-THEMES.md](MENUS-AND-THEMES.md#themes).
-
-- **`usepanels`** — Values: `true`, `false` — Default: `false`
-  When `true`, the build compiles panel screens from `src/www/panels/` into `generated.js`. Panels are full-screen sliding views triggered by matching menu items. Requires `usemenus true` for menu-driven panel activation. See [MENUS-AND-THEMES.md](MENUS-AND-THEMES.md#panel-screens).
+- **`usepassifloraui`** — Values: `true`, `false` — Default: `false`
+  When `true`, the build includes the Passiflora UI layer in `generated.js` and `generated.css`: the file UI dialogs (`fileui.js`), sliding menu system (`buildmenu.js`), theme engine with 122 built-in color themes (`themes.js` + `theme.css`), and compiled panel screens from `src/www/panels/`. See [MENUS-AND-THEMES.md](MENUS-AND-THEMES.md) and [FILE-IO.md](FILE-IO.md).

@@ -2,8 +2,8 @@
 #
 # Usage: mkgenerated.ps1 <menu_template> <progname> <os_name> <theme> <configfile>
 #
-# Reads boolean flags from <configfile> (usefilesystem, usefileui, usemenus,
-# usethemes, usepanels) and concatenates the appropriate JS/CSS framework
+# Reads boolean flags from <configfile> (usefilesystem, usepassifloraui)
+# and concatenates the appropriate JS/CSS framework
 # files into src\www\generated\generated.js and generated.css.
 param(
     [string]$Template,
@@ -25,19 +25,13 @@ $VfsDir        = "src\vfs"
 $ScriptDir     = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # ── Read feature flags from config ──
-$UseFilesystem = $false
-$UseFileUI     = $false
-$UseMenus      = $false
-$UseThemes     = $false
-$UsePanels     = $false
+$UseFilesystem   = $false
+$UsePassifloraUI = $false
 
 if (Test-Path $ConfigFile) {
     foreach ($line in (Get-Content $ConfigFile -Encoding UTF8)) {
-        if ($line -match '^usefilesystem\s+true')  { $UseFilesystem = $true }
-        if ($line -match '^usefileui\s+true')       { $UseFileUI     = $true }
-        if ($line -match '^usemenus\s+true')         { $UseMenus      = $true }
-        if ($line -match '^usethemes\s+true')        { $UseThemes     = $true }
-        if ($line -match '^usepanels\s+true')        { $UsePanels     = $true }
+        if ($line -match '^usefilesystem\s+true')   { $UseFilesystem   = $true }
+        if ($line -match '^usepassifloraui\s+true')  { $UsePassifloraUI = $true }
     }
 }
 
@@ -68,22 +62,16 @@ try {
         [void]$jsContent.Append([System.IO.File]::ReadAllText("$PassifloraDir\PassifloraIO.js"))
     }
 
-    if ($UseFileUI) {
+    if ($UsePassifloraUI) {
         [void]$jsContent.AppendLine("")
         [void]$jsContent.Append([System.IO.File]::ReadAllText("$PassifloraDir\UI\fileui.js"))
-    }
 
-    if ($UseMenus) {
         [void]$jsContent.AppendLine("")
         [void]$jsContent.Append([System.IO.File]::ReadAllText("$PassifloraDir\UI\buildmenu.js"))
-    }
 
-    if ($UseThemes) {
         [void]$jsContent.AppendLine("")
         [void]$jsContent.Append([System.IO.File]::ReadAllText("$PassifloraDir\UI\themes.js"))
-    }
 
-    if ($UsePanels) {
         $PanelsTmp = Join-Path $TmpDir "panels.js"
         & powershell -NoProfile -ExecutionPolicy Bypass -File "$ScriptDir\mkpanels.ps1" "$PanelsDir" "$PanelsTmp"
         [void]$jsContent.AppendLine("")
@@ -96,7 +84,7 @@ try {
     # ── Step 3: Build generated.css ──
     $cssContent = [System.Text.StringBuilder]::new()
 
-    if ($UseThemes) {
+    if ($UsePassifloraUI) {
         [void]$cssContent.Append([System.IO.File]::ReadAllText("$PassifloraDir\UI\theme.css"))
     }
 

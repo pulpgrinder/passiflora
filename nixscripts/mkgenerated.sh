@@ -3,8 +3,8 @@
 #
 # Usage: ./mkgenerated.sh <menu_template> <progname> <os_name> <theme> <configfile>
 #
-# Reads boolean flags from <configfile> (usefilesystem, usefileui, usemenus,
-# usethemes, usepanels) and concatenates the appropriate JS/CSS framework
+# Reads boolean flags from <configfile> (usefilesystem, usepassifloraui)
+# and concatenates the appropriate JS/CSS framework
 # files into src/www/generated/generated.js and generated.css.
 #
 # The config.js content (PassifloraConfig) is always included first.
@@ -28,17 +28,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # ── Read feature flags from config ──
 USE_FILESYSTEM=false
-USE_FILEUI=false
-USE_MENUS=false
-USE_THEMES=false
-USE_PANELS=false
+USE_PASSIFLORAUI=false
 
 if [ -f "$CONFIGFILE" ]; then
-    _val=$(awk '/^usefilesystem /  {print $2}' "$CONFIGFILE"); [ "$_val" = "true" ] && USE_FILESYSTEM=true
-    _val=$(awk '/^usefileui /      {print $2}' "$CONFIGFILE"); [ "$_val" = "true" ] && USE_FILEUI=true
-    _val=$(awk '/^usemenus /       {print $2}' "$CONFIGFILE"); [ "$_val" = "true" ] && USE_MENUS=true
-    _val=$(awk '/^usethemes /      {print $2}' "$CONFIGFILE"); [ "$_val" = "true" ] && USE_THEMES=true
-    _val=$(awk '/^usepanels /      {print $2}' "$CONFIGFILE"); [ "$_val" = "true" ] && USE_PANELS=true
+    _val=$(awk '/^usefilesystem /   {print $2}' "$CONFIGFILE"); [ "$_val" = "true" ] && USE_FILESYSTEM=true
+    _val=$(awk '/^usepassifloraui / {print $2}' "$CONFIGFILE"); [ "$_val" = "true" ] && USE_PASSIFLORAUI=true
 fi
 
 mkdir -p "$GENERATED_DIR"
@@ -65,22 +59,16 @@ if [ "$USE_FILESYSTEM" = "true" ]; then
     cat "$PASSIFLORA_DIR/PassifloraIO.js" >> "$GENERATED_JS"
 fi
 
-if [ "$USE_FILEUI" = "true" ]; then
+if [ "$USE_PASSIFLORAUI" = "true" ]; then
     printf '\n' >> "$GENERATED_JS"
     cat "$PASSIFLORA_DIR/UI/fileui.js" >> "$GENERATED_JS"
-fi
 
-if [ "$USE_MENUS" = "true" ]; then
     printf '\n' >> "$GENERATED_JS"
     cat "$PASSIFLORA_DIR/UI/buildmenu.js" >> "$GENERATED_JS"
-fi
 
-if [ "$USE_THEMES" = "true" ]; then
     printf '\n' >> "$GENERATED_JS"
     cat "$PASSIFLORA_DIR/UI/themes.js" >> "$GENERATED_JS"
-fi
 
-if [ "$USE_PANELS" = "true" ]; then
     PANELS_TMP="$TMPDIR/panels.js"
     sh "$SCRIPT_DIR/mkpanels.sh" "$PANELS_DIR" "$PANELS_TMP"
     printf '\n' >> "$GENERATED_JS"
@@ -92,7 +80,7 @@ echo "mkgenerated: $GENERATED_JS built"
 # ── Step 3: Build generated.css by concatenation ──
 : > "$GENERATED_CSS"
 
-if [ "$USE_THEMES" = "true" ]; then
+if [ "$USE_PASSIFLORAUI" = "true" ]; then
     cat "$PASSIFLORA_DIR/UI/theme.css" >> "$GENERATED_CSS"
 fi
 
