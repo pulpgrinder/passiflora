@@ -1,7 +1,7 @@
 /* PassifloraMenu — sliding menu built at runtime from PassifloraConfig.menus
  *
  * Usage:
- *   <script src="passiflora/buildmenu.js"></script>
+ *   <script src="passiflora/UI/buildmenu.js"></script>
  *   PassifloraMenu.activate();        // show the top-level menu
  *   PassifloraMenu.deactivate();      // hide and reset
  *

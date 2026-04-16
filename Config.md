@@ -48,3 +48,18 @@ The file `src/config` controls the program name, bundle identifier, permissions,
 
 - **`port`** — Values: `40000`–`62000` — Default: auto-generated
   The localhost port the embedded HTTP server listens on. If omitted, the build system picks a random port in the 40000–62000 range and writes it back to `src/config` so subsequent builds reuse the same port. A stable port is important because IndexedDB storage is scoped by origin (including port) — changing it loses persisted VFS data. If the configured port is unavailable at runtime, the server tries random ports in the same range.
+
+- **`usefilesystem`** — Values: `true`, `false` — Default: `false`
+  When `true`, the build includes the virtual file system (VFS) and `PassifloraIO` core I/O library in `generated.js`. This provides POSIX-style file functions (`fopen`, `fread`, `fwrite`, etc.) backed by IndexedDB, plus VFS preloading of files from `src/vfs/`. See [FILE-IO.md](FILE-IO.md).
+
+- **`usefileui`** — Values: `true`, `false` — Default: `false`
+  When `true`, the build includes the file UI components (Open, Save As, and File Browser dialogs) in `generated.js`. Requires `usefilesystem true`. See [FILE-IO.md](FILE-IO.md).
+
+- **`usemenus`** — Values: `true`, `false` — Default: `false`
+  When `true`, the build includes the sliding menu system (`buildmenu.js`) in `generated.js`. The menu is built automatically from `PassifloraConfig.menus` at page load. See [MENUS-AND-THEMES.md](MENUS-AND-THEMES.md).
+
+- **`usethemes`** — Values: `true`, `false` — Default: `false`
+  When `true`, the build includes the theme engine (`themes.js`) and base theme CSS (`theme.css`) in `generated.js` and `generated.css` respectively. Provides 122 built-in color themes. See [MENUS-AND-THEMES.md](MENUS-AND-THEMES.md#themes).
+
+- **`usepanels`** — Values: `true`, `false` — Default: `false`
+  When `true`, the build compiles panel screens from `src/www/panels/` into `generated.js`. Panels are full-screen sliding views triggered by matching menu items. Requires `usemenus true` for menu-driven panel activation. See [MENUS-AND-THEMES.md](MENUS-AND-THEMES.md#panel-screens).

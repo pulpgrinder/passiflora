@@ -204,7 +204,7 @@ await PassifloraIO.fileBrowser(['.txt', '.md'], '');
 
 ### Styling
 
-All three dialogs are styled via `src/www/passiflora/theme.css` using the `passiflora_fo_*` CSS class prefix. The file browser adds `passiflora_fb_*` classes for selection highlighting (`passiflora_fb_selected`), drag-over feedback (`passiflora_fb_dragover`), and drag-in-progress opacity (`passiflora_fb_dragging`). The confirm dialogs use `passiflora_fo_confirm_*` classes. The dialogs respect iOS safe-area insets (`env(safe-area-inset-top)`).
+All three dialogs are styled via `src/passiflora/UI/theme.css` using the `passiflora_fo_*` CSS class prefix. The file browser adds `passiflora_fb_*` classes for selection highlighting (`passiflora_fb_selected`), drag-over feedback (`passiflora_fb_dragover`), and drag-in-progress opacity (`passiflora_fb_dragging`). The confirm dialogs use `passiflora_fo_confirm_*` classes. The dialogs respect iOS safe-area insets (`env(safe-area-inset-top)`).
 
 ## Virtual File System + IndexedDB
 
@@ -255,7 +255,7 @@ Since the VFS is a self-contained store, Passiflora provides methods to move fil
 
 Files placed in `src/vfs/` are compiled into the app and automatically loaded into the VFS on first startup (i.e. when IndexedDB is empty). The directory structure under `src/vfs/` is preserved — for example, `src/vfs/data/config.json` becomes `/data/config.json` in the VFS.
 
-The build scripts (`mkvfspreload.sh` / `mkvfspreload.bat`) base64-encode every file under `src/vfs/` into `src/www/generated/vfspreload.js`, which is included in the zip bundle. On startup, if the VFS is empty, the preload data is decoded and written to both the in-memory VFS and IndexedDB.
+The build scripts (`mkgenerated.sh` / `mkgenerated.bat`) base64-encode every file under `src/vfs/` and concatenate the result into `src/www/generated/generated.js`, which is included in the zip bundle. On startup, if the VFS is empty, the preload data is decoded and written to both the in-memory VFS and IndexedDB.
 
 To reset the VFS back to the compiled-in preload data (erasing any user changes), call:
 

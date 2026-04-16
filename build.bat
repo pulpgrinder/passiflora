@@ -120,14 +120,8 @@ REM ================================================================
 :do_android
 mkdir src\www\generated 2>nul
 mkdir src\C\generated 2>nul
-echo [android] Generating config.js from src\android\menus\menu.txt...
-call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\android\menus\menu.txt %PROGNAME% Android src\www\generated\config.js "%THEME%" src\config
-if errorlevel 1 exit /b 1
-echo [android] Generating vfspreload.js...
-call "%SCRIPT_DIR%\winscripts\mkvfspreload.bat" src\vfs src\www\generated\vfspreload.js
-if errorlevel 1 exit /b 1
-echo [android] Generating panels.js...
-call "%SCRIPT_DIR%\winscripts\mkpanels.bat" src\www\passiflora\panels src\www\generated\panels.js
+echo [android] Generating generated.js and generated.css...
+call "%SCRIPT_DIR%\winscripts\mkgenerated.bat" src\android\menus\menu.txt %PROGNAME% Android "%THEME%" src\config
 if errorlevel 1 exit /b 1
 echo [android] Generating zipdata.h...
 call "%SCRIPT_DIR%\winscripts\mkzipfile.bat" %CONTENT% src\C\generated\zipdata.h
@@ -231,14 +225,8 @@ REM ================================================================
 :do_googleplay_android
 mkdir src\www\generated 2>nul
 mkdir src\C\generated 2>nul
-echo [googleplay-android] Generating config.js from src\android\menus\menu.txt...
-call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\android\menus\menu.txt %PROGNAME% Android src\www\generated\config.js "%THEME%" src\config
-if errorlevel 1 exit /b 1
-echo [googleplay-android] Generating vfspreload.js...
-call "%SCRIPT_DIR%\winscripts\mkvfspreload.bat" src\vfs src\www\generated\vfspreload.js
-if errorlevel 1 exit /b 1
-echo [googleplay-android] Generating panels.js...
-call "%SCRIPT_DIR%\winscripts\mkpanels.bat" src\www\passiflora\panels src\www\generated\panels.js
+echo [googleplay-android] Generating generated.js and generated.css...
+call "%SCRIPT_DIR%\winscripts\mkgenerated.bat" src\android\menus\menu.txt %PROGNAME% Android "%THEME%" src\config
 if errorlevel 1 exit /b 1
 echo [googleplay-android] Generating zipdata.h...
 call "%SCRIPT_DIR%\winscripts\mkzipfile.bat" %CONTENT% src\C\generated\zipdata.h
@@ -259,24 +247,10 @@ set WWW_BINDIR=%SCRIPT_DIR%\bin\WWW
 
 mkdir src\www\generated 2>nul
 
-echo [www] Generating config.js from src\www\menus\menu.txt...
-call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\www\menus\menu.txt %PROGNAME% WWW src\www\generated\config.js "%THEME%" src\config
+echo [www] Generating generated.js and generated.css...
+call "%SCRIPT_DIR%\winscripts\mkgenerated.bat" src\www\menus\menu.txt %PROGNAME% WWW "%THEME%" src\config
 if errorlevel 1 (
-    echo [ERROR] mkmenu_json.bat failed >&2
-    exit /b 1
-)
-
-echo [www] Generating vfspreload.js...
-call "%SCRIPT_DIR%\winscripts\mkvfspreload.bat" src\vfs src\www\generated\vfspreload.js
-if errorlevel 1 (
-    echo [ERROR] mkvfspreload.bat failed >&2
-    exit /b 1
-)
-
-echo [www] Generating panels.js...
-call "%SCRIPT_DIR%\winscripts\mkpanels.bat" src\www\passiflora\panels src\www\generated\panels.js
-if errorlevel 1 (
-    echo [ERROR] mkpanels.bat failed >&2
+    echo [ERROR] mkgenerated.bat failed >&2
     exit /b 1
 )
 
@@ -314,30 +288,15 @@ REM ================================================================
 mkdir src\www\generated 2>nul
 mkdir src\C\generated 2>nul
 
-REM ── Step 1: Generate config.js for Windows (before zip!) ──
-echo [windows] Generating config.js from src\Windows\menus\menu.txt...
-call "%SCRIPT_DIR%\winscripts\mkmenu_json.bat" src\Windows\menus\menu.txt %PROGNAME% Windows src\www\generated\config.js "%THEME%" src\config
+REM ── Step 1: Generate generated.js and generated.css for Windows (before zip!) ──
+echo [windows] Generating generated.js and generated.css...
+call "%SCRIPT_DIR%\winscripts\mkgenerated.bat" src\Windows\menus\menu.txt %PROGNAME% Windows "%THEME%" src\config
 if errorlevel 1 (
-    echo [ERROR] mkmenu_json.bat failed >&2
+    echo [ERROR] mkgenerated.bat failed >&2
     exit /b 1
 )
 
-REM ── Step 1b: Generate vfspreload.js (before zip!) ──
-echo [windows] Generating vfspreload.js...
-call "%SCRIPT_DIR%\winscripts\mkvfspreload.bat" src\vfs src\www\generated\vfspreload.js
-if errorlevel 1 (
-    echo [ERROR] mkvfspreload.bat failed >&2
-    exit /b 1
-)
-
-echo [windows] Generating panels.js...
-call "%SCRIPT_DIR%\winscripts\mkpanels.bat" src\www\passiflora\panels src\www\generated\panels.js
-if errorlevel 1 (
-    echo [ERROR] mkpanels.bat failed >&2
-    exit /b 1
-)
-
-REM ── Step 2: Generate zipdata.h (now includes config.js) ──
+REM ── Step 2: Generate zipdata.h (now includes generated.js) ──
 echo [windows] Generating zipdata.h from %CONTENT%...
 call "%SCRIPT_DIR%\winscripts\mkzipfile.bat" %CONTENT% src\C\generated\zipdata.h
 if errorlevel 1 (

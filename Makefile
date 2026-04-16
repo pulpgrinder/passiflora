@@ -12,6 +12,9 @@ CONTENT ?= src/www
 # dependencies so that changes to HTML, CSS, or JS trigger a rebuild.
 WEB_SOURCES := $(shell find $(CONTENT) -type f -not -path '*/generated/*' 2>/dev/null)
 
+# Framework sources (passiflora library) — also trigger rebuilds.
+FRAMEWORK_SOURCES := $(shell find src/passiflora -type f 2>/dev/null)
+
 # ── Permissions (read from src/config) ──────────────────────────────
 PERM_LOCATION   := $(shell awk '/^uselocation /          {print $$2}' src/config 2>/dev/null)
 PERM_CAMERA     := $(shell awk '/^usecamera /            {print $$2}' src/config 2>/dev/null)
@@ -126,9 +129,6 @@ WIN_BINARY     = $(WIN_BINDIR)/$(PROGNAME).exe
 BINDIR  = bin/$(OS_NAME)
 BINARY  = $(BINDIR)/$(PROGNAME)
 
-# Generated JS config file (consumed by the web app)
-CONFIG_JS = src/www/generated/config.js
-
 # C source layout
 SRCDIR = src/C
 GENDIR = src/C/generated
@@ -183,10 +183,9 @@ else
 	@echo "macos target requires macOS." >&2
 endif
 
-$(GENDIR)/zipdata.h: $(WEB_SOURCES)
+$(GENDIR)/zipdata.h: $(WEB_SOURCES) $(FRAMEWORK_SOURCES)
 	@mkdir -p $(GENDIR)
-	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
-	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
+	sh nixscripts/mkgenerated.sh "$(MENU_TEMPLATE)" "$(PROGNAME)" "$(OS_NAME)" "$(THEME)" src/config
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 
 $(GENDIR)/menu.h: $(MENU_TEMPLATE) nixscripts/mkmenu.sh
@@ -197,11 +196,8 @@ $(GENDIR)/win_menu.h: src/Windows/menus/menu.txt nixscripts/mkmenu.sh
 	@mkdir -p $(GENDIR)
 	sh nixscripts/mkmenu.sh src/Windows/menus/menu.txt "$(PROGNAME)" "$(GENDIR)/win_menu.h"
 
-$(BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/menu.h $(WEB_SOURCES)
-	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh "$(MENU_TEMPLATE)" "$(PROGNAME)" "$(OS_NAME)" "$(CONFIG_JS)" "$(THEME)" src/config
-	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
-	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
+$(BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/menu.h $(WEB_SOURCES) $(FRAMEWORK_SOURCES)
+	sh nixscripts/mkgenerated.sh "$(MENU_TEMPLATE)" "$(PROGNAME)" "$(OS_NAME)" "$(THEME)" src/config
 	sh nixscripts/mkzipfile.sh "$(CONTENT)" "$(GENDIR)/zipdata.h"
 ifeq ($(UNAME_S),Linux)
 	@# Generate linux_icon.h with embedded icon (or stub if no icon available)
@@ -240,12 +236,9 @@ else
 endif
 
 # ── iOS (cross-compile from macOS) ──────────────────────────────────
-$(IOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/menu.h $(WEB_SOURCES)
+$(IOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/menu.h $(WEB_SOURCES) $(FRAMEWORK_SOURCES)
 ifeq ($(UNAME_S),Darwin)
-	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt "$(PROGNAME)" iOS "$(CONFIG_JS)" "$(THEME)" src/config
-	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
-	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
+	sh nixscripts/mkgenerated.sh src/iOS/menus/menu.txt "$(PROGNAME)" iOS "$(THEME)" src/config
 	sh nixscripts/mkzipfile.sh "$(CONTENT)" "$(GENDIR)/zipdata.h"
 	mkdir -p $(IOS_BINDIR)
 	$(IOS_CC) $(IOS_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(IOS_LDFLAGS)
@@ -367,12 +360,9 @@ else
 endif
 
 # ── iOS Simulator (build + install + launch) ───────────────────────
-$(SIMOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/menu.h $(WEB_SOURCES)
+$(SIMOS_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/menu.h $(WEB_SOURCES) $(FRAMEWORK_SOURCES)
 ifeq ($(UNAME_S),Darwin)
-	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh src/iOS/menus/menu.txt "$(PROGNAME)" iOS "$(CONFIG_JS)" "$(THEME)" src/config
-	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
-	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
+	sh nixscripts/mkgenerated.sh src/iOS/menus/menu.txt "$(PROGNAME)" iOS "$(THEME)" src/config
 	sh nixscripts/mkzipfile.sh "$(CONTENT)" "$(GENDIR)/zipdata.h"
 	mkdir -p $(SIMOS_BINDIR)
 	$(SIMOS_CC) $(SIMOS_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(SIMOS_LDFLAGS)
@@ -430,11 +420,8 @@ $(WV2_LOADER_H):
 	@rm -f $(WIN_BINDIR)/WebView2Loader.dll
 	@echo "$(WV2_LOADER_H) generated (embedded WebView2Loader.dll)"
 
-$(WIN_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/win_menu.h $(WV2_LOADER_H) $(WEB_SOURCES)
-	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh src/Windows/menus/menu.txt $(PROGNAME) Windows $(CONFIG_JS) "$(THEME)" src/config
-	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
-	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
+$(WIN_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/win_menu.h $(WV2_LOADER_H) $(WEB_SOURCES) $(FRAMEWORK_SOURCES)
+	sh nixscripts/mkgenerated.sh src/Windows/menus/menu.txt "$(PROGNAME)" Windows "$(THEME)" src/config
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 	mkdir -p $(WIN_BINDIR)
 	@if [ -f src/icons/builticons/windows/app.ico ] && \
@@ -493,10 +480,7 @@ LINUX_ICON_H        = src/C/generated/linux_icon.h
 
 linux: $(GENDIR)/menu.h
 ifeq ($(UNAME_S),Linux)
-	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh src/Linux/menus/menu.txt $(PROGNAME) Linux $(CONFIG_JS) "$(THEME)" src/config
-	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
-	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
+	sh nixscripts/mkgenerated.sh src/Linux/menus/menu.txt "$(PROGNAME)" Linux "$(THEME)" src/config
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 	@mkdir -p $(GENDIR)
 	@_ICON="$(LINUX_ICON_PNG)"; \
@@ -522,19 +506,13 @@ endif
 
 # ── Android (Gradle + NDK) ─────────────────────────────────
 android: $(GENDIR)/menu.h
-	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh src/android/menus/menu.txt $(PROGNAME) Android $(CONFIG_JS) "$(THEME)" src/config
-	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
-	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
+	sh nixscripts/mkgenerated.sh src/android/menus/menu.txt "$(PROGNAME)" Android "$(THEME)" src/config
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 	sh nixscripts/mkandroid.sh $(PROGNAME) $(BUNDLE_ID) $(VERSION)
 
 # ── Android App Bundle (Google Play) ───────────────────────
 googleplay-android: $(GENDIR)/menu.h
-	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh src/android/menus/menu.txt $(PROGNAME) Android $(CONFIG_JS) "$(THEME)" src/config
-	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
-	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
+	sh nixscripts/mkgenerated.sh src/android/menus/menu.txt "$(PROGNAME)" Android "$(THEME)" src/config
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 	BUILD_TYPE=release BUILD_FORMAT=aab sh nixscripts/mkandroid.sh $(PROGNAME) $(BUNDLE_ID) $(VERSION)
 
@@ -603,10 +581,7 @@ sign-android: android
 WWW_BINDIR = bin/WWW
 
 www:
-	@mkdir -p $(dir $(CONFIG_JS))
-	sh nixscripts/mkmenu_json.sh src/WWW/menus/menu.txt $(PROGNAME) WWW $(CONFIG_JS) "$(THEME)" src/config
-	sh nixscripts/mkvfspreload.sh src/vfs src/www/generated/vfspreload.js
-	sh nixscripts/mkpanels.sh src/www/passiflora/panels src/www/generated/panels.js
+	sh nixscripts/mkgenerated.sh src/WWW/menus/menu.txt "$(PROGNAME)" WWW "$(THEME)" src/config
 	@rm -rf $(WWW_BINDIR)
 	@mkdir -p $(WWW_BINDIR)
 	cp -R $(CONTENT)/* $(WWW_BINDIR)/

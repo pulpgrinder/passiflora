@@ -1,11 +1,11 @@
 @echo off
-REM mkpanels.bat — Generate panels.js from HTML/JS files in passiflora\panels.
+REM mkpanels.bat — Generate panels.js from HTML/JS files in passiflora\UI\panels.
 REM Usage: mkpanels.bat [panels_dir] [output]
 setlocal enabledelayedexpansion
 
 set PANELS_DIR=%~1
 set OUTPUT=%~2
-if "%PANELS_DIR%"=="" set PANELS_DIR=src\www\passiflora\panels
+if "%PANELS_DIR%"=="" set PANELS_DIR=src\www\passiflora\UI\panels
 if "%OUTPUT%"=="" set OUTPUT=src\www\generated\panels.js
 
 REM Ensure output directory exists

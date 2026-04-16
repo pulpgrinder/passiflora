@@ -1,5 +1,5 @@
 #!/bin/sh
-# mkpanels.sh — Generate panels.js from HTML/JS files in passiflora/panels.
+# mkpanels.sh — Generate panels.js from HTML/JS files in passiflora/UI/panels.
 #
 # Usage: ./mkpanels.sh [panels_dir] [output]
 #
@@ -10,12 +10,12 @@
 # in the same directory so that panel scripts run after the DOM nodes
 # they reference have been injected.
 #
-# Default panels_dir: src/www/passiflora/panels
+# Default panels_dir: src/www/passiflora/UI/panels
 # Default output:     src/www/generated/panels.js
 #
 set -e
 
-PANELS_DIR="${1:-src/www/passiflora/panels}"
+PANELS_DIR="${1:-src/www/passiflora/UI/panels}"
 OUTPUT="${2:-src/www/generated/panels.js}"
 
 mkdir -p "$(dirname "$OUTPUT")"

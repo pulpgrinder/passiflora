@@ -1,4 +1,6 @@
 
+if (typeof PassifloraThemes !== "undefined") {
+
 let themeNames = PassifloraThemes.getPassifloraThemeNames();
 let themeSelector = document.getElementById("themeselector");
 for (let themeName of themeNames) {
@@ -67,3 +69,5 @@ for (const fs of fontSelectors) {
         }
     }
 })();
+
+} /* end PassifloraThemes guard */

@@ -87,7 +87,7 @@ Passiflora includes a built-in basic sliding menu for platforms that don't have 
 
 The menu is built automatically from `PassifloraConfig.menus` at page load. It slides in from the right edge of the screen, supports arbitrarily nested submenus, and calls `PassifloraConfig.handleMenu(title)` when a leaf item is tapped.
 
-**Triggering the menu:** The hamburger button (≡) is hidden by default to keep the UI clean. To reveal it, **long-press** (hold for 500 ms) on any non-interactive area of the page. The button appears in the top-right corner and stays visible for 3 seconds before fading out again. You can make the hamburger menu appear somewhere else by changing the `.hamburgermenu` class in `src/www/passiflora/theme.css`.
+**Triggering the menu:** The hamburger button (≡) is always visible in the top-right corner of the page. Tap or click it to open the sliding menu. You can reposition it by changing the `.hamburgermenu` class in `src/passiflora/UI/theme.css`.
 
 **Closing the menu:**
 
@@ -99,29 +99,20 @@ You can close the sliding menu without choosing an item in three ways:
 
 **Files:**
 
-* `src/www/passiflora/buildmenu.js` — menu logic (the `PassifloraMenu` IIFE)
-* `src/www/passiflora/theme.css` — menu and panel styling. You can customize colors, sizes, transitions, etc. by editing this file.
+* `src/passiflora/UI/buildmenu.js` — menu logic (the `PassifloraMenu` IIFE)
+* `src/passiflora/UI/theme.css` — menu and panel styling. You can customize colors, sizes, transitions, etc. by editing this file.
 
 Items prefixed with `*` in `menu.txt` are excluded from the sliding menu entirely — they only exist in the native menu bar (if there is one).
 
 ### Removing the sliding menu
 
-If you'd rather use your own menu UI (or no menu UI at all), remove these three things from `src/www/index.html`:
+To disable the sliding menu, set `usemenus false` in `src/config`. This prevents `buildmenu.js` from being included in the generated JavaScript bundle.
 
-1. The CSS link in `<head>`:
-   ```html
-   <link rel="stylesheet" href="passiflora/theme.css">
-   ```
-2. The hamburger element in `<body>`:
-   ```html
-   <div class="hamburgermenu">≡</div>
-   ```
-3. The script tag:
-   ```html
-   <script src="passiflora/buildmenu.js"></script>
-   ```
+You should also remove the hamburger element from `src/www/index.html`:
 
-You can also delete `src/www/passiflora/buildmenu.js` and `src/www/passiflora/theme.css` if you like, but leaving them in place is harmless — they won't do anything without the above references.
+```html
+<div class="hamburgermenu">≡</div>
+```
 
 The `PassifloraConfig.menus` array and `PassifloraConfig.handleMenu` callback are still available regardless. You can use them to build your own menu and handle selections however you wish, or ignore them entirely.
 
@@ -131,7 +122,7 @@ You can create **panel screens** — full-screen sliding panels that open automa
 
 **How it works:**
 
-1. Place `.html` and (optionally) `.js` files in `src/www/passiflora/panels/`.
+1. Place `.html` and (optionally) `.js` files in `src/www/panels/`.
 2. At build time, each `.html` file is wrapped in a hidden `<div class="passiflora_menu_screen" id="Basename">` and injected into the page. Any `.js` files in the same directory are appended as inline scripts that run after all other scripts have loaded.
 3. When a leaf menu item is selected, the sliding menu checks whether a `passiflora_menu_screen` element exists whose `id` matches the item's title text. If a match is found, the menu closes and the panel slides in from the right. If no match is found, `PassifloraConfig.handleMenu(title)` is called as usual.
 
@@ -143,14 +134,14 @@ MyApp
     Settings
 ```
 
-and a file `src/www/passiflora/panels/Settings.html`:
+and a file `src/www/panels/Settings.html`:
 
 ```html
 <label for="themeselector">Theme</label>
 <select id="themeselector"></select>
 ```
 
-with an accompanying `src/www/passiflora/panels/Settings.js`:
+with an accompanying `src/www/panels/Settings.js`:
 
 ```javascript
 let themeNames = PassifloraThemes.getPassifloraThemeNames();
@@ -173,14 +164,15 @@ Selecting **Settings** from the sliding menu will close the menu and slide in th
 
 **Naming convention:** The panel's `id` must match the menu item text exactly (case-sensitive). The `id` is derived from the `.html` filename without its extension — e.g., `Settings.html` → `id="Settings"`.
 
-**Build integration:** The build script `nixscripts/mkpanels.sh` (or `winscripts/mkpanels.bat` on Windows) generates `src/www/generated/panels.js`, which is loaded by a `<script>` tag at the end of `index.html`. This file is regenerated on every build and removed by `make clean`.
+**Build integration:** The build script `nixscripts/mkgenerated.sh` (or `winscripts/mkgenerated.bat` on Windows) generates `src/www/generated/generated.js` and `src/www/generated/generated.css`, which are loaded by `index.html`. These files are regenerated on every build and removed by `make clean`.
 
 **Files:**
 
-* `src/www/passiflora/panels/` — panel source files (`.html` content + optional `.js` logic)
-* `src/www/generated/panels.js` — auto-generated; injects panel divs and runs panel scripts
-* `nixscripts/mkpanels.sh` — *nix build script
-* `winscripts/mkpanels.bat` / `winscripts/mkpanels.ps1` — Windows build scripts
+* `src/www/panels/` — panel source files (`.html` content + optional `.js` logic)
+* `src/www/generated/generated.js` — auto-generated; includes all framework JS (config, VFS, I/O, menus, themes, panels)
+* `src/www/generated/generated.css` — auto-generated; includes theme CSS
+* `nixscripts/mkgenerated.sh` — *nix build script
+* `winscripts/mkgenerated.bat` / `winscripts/mkgenerated.ps1` — Windows build scripts
 
 ## Themes
 
@@ -215,7 +207,7 @@ When a user changes the theme at runtime (e.g. via a Settings panel), the choice
 
 ### PassifloraThemes API
 
-Themes are managed through the `PassifloraThemes` object defined in `src/www/passiflora/themes.js`:
+Themes are managed through the `PassifloraThemes` object defined in `src/passiflora/UI/themes.js`:
 
 | Method | Description |
 |--------|-------------|
@@ -226,7 +218,7 @@ Themes are managed through the `PassifloraThemes` object defined in `src/www/pas
 
 ### Adding a custom theme
 
-Add a new entry to `PassifloraThemes.themeData` in `src/www/passiflora/themes.js`:
+Add a new entry to `PassifloraThemes.themeData` in `src/passiflora/UI/themes.js`:
 
 ```javascript
 "My Custom Theme": `:root {
@@ -245,8 +237,8 @@ The theme will automatically appear in `getPassifloraThemeNames()` and in any th
 
 **Files:**
 
-* `src/www/passiflora/themes.js` — theme definitions and API
-* `src/www/passiflora/theme.css` — base CSS that references the theme variables
+* `src/passiflora/UI/themes.js` — theme definitions and API
+* `src/passiflora/UI/theme.css` — base CSS that references the theme variables
 
 ## Font Stacks
 
@@ -335,11 +327,11 @@ All stacks include emoji fallbacks (`Apple Color Emoji`, `Segoe UI Emoji`, `Sego
 
 ### The built-in Settings panel
 
-The sample app includes a Settings panel (`src/www/passiflora/panels/Settings.html` and `Settings.js`) that provides drop-down selectors for the theme and all three font stacks, along with sample text to preview changes. This panel is accessed through the sliding menu when a "Settings" menu item exists.
+The sample app includes a Settings panel (`src/www/panels/Settings.html` and `Settings.js`) that provides drop-down selectors for the theme and all three font stacks, along with sample text to preview changes. This panel is accessed through the sliding menu when a "Settings" menu item exists.
 
 **Files:**
 
-* `src/www/passiflora/themes.js` — defines `PassifloraThemes.baseFontStackOptions`
-* `src/www/passiflora/panels/Settings.html` — Settings panel UI (theme + font selectors + preview text)
-* `src/www/passiflora/panels/Settings.js` — populates selectors, applies CSS variables, persists to VFS
+* `src/passiflora/UI/themes.js` — defines `PassifloraThemes.baseFontStackOptions`
+* `src/www/panels/Settings.html` — Settings panel UI (theme + font selectors + preview text)
+* `src/www/panels/Settings.js` — populates selectors, applies CSS variables, persists to VFS
 * `src/config` — default font stack names (`body-font-stack`, `heading-font-stack`, `code-font-stack`)

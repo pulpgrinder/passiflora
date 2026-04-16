@@ -1,7 +1,7 @@
-# mkpanels.ps1 — Generate panels.js from HTML/JS files in passiflora\panels.
+# mkpanels.ps1 — Generate panels.js from HTML/JS files in passiflora\UI\panels.
 # Usage: mkpanels.ps1 [panels_dir] [output]
 param(
-    [string]$PanelsDir = "src\www\passiflora\panels",
+    [string]$PanelsDir = "src\www\passiflora\UI\panels",
     [string]$Output    = "src\www\generated\panels.js"
 )
 

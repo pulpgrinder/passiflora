@@ -54,7 +54,7 @@ Detailed installation, build, cross-compilation, and code signing instructions a
 
 1. Install the prerequisites for your host system (see the guide above).
 2. Check out a fresh copy of this repo.
-3. Put your HTML/JavaScript/CSS in `src/www` (making sure to leave the `passiflora` folder intact). As one might expect, your startup file should be named `index.html`.
+3. Put your HTML/JavaScript/CSS in `src/www`. As one might expect, your startup file should be named `index.html`.
 4. Build:
 
 **macOS / Linux:**
@@ -105,7 +105,7 @@ For details, see **[DEBUGGING.md](DEBUGGING.md)**.
 
 ## PassifloraConfig
 
-Each build generates `src/www/generated/config.js`, which defines a runtime `PassifloraConfig` object containing numerous values that may be useful at runtime. See **[PASSIFLORA-CONFIG.md](PASSIFLORA-CONFIG.md)**. Note that this is not the same as `src/config`, where you set the icons, name, etc. That's *compile-time* information. The build process uses the `src/config` file (and other compile-time information) to generate the `src/www/generated/config.js` file for use at runtime. You shouldn't edit `src/www/generated/config.js`, as any changes will be wiped out the next time you build.
+Each build generates `src/www/generated/generated.js`, which includes a runtime `PassifloraConfig` object containing numerous values that may be useful at runtime. See **[PASSIFLORA-CONFIG.md](PASSIFLORA-CONFIG.md)**. Note that this is not the same as `src/config`, where you set the icons, name, etc. That's *compile-time* information. The build process uses the `src/config` file (and other compile-time information) to generate `src/www/generated/generated.js` for use at runtime. You shouldn't edit `src/www/generated/generated.js`, as any changes will be wiped out the next time you build.
 
 
 ## Utility Functions

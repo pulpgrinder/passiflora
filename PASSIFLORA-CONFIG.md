@@ -1,4 +1,4 @@
-The `www/generated/config.js` file is auto-generated on every build and should not be edited by hand. It defines the PassifloraConfig object which contains several useful values.
+The `www/generated/generated.js` file is auto-generated on every build and should not be edited by hand. It includes (among other things) the PassifloraConfig object which contains several useful values.
 
 ```javascript
 let PassifloraConfig = {
