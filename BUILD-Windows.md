@@ -54,6 +54,20 @@ This guide covers building Passiflora apps natively on Windows, plus cross-compi
 
 5. **WebView2 Runtime** — pre-installed on Windows 10 (version 21H2+) and Windows 11. If missing, download from https://developer.microsoft.com/en-us/microsoft-edge/webview2/
 
+6. **GitHub CLI** (required by `.\.build newproject`):
+
+   ```
+   winget install GitHub.cli
+   ```
+
+   Then log in once (in a new terminal):
+
+   ```
+   gh auth login
+   ```
+
+   Follow the prompts to authenticate with your GitHub account.
+
 ### Build
 
 ```

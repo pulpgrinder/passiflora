@@ -22,7 +22,35 @@ sudo apt install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
 ```
 sudo apt install imagemagick
 ```
-3. If location services aren't working, you may need to install GeoClue2
+
+3. **GitHub CLI** (required by `make newproject`):
+
+```
+sudo apt install gh
+```
+
+   If `gh` is not available in your distro's repositories, install from the official repo:
+
+```
+(type -p wget >/dev/null || sudo apt install wget) \
+  && sudo mkdir -p -m 755 /etc/apt/keyrings \
+  && out=$(mktemp) && wget -nv -O$out https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+  && cat $out | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+  && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+  && sudo apt update \
+  && sudo apt install gh
+```
+
+   Then log in once:
+
+```
+gh auth login
+```
+
+   Follow the prompts to authenticate with your GitHub account.
+
+4. If location services aren't working, you may need to install GeoClue2
 ```
 sudo apt install geoclue-2.0
 ```

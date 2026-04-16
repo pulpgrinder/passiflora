@@ -20,6 +20,20 @@ brew install imagemagick
 
 If you don't have Homebrew, install it from https://brew.sh/
 
+3. **GitHub CLI** (required by `make newproject`):
+
+```
+brew install gh
+```
+
+   Then log in once:
+
+```
+gh auth login
+```
+
+   Follow the prompts to authenticate with your GitHub account.
+
 ### Build
 
 ```
