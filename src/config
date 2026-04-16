@@ -14,5 +14,5 @@ port 55381
 usefilesystem true
 usefileui true
 usemenus true
-usethemes false
+usethemes true
 usepanels true
