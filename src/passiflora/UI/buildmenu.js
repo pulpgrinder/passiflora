@@ -237,6 +237,7 @@ const PassifloraMenu = (function () {
     let activePanelSrc = null;
 
     function showPanel(id) {
+        hidePanel(); // Make sure only one panel is open at a time  
         const src = document.getElementById(id);
         if (!src || !src.classList.contains("passiflora_menu_screen")) return false;
 

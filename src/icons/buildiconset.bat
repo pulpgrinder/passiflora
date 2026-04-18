@@ -169,17 +169,17 @@ echo [INFO] Generating notification icons...
 %CONVERT% "%SQUARE_FILE%" -resize 96x96 "%ANDROID%\mipmap-xxxhdpi\ic_stat_notify.png"
 
 echo [INFO] Generating splash screens...
-%CONVERT% -size 430x320   canvas:#bbb "%ANDROID%\drawable\splash.png"
-%CONVERT% -size 800x480   canvas:#bbb "%ANDROID%\drawable-land-hdpi\splash.png"
-%CONVERT% -size 480x320   canvas:#bbb "%ANDROID%\drawable-land-mdpi\splash.png"
-%CONVERT% -size 1280x720  canvas:#bbb "%ANDROID%\drawable-land-xhdpi\splash.png"
-%CONVERT% -size 1600x960  canvas:#bbb "%ANDROID%\drawable-land-xxhdpi\splash.png"
-%CONVERT% -size 1920x1280 canvas:#bbb "%ANDROID%\drawable-land-xxxhdpi\splash.png"
-%CONVERT% -size 480x800   canvas:#bbb "%ANDROID%\drawable-port-hdpi\splash.png"
-%CONVERT% -size 320x480   canvas:#bbb "%ANDROID%\drawable-port-mdpi\splash.png"
-%CONVERT% -size 720x1280  canvas:#bbb "%ANDROID%\drawable-port-xhdpi\splash.png"
-%CONVERT% -size 960x1600  canvas:#bbb "%ANDROID%\drawable-port-xxhdpi\splash.png"
-%CONVERT% -size 1280x1920 canvas:#bbb "%ANDROID%\drawable-port-xxxhdpi\splash.png"
+%CONVERT% -size 430x320   canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 160x160 ^) -gravity center -composite "%ANDROID%\drawable\splash.png"
+%CONVERT% -size 800x480   canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 240x240 ^) -gravity center -composite "%ANDROID%\drawable-land-hdpi\splash.png"
+%CONVERT% -size 480x320   canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 160x160 ^) -gravity center -composite "%ANDROID%\drawable-land-mdpi\splash.png"
+%CONVERT% -size 1280x720  canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 360x360 ^) -gravity center -composite "%ANDROID%\drawable-land-xhdpi\splash.png"
+%CONVERT% -size 1600x960  canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 480x480 ^) -gravity center -composite "%ANDROID%\drawable-land-xxhdpi\splash.png"
+%CONVERT% -size 1920x1280 canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 640x640 ^) -gravity center -composite "%ANDROID%\drawable-land-xxxhdpi\splash.png"
+%CONVERT% -size 480x800   canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 240x240 ^) -gravity center -composite "%ANDROID%\drawable-port-hdpi\splash.png"
+%CONVERT% -size 320x480   canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 160x160 ^) -gravity center -composite "%ANDROID%\drawable-port-mdpi\splash.png"
+%CONVERT% -size 720x1280  canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 360x360 ^) -gravity center -composite "%ANDROID%\drawable-port-xhdpi\splash.png"
+%CONVERT% -size 960x1600  canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 480x480 ^) -gravity center -composite "%ANDROID%\drawable-port-xxhdpi\splash.png"
+%CONVERT% -size 1280x1920 canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 640x640 ^) -gravity center -composite "%ANDROID%\drawable-port-xxxhdpi\splash.png"
 
 echo [INFO] All done! Icons generated in: %DST_PATH%
 endlocal
