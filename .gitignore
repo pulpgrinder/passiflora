@@ -6,6 +6,7 @@ wv2loader.h
 
 # IDE
 .vs/
+.vscode/
 
 # Keystores — never commit real signing keys
 *.jks
@@ -166,3 +167,4 @@ vite.config.ts.timestamp-*
 .DS_Store
 InstallationLog.txt
 .vscode/settings.json
+.vscode
