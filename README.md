@@ -54,7 +54,11 @@ Detailed installation, build, cross-compilation, and code signing instructions a
 
 1. Install the prerequisites for your host system (see the guide above).
 2. Check out a fresh copy of this repo.
-3.  Step 3 is only necessary if you want to create a new GitHub project for your app. If you don't care about that, skip to Step 4. Create your own project from the checkout (requires a GitHub account and the [GitHub CLI](https://cli.github.com/)):
+3.  Step 3 is only necessary if you want to create a new GitHub project for your app. If you don't care about that, skip to Step 4. 
+
+    To do this you'll (obviously) need a GitHub account. You'll also need the [GitHub CLI](https://cli.github.com/)).
+    
+    Create your own project from the checkout:
 
 **macOS / Linux:**
 ```
