@@ -32,6 +32,8 @@ _perm_camera=false
 _perm_microphone=false
 _perm_remotedebugging=false
 _cfg_orientation="both"
+_cfg_iphone=true
+_cfg_ipad=true
 _cfgfile="$(dirname "$0")/../src/config"
 if [ -f "$_cfgfile" ]; then
     while IFS= read -r _line || [ -n "$_line" ]; do
@@ -43,6 +45,8 @@ if [ -f "$_cfgfile" ]; then
             usemicrophone)        _perm_microphone="$_val" ;;
             allowremotedebugging) _perm_remotedebugging="$_val" ;;
             orientation)          _cfg_orientation="$_val" ;;
+            iphone)               _cfg_iphone="$_val" ;;
+            ipad)                 _cfg_ipad="$_val" ;;
         esac
     done < "$_cfgfile"
 fi
@@ -141,8 +145,21 @@ cat > "$APP/Info.plist" << PLIST
 
     <key>UIDeviceFamily</key>
     <array>
+PLIST
+
+# Emit UIDeviceFamily entries based on config (both default to true)
+if [ "$_cfg_iphone" = "true" ]; then
+    cat >> "$APP/Info.plist" << 'PLIST'
         <integer>1</integer>
+PLIST
+fi
+if [ "$_cfg_ipad" = "true" ]; then
+    cat >> "$APP/Info.plist" << 'PLIST'
         <integer>2</integer>
+PLIST
+fi
+
+cat >> "$APP/Info.plist" << 'PLIST'
     </array>
 
     <key>UIRequiredDeviceCapabilities</key>

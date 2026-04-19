@@ -34,6 +34,12 @@ The file `src/config` controls the program name, bundle identifier, permissions,
 - **`orientation`** — Values: `portrait`, `landscape`, `both` — Default: `both`
   Controls whether the app is locked to portrait or landscape orientation, or rotates freely. On iOS this sets `UISupportedInterfaceOrientations` in the Info.plist. On Android it sets `android:screenOrientation` on the main activity. Desktop platforms ignore this setting.
 
+- **`iPhone`** — Values: `true`, `false` — Default: `true`
+  When `true`, the iOS build includes iPhone in `UIDeviceFamily` (device family 1). Set to `false` to exclude iPhone support. Both `iPhone` and `iPad` default to `true`, so if neither is present the app is built as a universal iOS app (the current default behavior). Only affects iOS builds.
+
+- **`iPad`** — Values: `true`, `false` — Default: `true`
+  When `true`, the iOS build includes iPad in `UIDeviceFamily` (device family 2). Set to `false` to exclude iPad support. Only affects iOS builds.
+
 - **`theme`** — Values: theme name — Default: `Northern Lights`
   The color theme applied on startup. Must match a key in `PassifloraThemes.themeData`. See [MENUS-AND-THEMES.md](MENUS-AND-THEMES.md) for the full list of built-in themes.
 
