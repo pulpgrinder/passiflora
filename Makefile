@@ -643,4 +643,4 @@ ifeq ($(UNAME_S),Linux)
 	-gtk-update-icon-cache -f -t $(HOME)/.local/share/icons/hicolor 2>/dev/null || true
 endif
 
-.PHONY: default all sign-all clean icons bundle macos sign-macos sign-ios sim-ios windows sign-windows linux android sign-android www newproject
+.PHONY: default all sign-all clean icons bundle macos sign-macos sign-ios sim-ios windows sign-windows linux android sign-android googleplay-android www newproject

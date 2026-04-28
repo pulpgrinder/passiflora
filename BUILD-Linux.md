@@ -72,6 +72,7 @@ Produces `bin/Linux/<displayname>`.
 |---------|-------------|
 | `make` or `make linux` | Build native Linux binary |
 | `make android` | Build Android APK |
+| `make sign-android` | Build + sign Android APK |
 | `make sign-windows` | Sign the Windows exe with Azure Trusted Signing (requires jsign) |
 | `make googleplay-android` | Build a release AAB for Google Play upload. Experimental! |
 | `make www` | Build plain-browser version into `bin/WWW/` — useful for debugging using browser tools |
@@ -104,6 +105,8 @@ make www
 ```
 
 Produces `bin/WWW/` — open `index.html` directly or serve with:
+
+> **Note:** Opening `index.html` directly with a `file://` URL may disable some browser features. For full functionality, serve `bin/WWW/` over HTTP using a local web server.
 
 ```
 python3 webserver.py

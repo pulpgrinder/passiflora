@@ -107,6 +107,8 @@ Builds a plain-browser version that can be served with any web server. No additi
 
 Produces `bin\WWW\` — open `index.html` directly or serve with:
 
+> **Note:** Opening `index.html` directly with a `file://` URL may disable some browser features. For full functionality, serve `bin\WWW\` over HTTP using a local web server.
+
 ```
 python3 webserver.py
 ```
