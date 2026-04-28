@@ -465,11 +465,12 @@ sign-windows: windows
 		exit 1; \
 	fi
 	@echo "sign-windows: signing $(WIN_EXE)..."
-	jsign --storetype TRUSTEDSIGNING \
+	@jsign --storetype TRUSTEDSIGNING \
 		--keystore "$$AZURE_SIGNING_ENDPOINT" \
 		--storepass "$(AZURE_TOKEN)" \
 		--alias "$$AZURE_SIGNING_ACCOUNT/$$AZURE_SIGNING_PROFILE" \
 		--tsaurl http://timestamp.acs.microsoft.com \
+		--tsmode RFC3161 \
 		"$(WIN_EXE)"
 	@echo "sign-windows: $(WIN_EXE) signed successfully."
 
