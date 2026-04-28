@@ -271,6 +271,8 @@ If you have Android Studio installed, you can load the built APK into the Androi
 
 ### Code Signing for Windows
 
+> **See also:** [AZURE_SIGNING.md](AZURE_SIGNING.md) — full setup guide for Azure Trusted Signing account creation, identity validation, and CI/CD integration.
+
 Windows code signing uses [Azure Artifact Signing](https://learn.microsoft.com/en-us/azure/trusted-signing/overview) (formerly Azure Trusted Signing) via **jsign**, a cross-platform signing tool.
 
 #### Prerequisites
@@ -319,6 +321,8 @@ The `AZURE_SIGNING_ENDPOINT` must match the region where your Artifact Signing a
 ---
 
 ### Code Signing for Android
+
+> **See also:** [GOOGLE_PLAY_SIGNING.md](GOOGLE_PLAY_SIGNING.md) — full setup guide for keystore creation, Google Play App Signing enrollment, and CI/CD integration.
 
 There are two ways to sign an Android APK.
 
