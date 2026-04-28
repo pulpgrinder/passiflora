@@ -55,7 +55,7 @@ This produces `bin/macOS/<displayname>.app` — a standard macOS application bun
 | `make android` | Builds an Android .apk|
 | `make sign-android` | Builds an Android apk |
 | `make sign-windows` | Sign the Windows exe with Azure Trusted Signing (requires jsign) |
-| `make googleplay-android` | Build a release AAB for Google Play upload (under construction) |
+| `make googleplay-android` | Build a release AAB for Google Play upload (experimental) |
 | `make www` | Build plain-browser version into `bin/WWW/` — useful for debugging using browser tools |
 | `make all` | Build every platform: macOS, iOS, Windows, Android |
 | `make sign-all` | Build + sign every platform, including Google Play AAB (experimental) (iOS and Android prompt for credentials) |

@@ -54,7 +54,7 @@ This guide covers building Passiflora apps natively on Windows, plus cross-compi
 
 5. **WebView2 Runtime** — pre-installed on Windows 10 (version 21H2+) and Windows 11. If missing, download from https://developer.microsoft.com/en-us/microsoft-edge/webview2/
 
-6. **GitHub CLI** (required by `.\.build newproject`):
+6. **GitHub CLI** (required by `.\build newproject`):
 
    ```
    winget install GitHub.cli
@@ -86,7 +86,9 @@ Produces `bin\Windows\<displayname>.exe`. The build automatically downloads and 
 |---------|-------------|
 | `.\build` or `.\build windows` | Build Windows exe |
 | `.\build android` | Build Android APK (debug) |
-| `.\build sign-android` | Build + sign Android APK || `.\.build sign-windows` | Build + sign Windows exe with Azure Trusted Signing (requires jsign) || `.\build googleplay-android` | Build release AAB for Google Play (experimental)|
+| `.\build sign-android` | Build + sign Android APK |
+| `.\build sign-windows` | Build + sign Windows exe with Azure Trusted Signing (requires jsign) |
+| `.\build googleplay-android` | Build release AAB for Google Play (experimental) |
 | `.\build www` | Build plain-browser version into `bin\WWW\` — useful for debugging using browser tools |
 | `.\build icons` | Generate icon sets for all platforms |
 | `.\build clean` | Remove all build artifacts |
@@ -270,7 +272,7 @@ Set the required environment variables and run:
 set AZURE_SIGNING_ENDPOINT=https://eus.codesigning.azure.net
 set AZURE_SIGNING_ACCOUNT=MySigningAccount
 set AZURE_SIGNING_PROFILE=MyProfile
-.\.build sign-windows
+.\build sign-windows
 ```
 
 This builds the Windows exe, obtains an Azure access token via `az account get-access-token`, and signs the exe with jsign. Timestamping is automatic (using `http://timestamp.acs.microsoft.com`).

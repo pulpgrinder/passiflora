@@ -15,7 +15,7 @@
 | `make sign-windows` | Cross-compile and sign Windows exe with Azure Trusted Signing (requires jsign) |
 | `make android` | Build Android APK |
 | `make sign-android` | Sign the Android APK with a local keystore (macOS and Linux)|
-| `make googleplay-android` | Build a release AAB for Google Play upload (under construction) |
+| `make googleplay-android` | Build a release AAB for Google Play upload (experimental) |
 | `make linux` | Build Linux binary (Linux only) -- same as `make` if you're on Linux |
 | `make www` | Build plain-browser version in `bin/WWW/` -- useful for debugging using browser tools |
 | `make all` | Build *every* platform: macOS, iOS, Windows, Android (macOS only) |
@@ -27,13 +27,20 @@
 
 | Target | Description |
 |--------|-------------|
-| `.\build` or `.\build windows` | Build Windows exe (Windows) || `.\.build sign-windows` | Build + sign Windows exe with Azure Trusted Signing (requires jsign) || `.\build android` | Build Android APK (Windows) |
-| `.\build sign-android` |Build a signed Android APK (Windows) |
-| `.\build googleplay-android` | Build a release AAB for Google Play upload (Windows) (under construction)|
+| `.\build` or `.\build windows` | Build Windows exe (Windows) |
+| `.\build sign-windows` | Build + sign Windows exe with Azure Trusted Signing (requires jsign) |
+| `.\build android` | Build Android APK (Windows) |
+| `.\build sign-android` | Build a signed Android APK (Windows) |
+| `.\build googleplay-android` | Build a release AAB for Google Play upload (Windows, experimental) |
 | `.\build www` | Build plain-browser version in `bin\WWW\` (Windows) -- useful for debugging using browser tools |
-
 | `.\build icons` | Generate icon sets (Windows) |
 | `.\build clean` | Remove all build artifacts (Windows) |
+
+## Signing Guides
+
+* **[Windows signing (Azure Trusted Signing)](WINDOWS_SIGNING.md)**
+* **[Google Play signing (Android)](GOOGLE_PLAY_SIGNING.md)**
+* **[macOS and iOS signing](MAC_SIGNING.md)**
 
 ## Per-Platform Guides
 
