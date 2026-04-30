@@ -106,7 +106,7 @@ Items prefixed with `*` in `menu.txt` are excluded from the sliding menu entirel
 
 ### Removing the sliding menu
 
-To disable the sliding menu (and the rest of the Passiflora UI layer), set `usepassifloraui false` in `src/config`. This prevents `buildmenu.js`, `themes.js`, `fileui.js`, and panel screens from being included in the generated bundles.
+To disable the sliding menu (and the rest of the Passiflora UI layer), set `usepassifloraui false` in `src/config`. This prevents `buildmenu.js`, `themes.js`, and panel screens from being included in the generated bundles. The file dialogs in `fileui.js` are only included when both `usepassifloraui` and `usefilesystem` are `true`.
 
 You should also remove the hamburger element from `src/www/index.html`:
 

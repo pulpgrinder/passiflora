@@ -32,7 +32,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **`usepassifloraui` without `usefilesystem`**: The generated WWW bundle no longer includes `fileui.js` when the filesystem layer is disabled, which prevented `generated.js` from crashing at load time with `ReferenceError: PassifloraIO is not defined`.
+
 - **`make sign-macos` temp file cleanup**: Temporary files (entitlements plists, notarization zips, App Store bundle copies) are now guaranteed to be removed on exit, even if the signing workflow fails with an error. Previously, an early failure could leave orphaned files in `/tmp` or the build directory.
+
+- **iOS provisioning profile selection**: `make sign-ios` now lists available `.mobileprovision` files from `~/passiflora-keys` instead of assuming a single `<progname>.mobileprovision` filename. The iOS signing docs now also recommend keeping separate development and App Store profiles, such as `MyAppDevelop.mobileprovision` and `MyAppAppStore.mobileprovision`.
 
 - **`make all` and `make sign-all`**: These targets now actually build all platforms as documented. Previously `make all` only built the macOS app, and `make sign-all` did not exist.
 

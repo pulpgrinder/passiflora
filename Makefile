@@ -254,14 +254,34 @@ ifeq ($(UNAME_S),Darwin)
 	sh nixscripts/mkiosbundle.sh "$(PROGNAME)" "$(IOS_BINARY)" src/icons/builticons/ios/AppIcon-1024.png "$(BUNDLE_ID)" "$(VERSION)" "" "$(DISPLAYNAME)"
 	@PROV="$(IOS_PROVISIONING_PROFILE)"; \
 	if [ -z "$$PROV" ]; then \
-		PROV=~/passiflora-keys/$(PROGNAME).mobileprovision; \
+		PROFILE_DIR="$$HOME/passiflora-keys"; \
+		PROFILES=$$(find "$$PROFILE_DIR" -maxdepth 1 -type f -name '*.mobileprovision' -print 2>/dev/null | sort); \
+		if [ -n "$$PROFILES" ]; then \
+			echo ""; \
+			echo "Available provisioning profiles in $$PROFILE_DIR:"; \
+			echo ""; \
+			printf '%s\n' "$$PROFILES" | awk -F/ '{printf "  %d) %s\n", NR, $$NF}'; \
+			PROFILE_COUNT=$$(printf '%s\n' "$$PROFILES" | wc -l | tr -d ' '); \
+			echo ""; \
+			printf "Choose provisioning profile [1-$$PROFILE_COUNT], or press Enter to type a path: "; read PROV_CHOICE; \
+			if [ -n "$$PROV_CHOICE" ]; then \
+				case "$$PROV_CHOICE" in \
+					*[!0-9]*) PROV="$$PROV_CHOICE" ;; \
+					*) PROV=$$(printf '%s\n' "$$PROFILES" | sed -n "$${PROV_CHOICE}p") ;; \
+				esac; \
+				if [ -z "$$PROV" ]; then \
+					echo "sign-ios: invalid provisioning profile selection." >&2; \
+					exit 1; \
+				fi; \
+			fi; \
+		fi; \
 	fi; \
 	if [ -z "$$PROV" ]; then \
 		printf 'Provisioning profile (.mobileprovision): '; read PROV; \
 	fi; \
 	if [ -z "$$PROV" ] || [ ! -f "$$PROV" ]; then \
 		echo "sign-ios: provisioning profile not found: $$PROV" >&2; \
-		echo "  Set IOS_PROVISIONING_PROFILE or provide the path when prompted." >&2; \
+		echo "  Set IOS_PROVISIONING_PROFILE, choose one from ~/passiflora-keys, or provide the path when prompted." >&2; \
 		exit 1; \
 	fi; \
 	echo "sign-ios: embedding provisioning profile..."; \

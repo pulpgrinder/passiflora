@@ -131,7 +131,9 @@ make sign-ios
 
 This compiles the iOS binary, creates the `.app` bundle, then walks you through signing and IPA packaging (see [Code Signing for iOS](#code-signing-for-ios) below).
 
-The build automatically looks for a provisioning profile at `~/passiflora-keys/<progname>.mobileprovision`. If found, it is used automatically. If not, you are prompted to enter the path.
+Local device installs and App Store uploads require different provisioning profiles. A good convention is to keep both in `~/passiflora-keys`, for example `MyAppDevelop.mobileprovision` for local installs and `MyAppAppStore.mobileprovision` for App Store uploads.
+
+If `IOS_PROVISIONING_PROFILE` is not set, the build lists the `.mobileprovision` files in `~/passiflora-keys` and prompts you to choose one. If none are available there, you are prompted to enter a path manually.
 
 To override the default location, set the environment variable:
 
@@ -465,14 +467,19 @@ iOS apps must be signed and include an **embedded provisioning profile** to run 
 
   Or via Xcode: **Xcode → Settings → Accounts → (your team) → Download Manual Profiles**
 
-  The profile must match your bundle identifier, certificate, and (for development) your registered device UDIDs.
+   Local device installs and App Store uploads require different provisioning profiles. The profile must match your bundle identifier, certificate, and (for development) your registered device UDIDs.
+
+   Recommended filenames in `~/passiflora-keys`:
+
+   * `MyAppDevelop.mobileprovision` for development or ad-hoc installs.
+   * `MyAppAppStore.mobileprovision` for App Store or TestFlight uploads.
 
 #### Building a release-ready `.ipa`
 
 The `make sign-ios` target performs the full build-sign-package workflow:
 
 1. Build the iOS binary and `.app` bundle.
-2. Look for a provisioning profile at `~/passiflora-keys/<progname>.mobileprovision`. If found, it is used automatically. If not found, prompt for the path. You can also set the `IOS_PROVISIONING_PROFILE` environment variable to override:
+2. If `IOS_PROVISIONING_PROFILE` is not set, list the provisioning profiles in `~/passiflora-keys` and prompt you to choose one. If none are available there, prompt for a path manually. You can also set the `IOS_PROVISIONING_PROFILE` environment variable to override:
    ```
    IOS_PROVISIONING_PROFILE=/path/to/MyApp.mobileprovision make sign-ios
    ```

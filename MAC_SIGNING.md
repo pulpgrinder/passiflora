@@ -235,8 +235,9 @@ xcrun altool --store-password-in-keychain-item "AC_PASSWORD" \
 1. Compiles the iOS binary for the `iphoneos` architecture.
 2. Creates the `.app` bundle.
 3. Locates the provisioning profile:
-   - Checks `~/passiflora-keys/<progname>.mobileprovision` automatically.
-   - If not found, prompts for the path.
+    - If `IOS_PROVISIONING_PROFILE` is set, uses that path.
+    - Otherwise, lists all `.mobileprovision` files in `~/passiflora-keys` and prompts you to choose one.
+    - If none are found there, prompts for the path.
    - Can be overridden with the `IOS_PROVISIONING_PROFILE` environment variable.
 4. Embeds the profile in the `.app`.
 5. Extracts entitlements from the profile.
@@ -247,6 +248,8 @@ xcrun altool --store-password-in-keychain-item "AC_PASSWORD" \
 ### Provisioning profiles
 
 A provisioning profile links your app (bundle ID), your certificate, and (for development) your registered device UDIDs. You must create one matching your use case before signing.
+
+Use separate profiles for local installs and App Store uploads. A practical naming convention in `~/passiflora-keys` is `MyAppDevelop.mobileprovision` for development/ad-hoc builds and `MyAppAppStore.mobileprovision` for App Store/TestFlight builds.
 
 **Create a provisioning profile at:**
 
@@ -280,13 +283,17 @@ Certificates are installed by double-clicking the `.cer` file (this imports them
 
 ### Storing the provisioning profile for automatic use
 
-Copy the profile to the default location so `make sign-ios` picks it up automatically:
+Store one or more profiles in `~/passiflora-keys` so `make sign-ios` can list them for selection:
 
 ```
-cp /path/to/MyApp.mobileprovision ~/passiflora-keys/<progname>.mobileprovision
+cp /path/to/MyAppDevelop.mobileprovision ~/passiflora-keys/
+cp /path/to/MyAppAppStore.mobileprovision ~/passiflora-keys/
 ```
 
-Where `<progname>` is the value of `PROGNAME` in `src/config` (typically the lowercase, no-spaces app name).
+Suggested naming:
+
+- `MyAppDevelop.mobileprovision` for development or ad-hoc installs.
+- `MyAppAppStore.mobileprovision` for App Store or TestFlight uploads.
 
 Or specify the profile at build time:
 
@@ -362,7 +369,7 @@ Upload the `.ipa` (as described above) and invite testers via App Store Connect.
 
 | Item | Recommended location |
 |---|---|
-| iOS provisioning profiles | `~/passiflora-keys/<progname>.mobileprovision` |
+| iOS provisioning profiles | `~/passiflora-keys/*.mobileprovision` |
 | Notarytool credential profile | macOS Keychain (stored by `xcrun notarytool store-credentials`) |
 | App-specific password for altool | macOS Keychain (stored by `xcrun altool --store-password-in-keychain-item`) |
 | Code-signing certificates | macOS Keychain (installed via `.cer` file or Xcode) |

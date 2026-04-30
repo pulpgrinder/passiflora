@@ -63,8 +63,10 @@ try {
     }
 
     if ($UsePassifloraUI) {
-        [void]$jsContent.AppendLine("")
-        [void]$jsContent.Append([System.IO.File]::ReadAllText("$PassifloraDir\UI\fileui.js"))
+        if ($UseFilesystem) {
+            [void]$jsContent.AppendLine("")
+            [void]$jsContent.Append([System.IO.File]::ReadAllText("$PassifloraDir\UI\fileui.js"))
+        }
 
         [void]$jsContent.AppendLine("")
         [void]$jsContent.Append([System.IO.File]::ReadAllText("$PassifloraDir\UI\buildmenu.js"))

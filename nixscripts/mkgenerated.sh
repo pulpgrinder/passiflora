@@ -60,8 +60,10 @@ if [ "$USE_FILESYSTEM" = "true" ]; then
 fi
 
 if [ "$USE_PASSIFLORAUI" = "true" ]; then
-    printf '\n' >> "$GENERATED_JS"
-    cat "$PASSIFLORA_DIR/UI/fileui.js" >> "$GENERATED_JS"
+    if [ "$USE_FILESYSTEM" = "true" ]; then
+        printf '\n' >> "$GENERATED_JS"
+        cat "$PASSIFLORA_DIR/UI/fileui.js" >> "$GENERATED_JS"
+    fi
 
     printf '\n' >> "$GENERATED_JS"
     cat "$PASSIFLORA_DIR/UI/buildmenu.js" >> "$GENERATED_JS"
