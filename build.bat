@@ -137,6 +137,13 @@ REM ================================================================
 REM  sign-android
 REM ================================================================
 :do_sign_android
+set SIGNING_SETUP_BAT=%USERPROFILE%\passiflora-keys\signing_setup.bat
+if exist "%SIGNING_SETUP_BAT%" (
+    echo [sign-android] Loading signing env from %SIGNING_SETUP_BAT%...
+    call "%SIGNING_SETUP_BAT%"
+    if errorlevel 1 exit /b 1
+)
+
 call :do_android
 if errorlevel 1 exit /b 1
 
@@ -146,8 +153,13 @@ if not exist "%ANDROID_APK%" (
     exit /b 1
 )
 
-set KS_FILE=%USERPROFILE%\passiflora-keys\android-keystore.jks
-if not exist "%KS_FILE%" (
+if defined RELEASE_KEYSTORE (
+    set KS_FILE=%RELEASE_KEYSTORE%
+    echo [sign-android] Using keystore from RELEASE_KEYSTORE
+) else (
+    set KS_FILE=%USERPROFILE%\passiflora-keys\android-keystore.jks
+)
+if not exist "!KS_FILE!" (
     set KS_FILE=
     set /p KS_FILE="Keystore file: "
     if "!KS_FILE!"=="" (
@@ -159,12 +171,17 @@ if not exist "%KS_FILE%" (
         exit /b 1
     )
 ) else (
-    echo [sign-android] Using keystore %KS_FILE%
+    echo [sign-android] Using keystore !KS_FILE!
 )
-for /f "delims=" %%P in ('powershell -NoProfile -Command "[Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR((Read-Host 'Keystore password' -AsSecureString)))"') do set KS_PASS=%%P
-if "%KS_PASS%"=="" (
-    echo [sign-android] No password specified. >&2
-    exit /b 1
+if defined RELEASE_KEYSTORE_PASSWORD (
+    set KS_PASS=%RELEASE_KEYSTORE_PASSWORD%
+    echo [sign-android] Using keystore password from RELEASE_KEYSTORE_PASSWORD
+) else (
+    for /f "delims=" %%P in ('powershell -NoProfile -Command "[Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR((Read-Host 'Keystore password' -AsSecureString)))"') do set KS_PASS=%%P
+    if "!KS_PASS!"=="" (
+        echo [sign-android] No password specified. >&2
+        exit /b 1
+    )
 )
 
 REM ── Locate apksigner ──
@@ -413,6 +430,13 @@ REM ================================================================
 REM  sign-windows (Azure Trusted Signing via jsign)
 REM ================================================================
 :do_sign_windows
+set SIGNING_SETUP_BAT=%USERPROFILE%\passiflora-keys\signing_setup.bat
+if exist "%SIGNING_SETUP_BAT%" (
+    echo [sign-windows] Loading signing env from %SIGNING_SETUP_BAT%...
+    call "%SIGNING_SETUP_BAT%"
+    if errorlevel 1 exit /b 1
+)
+
 call :do_windows
 if errorlevel 1 exit /b 1
 

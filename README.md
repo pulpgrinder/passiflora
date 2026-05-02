@@ -50,6 +50,8 @@ Detailed installation, build, cross-compilation, and code signing instructions a
 * **[Building on Windows](BUILD-Windows.md)** — native Windows builds, plus cross-compiling for Android and WWW
 * **[Building on Linux](BUILD-Linux.md)** — native Linux builds, plus cross-compiling for Windows, Android, and WWW
 
+For signing targets, start from the top-level templates `signing_setup.sh` and `signing_setup.bat`, then copy to your private home keys folder (`~/passiflora-keys/` or `%USERPROFILE%\passiflora-keys\`) as documented in [BUILDING.md](BUILDING.md), [WINDOWS_SIGNING.md](WINDOWS_SIGNING.md), and [GOOGLE_PLAY_SIGNING.md](GOOGLE_PLAY_SIGNING.md).
+
 ### Quick Start
 
 1. Install the prerequisites for your host system (see the guide above).

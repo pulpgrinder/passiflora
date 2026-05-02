@@ -190,6 +190,36 @@ The signing scripts read three environment variables:
 
 Find your endpoint URL in the Azure Portal: open your Trusted Signing account → **Overview** → **Endpoint URI**.
 
+### Recommended: Use the Passiflora template files
+
+Passiflora includes these templates in the repository root:
+
+- `signing_setup.sh`
+- `signing_setup.bat`
+
+Copy the appropriate template into your home `passiflora-keys` folder and fill in real values there:
+
+**macOS / Linux:**
+```
+mkdir -p ~/passiflora-keys
+cp signing_setup.sh ~/passiflora-keys/signing_setup.sh
+$EDITOR ~/passiflora-keys/signing_setup.sh
+```
+
+**Windows (cmd.exe):**
+```
+mkdir "%USERPROFILE%\passiflora-keys"
+copy signing_setup.bat "%USERPROFILE%\passiflora-keys\signing_setup.bat"
+notepad "%USERPROFILE%\passiflora-keys\signing_setup.bat"
+```
+
+The signing targets auto-load these files if present:
+
+- `make sign-windows` loads `~/passiflora-keys/signing_setup.sh`
+- `.\build sign-windows` loads `%USERPROFILE%\passiflora-keys\signing_setup.bat`
+
+This keeps secrets out of the repo and avoids retyping variables every run.
+
 ### Regional Endpoints
 
 | Region | Endpoint |
@@ -203,7 +233,7 @@ Find your endpoint URL in the Azure Portal: open your Trusted Signing account �
 
 Always use the endpoint that matches the region in which you created your account — cross-region signing will fail.
 
-### Setting variables for the session
+### Setting variables for the session (manual alternative)
 
 **macOS / Linux:**
 ```

@@ -86,6 +86,7 @@ Produces `bin\Windows\<displayname>.exe`. The build automatically downloads and 
 |---------|-------------|
 | `.\build` or `.\build windows` | Build Windows exe |
 | `.\build android` | Build Android APK (debug) |
+| `set BUILD_TYPE=release && .\build android` | Build Android release APK (cmd.exe) |
 | `.\build sign-android` | Build + sign Android APK |
 | `.\build sign-windows` | Build + sign Windows exe with Azure Trusted Signing (requires jsign) |
 | `.\build googleplay-android` | Build release AAB for Google Play (experimental) |
@@ -268,13 +269,23 @@ Windows code signing uses [Azure Artifact Signing](https://learn.microsoft.com/e
 
 #### Sign
 
-Set the required environment variables and run:
+Create your local signing setup file from the template in the repo root, then run:
 
 ```
-set AZURE_SIGNING_ENDPOINT=https://eus.codesigning.azure.net
-set AZURE_SIGNING_ACCOUNT=MySigningAccount
-set AZURE_SIGNING_PROFILE=MyProfile
+mkdir "%USERPROFILE%\passiflora-keys"
+copy signing_setup.bat "%USERPROFILE%\passiflora-keys\signing_setup.bat"
+notepad "%USERPROFILE%\passiflora-keys\signing_setup.bat"
 .\build sign-windows
+```
+
+`.\build sign-windows` auto-loads `%USERPROFILE%\passiflora-keys\signing_setup.bat` if it exists, so you do not need to re-enter variables each run.
+
+Required variables in that file are:
+
+```
+AZURE_SIGNING_ENDPOINT
+AZURE_SIGNING_ACCOUNT
+AZURE_SIGNING_PROFILE
 ```
 
 This builds the Windows exe, obtains an Azure access token via `az account get-access-token`, and signs the exe with jsign. Timestamping is automatic (using `http://timestamp.acs.microsoft.com`).
@@ -331,12 +342,20 @@ Gradle signs the APK automatically during the build. No interactive prompts. Bet
 Set environment variables and build:
 
 ```
-set RELEASE_KEYSTORE=C:\path\to\my-release.jks
-set RELEASE_KEYSTORE_PASSWORD=your-store-password
-set RELEASE_KEY_ALIAS=mykey
-set RELEASE_KEY_PASSWORD=your-key-password
+mkdir "%USERPROFILE%\passiflora-keys"
+copy signing_setup.bat "%USERPROFILE%\passiflora-keys\signing_setup.bat"
+call "%USERPROFILE%\passiflora-keys\signing_setup.bat"
 set BUILD_TYPE=release
 .\build android
+```
+
+Required Android variables in `%USERPROFILE%\passiflora-keys\signing_setup.bat` are:
+
+```
+RELEASE_KEYSTORE
+RELEASE_KEYSTORE_PASSWORD
+RELEASE_KEY_ALIAS
+RELEASE_KEY_PASSWORD
 ```
 
 The resulting APK is already signed. Do **not** also run `.\build sign-android` — that would attempt to double-sign.

@@ -48,6 +48,8 @@ Store the keystore **outside** the Passiflora source tree. The recommended path 
 
 `make sign-android` and `.\build sign-android` check these paths automatically — if the keystore is found there, you will not be prompted for a path.
 
+Passiflora includes template files at the repo root (`signing_setup.sh` and `signing_setup.bat`) that you can copy to these locations and fill in once. The signing targets auto-load those files when present.
+
 ### Generate the keystore
 
 **macOS / Linux:**
@@ -145,19 +147,18 @@ Gradle signs the APK automatically during the build when the following environme
 
 **macOS:**
 ```
-export RELEASE_KEYSTORE=~/passiflora-keys/android-keystore.jks
-export RELEASE_KEYSTORE_PASSWORD=your-store-password
-export RELEASE_KEY_ALIAS=mykey
-export RELEASE_KEY_PASSWORD=your-key-password
+mkdir -p ~/passiflora-keys
+cp signing_setup.sh ~/passiflora-keys/signing_setup.sh
+$EDITOR ~/passiflora-keys/signing_setup.sh
+. ~/passiflora-keys/signing_setup.sh
 BUILD_TYPE=release make android
 ```
 
 **Windows:**
 ```
-set RELEASE_KEYSTORE=%USERPROFILE%\passiflora-keys\android-keystore.jks
-set RELEASE_KEYSTORE_PASSWORD=your-store-password
-set RELEASE_KEY_ALIAS=mykey
-set RELEASE_KEY_PASSWORD=your-key-password
+mkdir "%USERPROFILE%\passiflora-keys"
+copy signing_setup.bat "%USERPROFILE%\passiflora-keys\signing_setup.bat"
+call "%USERPROFILE%\passiflora-keys\signing_setup.bat"
 set BUILD_TYPE=release
 .\build android
 ```

@@ -14,6 +14,7 @@
 | `make windows` | Cross-compile Windows exe (from macOS or Linux) |
 | `make sign-windows` | Cross-compile and sign Windows exe with Azure Trusted Signing (requires jsign) |
 | `make android` | Build Android APK |
+| `BUILD_TYPE=release make android` | Build Android release APK |
 | `make sign-android` | Sign the Android APK with a local keystore (macOS and Linux)|
 | `make googleplay-android` | Build a release AAB for Google Play upload (experimental) |
 | `make linux` | Build Linux binary (Linux only) -- same as `make` if you're on Linux |
@@ -30,6 +31,7 @@
 | `.\build` or `.\build windows` | Build Windows exe (Windows) |
 | `.\build sign-windows` | Build + sign Windows exe with Azure Trusted Signing (requires jsign) |
 | `.\build android` | Build Android APK (Windows) |
+| `set BUILD_TYPE=release && .\build android` | Build Android release APK (Windows cmd.exe) |
 | `.\build sign-android` | Build a signed Android APK (Windows) |
 | `.\build googleplay-android` | Build a release AAB for Google Play upload (Windows, experimental) |
 | `.\build www` | Build plain-browser version in `bin\WWW\` (Windows) -- useful for debugging using browser tools |
@@ -41,6 +43,35 @@
 * **[Windows signing (Azure Trusted Signing)](WINDOWS_SIGNING.md)**
 * **[Google Play signing (Android)](GOOGLE_PLAY_SIGNING.md)**
 * **[macOS and iOS signing](MAC_SIGNING.md)**
+
+### Signing Setup Templates
+
+Passiflora includes template files at the repository root:
+
+* `signing_setup.sh`
+* `signing_setup.bat`
+
+Copy and customize one of these templates in your home keys folder so signing targets can auto-load credentials:
+
+* macOS / Linux: `~/passiflora-keys/signing_setup.sh`
+* Windows: `%USERPROFILE%\passiflora-keys\signing_setup.bat`
+
+The `sign-windows` and `sign-android` targets automatically load these files if present.
+
+### Android Release APK Quick Commands
+
+macOS / Linux:
+
+```
+BUILD_TYPE=release make android
+```
+
+Windows (cmd.exe):
+
+```
+set BUILD_TYPE=release
+.\build android
+```
 
 ## Per-Platform Guides
 

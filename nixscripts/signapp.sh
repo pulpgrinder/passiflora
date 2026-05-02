@@ -139,6 +139,25 @@ ENTEOF
     fi
 }
 
+# ── Helper: remove metadata that breaks codesign ──────────────────
+sanitize_bundle_for_codesign() {
+    _bundle="$1"
+    if [ -z "$_bundle" ] || [ ! -d "$_bundle" ]; then
+        echo "signapp: sanitize_bundle_for_codesign requires an existing .app path" >&2
+        return 1
+    fi
+
+    # Remove AppleDouble sidecars and Finder droppings anywhere in the bundle.
+    find "$_bundle" -name '._*' -type f -delete 2>/dev/null || true
+    find "$_bundle" -name '.DS_Store' -type f -delete 2>/dev/null || true
+
+    # Strip xattrs/resource-fork metadata that codesign rejects.
+    dot_clean -n "$_bundle" 2>/dev/null || true
+    xattr -cr "$_bundle" 2>/dev/null || true
+    xattr -rd com.apple.FinderInfo "$_bundle" 2>/dev/null || true
+    xattr -rd com.apple.ResourceFork "$_bundle" 2>/dev/null || true
+}
+
 # ════════════════════════════════════════════════════════════════════
 #  macOS — full distribution workflow
 # ════════════════════════════════════════════════════════════════════
@@ -179,8 +198,7 @@ if [ "$PLATFORM" = "macos" ]; then
             echo "Signing with: $DEVID_SIGN_DESC"
 
             make_macos_entitlements
-            # shellcheck disable=SC2086
-            xattr -cr "$BUNDLE"
+            sanitize_bundle_for_codesign "$BUNDLE"
             codesign --deep --force --options runtime \
                 --sign "$DEVID_SIGN_ID" \
                 $ENTITLEMENTS_FLAG \
@@ -288,7 +306,7 @@ if [ "$PLATFORM" = "macos" ]; then
         _mas_bundle="$BUNDLE_DIR/$(basename "$BUNDLE" .app)-MAS.app"
         echo "signapp: creating App Store copy → $(basename "$_mas_bundle")"
         rm -rf "$_mas_bundle"
-        cp -R "$BUNDLE" "$_mas_bundle"
+        ditto "$BUNDLE" "$_mas_bundle"
 
         echo ""
         echo "Choose an application signing identity for the App Store."
@@ -323,8 +341,7 @@ ENTEOF
 </dict>|' "$ENT_FILE"
             fi
 
-            # shellcheck disable=SC2086
-            xattr -cr "$_mas_bundle"
+            sanitize_bundle_for_codesign "$_mas_bundle"
             codesign --deep --force --options runtime \
                 --sign "$MAS_APP_ID" \
                 $ENTITLEMENTS_FLAG \
@@ -507,8 +524,7 @@ ENTEOF
     ENTITLEMENTS_FLAG="--entitlements $ENT_FILE"
 fi
 
-# shellcheck disable=SC2086
-xattr -cr "$BUNDLE"
+sanitize_bundle_for_codesign "$BUNDLE"
 codesign --force \
     --sign "$SIGN_ID" \
     --generate-entitlement-der \

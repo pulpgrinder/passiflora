@@ -459,40 +459,49 @@ $(WIN_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR
 # ── Windows signing (Azure Trusted Signing via jsign) ──────────────
 WIN_EXE = $(WIN_BINDIR)/$(DISPLAYNAME).exe
 
-sign-windows: windows
-	@if [ ! -f "$(WIN_EXE)" ]; then \
+sign-windows:
+	@SIGNING_SETUP="$$HOME/passiflora-keys/signing_setup.sh"; \
+	if [ -f "$$SIGNING_SETUP" ]; then \
+		echo "sign-windows: loading signing env from $$SIGNING_SETUP"; \
+		. "$$SIGNING_SETUP" || { \
+			echo "sign-windows: failed to load $$SIGNING_SETUP" >&2; \
+			exit 1; \
+		}; \
+	fi; \
+	$(MAKE) windows || exit $$?; \
+	if [ ! -f "$(WIN_EXE)" ]; then \
 		echo "sign-windows: exe not found: $(WIN_EXE)" >&2; \
 		echo "  Run 'make windows' first." >&2; \
 		exit 1; \
-	fi
-	@if ! command -v jsign >/dev/null 2>&1; then \
+	fi; \
+	if ! command -v jsign >/dev/null 2>&1; then \
 		echo "sign-windows: jsign not found on PATH." >&2; \
 		echo "  Install with: brew install jsign  (macOS/Linux)" >&2; \
 		exit 1; \
-	fi
-	@if [ -z "$$AZURE_SIGNING_ENDPOINT" ] || [ -z "$$AZURE_SIGNING_ACCOUNT" ] || [ -z "$$AZURE_SIGNING_PROFILE" ]; then \
+	fi; \
+	if [ -z "$$AZURE_SIGNING_ENDPOINT" ] || [ -z "$$AZURE_SIGNING_ACCOUNT" ] || [ -z "$$AZURE_SIGNING_PROFILE" ]; then \
 		echo "sign-windows: missing one or more required environment variables:" >&2; \
 		echo "  AZURE_SIGNING_ENDPOINT  (e.g. https://eus.codesigning.azure.net)" >&2; \
 		echo "  AZURE_SIGNING_ACCOUNT   (your Artifact Signing account name)" >&2; \
 		echo "  AZURE_SIGNING_PROFILE   (your certificate profile name)" >&2; \
 		exit 1; \
-	fi
-	@echo "sign-windows: obtaining Azure access token..."
-	$(eval AZURE_TOKEN := $(shell az account get-access-token --resource https://codesigning.azure.net --query accessToken -o tsv))
-	@if [ -z "$(AZURE_TOKEN)" ]; then \
+	fi; \
+	echo "sign-windows: obtaining Azure access token..."; \
+	AZURE_TOKEN=$$(az account get-access-token --resource https://codesigning.azure.net --query accessToken -o tsv); \
+	if [ -z "$$AZURE_TOKEN" ]; then \
 		echo "sign-windows: failed to obtain Azure access token." >&2; \
 		echo "  Make sure the Azure CLI is installed and you are logged in (az login)." >&2; \
 		exit 1; \
-	fi
-	@echo "sign-windows: signing $(WIN_EXE)..."
-	@jsign --storetype TRUSTEDSIGNING \
+	fi; \
+	echo "sign-windows: signing $(WIN_EXE)..."; \
+	jsign --storetype TRUSTEDSIGNING \
 		--keystore "$$AZURE_SIGNING_ENDPOINT" \
-		--storepass "$(AZURE_TOKEN)" \
+		--storepass "$$AZURE_TOKEN" \
 		--alias "$$AZURE_SIGNING_ACCOUNT/$$AZURE_SIGNING_PROFILE" \
 		--tsaurl http://timestamp.acs.microsoft.com \
 		--tsmode RFC3161 \
-		"$(WIN_EXE)"
-	@echo "sign-windows: $(WIN_EXE) signed successfully."
+		"$(WIN_EXE)"; \
+	echo "sign-windows: $(WIN_EXE) signed successfully."
 
 # ── Linux (native build on Linux) ──────────────────────────────────
 LINUX_ICON_PNG      = src/icons/builticons/linux/icon-256.png
@@ -540,13 +549,22 @@ googleplay-android: $(GENDIR)/menu.h
 # ── Android signing (local keystore) ───────────────────────
 ANDROID_APK = bin/Android/$(PROGNAME).apk
 
-sign-android: android
-	@if [ ! -f "$(ANDROID_APK)" ]; then \
+sign-android:
+	@SIGNING_SETUP="$$HOME/passiflora-keys/signing_setup.sh"; \
+	if [ -f "$$SIGNING_SETUP" ]; then \
+		echo "sign-android: loading signing env from $$SIGNING_SETUP"; \
+		. "$$SIGNING_SETUP" || { \
+			echo "sign-android: failed to load $$SIGNING_SETUP" >&2; \
+			exit 1; \
+		}; \
+	fi; \
+	$(MAKE) android || exit $$?; \
+	if [ ! -f "$(ANDROID_APK)" ]; then \
 		echo "sign-android: APK not found: $(ANDROID_APK)" >&2; \
 		echo "  Run 'make android' first." >&2; \
 		exit 1; \
-	fi
-	@KS_FILE=~/passiflora-keys/android-keystore.jks; \
+	fi; \
+	KS_FILE="$${RELEASE_KEYSTORE:-$$HOME/passiflora-keys/android-keystore.jks}"; \
 	if [ ! -f "$$KS_FILE" ]; then \
 		printf 'Keystore file: '; read KS_FILE; \
 		if [ ! -f "$$KS_FILE" ]; then \
@@ -556,8 +574,13 @@ sign-android: android
 	else \
 		echo "sign-android: using keystore $$KS_FILE"; \
 	fi; \
-	printf 'Keystore password: '; \
-	stty -echo 2>/dev/null; read KS_PASS; stty echo 2>/dev/null; echo; \
+	if [ -n "$$RELEASE_KEYSTORE_PASSWORD" ]; then \
+		KS_PASS="$$RELEASE_KEYSTORE_PASSWORD"; \
+		echo "sign-android: using keystore password from RELEASE_KEYSTORE_PASSWORD"; \
+	else \
+		printf 'Keystore password: '; \
+		stty -echo 2>/dev/null; read KS_PASS; stty echo 2>/dev/null; echo; \
+	fi; \
 	if [ -z "$$ANDROID_HOME" ]; then \
 		for _d in "$$HOME/Library/Android/sdk" "$$HOME/Android/Sdk" "/usr/local/lib/android/sdk"; do \
 			if [ -d "$$_d" ]; then ANDROID_HOME="$$_d"; break; fi; \
@@ -655,8 +678,9 @@ clean:
 	rm -f wv2loader.h
 	rm -rf src/www/generated
 	rm -rf $(WWW_BINDIR)
+	rm -f "$(BINDIR)"/*.pkg
 	rm -rf bin/Android/gradle-build bin/Android/gradle-cache src/android/.gradle src/android/app/.cxx
-	rm -f bin/Android/*.apk bin/Android/*.aab
+	rm -f bin/Android/*.apk bin/Android/*.aab bin/Android/*.idsig
 ifeq ($(UNAME_S),Linux)
 	rm -f $(HOME)/.local/share/icons/hicolor/256x256/apps/$(PROGNAME).png
 	rm -f $(HOME)/.local/share/applications/$(PROGNAME).desktop

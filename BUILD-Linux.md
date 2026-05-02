@@ -72,6 +72,7 @@ Produces `bin/Linux/<displayname>`.
 |---------|-------------|
 | `make` or `make linux` | Build native Linux binary |
 | `make android` | Build Android APK |
+| `BUILD_TYPE=release make android` | Build Android release APK |
 | `make sign-android` | Build + sign Android APK |
 | `make sign-windows` | Sign the Windows exe with Azure Trusted Signing (requires jsign) |
 | `make googleplay-android` | Build a release AAB for Google Play upload. Experimental! |
@@ -306,13 +307,23 @@ Windows code signing uses [Azure Artifact Signing](https://learn.microsoft.com/e
 
 #### Sign
 
-Set the required environment variables and run:
+Create your local signing setup file from the template in the repo root, then run:
 
 ```
-export AZURE_SIGNING_ENDPOINT=https://eus.codesigning.azure.net
-export AZURE_SIGNING_ACCOUNT=MySigningAccount
-export AZURE_SIGNING_PROFILE=MyProfile
+mkdir -p ~/passiflora-keys
+cp signing_setup.sh ~/passiflora-keys/signing_setup.sh
+$EDITOR ~/passiflora-keys/signing_setup.sh
 make sign-windows
+```
+
+`make sign-windows` auto-loads `~/passiflora-keys/signing_setup.sh` if it exists, so you do not need to re-export variables every shell session.
+
+Required variables in that file are:
+
+```
+AZURE_SIGNING_ENDPOINT
+AZURE_SIGNING_ACCOUNT
+AZURE_SIGNING_PROFILE
 ```
 
 This builds the Windows exe, obtains an Azure access token via `az account get-access-token`, and signs the exe with jsign. Timestamping is automatic (using `http://timestamp.acs.microsoft.com`).
@@ -368,11 +379,20 @@ Gradle signs the APK automatically during the build. No interactive prompts. Bet
 Set environment variables and build:
 
 ```
-export RELEASE_KEYSTORE=/path/to/my-release.jks
-export RELEASE_KEYSTORE_PASSWORD=your-store-password
-export RELEASE_KEY_ALIAS=mykey
-export RELEASE_KEY_PASSWORD=your-key-password
+mkdir -p ~/passiflora-keys
+cp signing_setup.sh ~/passiflora-keys/signing_setup.sh
+$EDITOR ~/passiflora-keys/signing_setup.sh
+. ~/passiflora-keys/signing_setup.sh
 BUILD_TYPE=release make android
+```
+
+Required Android variables in `~/passiflora-keys/signing_setup.sh` are:
+
+```
+RELEASE_KEYSTORE
+RELEASE_KEYSTORE_PASSWORD
+RELEASE_KEY_ALIAS
+RELEASE_KEY_PASSWORD
 ```
 
 The resulting APK is already signed. Do **not** also run `make sign-android` — that would attempt to double-sign.
