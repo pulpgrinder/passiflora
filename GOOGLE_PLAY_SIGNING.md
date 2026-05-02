@@ -21,7 +21,7 @@ Passiflora produces two Android artifacts:
 
 | Command | Output | Use |
 |---|---|---|
-| `make sign-android` / `.\build sign-android` | `bin/Android/<progname>.apk` | Direct device installation (sideloading), ad-hoc testing |
+| `make sign-android` / `.\build sign-android` | `bin/Android/<progname>.apk` | Release-signed APK for direct device installation (sideloading), ad-hoc testing |
 | `make googleplay-android` / `.\build googleplay-android` | `bin/Android/<progname>.aab` | Google Play upload |
 
 ---
@@ -121,16 +121,18 @@ The build then:
 
 Output: `bin/Android/<progname>.apk`
 
-To build a release (non-debug) APK:
+By default, `make sign-android` / `.\build sign-android` build a release APK.
+
+To sign a debug APK explicitly:
 
 **macOS:**
 ```
-BUILD_TYPE=release make sign-android
+BUILD_TYPE=debug make sign-android
 ```
 
 **Windows:**
 ```
-set BUILD_TYPE=release
+set BUILD_TYPE=debug
 .\build sign-android
 ```
 

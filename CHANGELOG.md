@@ -20,6 +20,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Android interactive signing now defaults to release builds**: `make sign-android` and `.\build sign-android` now default to `BUILD_TYPE=release` when `BUILD_TYPE` is not set, so signed APKs are release by default. To intentionally sign a debug APK, set `BUILD_TYPE=debug` before invoking the signing target.
+
 - **Release APK quick commands documented**: Added explicit `BUILD_TYPE=release make android` (macOS/Linux) and `set BUILD_TYPE=release && .\\build android` (Windows cmd.exe) entries to quick-reference build command tables.
 
 - **`PROGNAME` and `BUNDLE_ID` centralized in `src/config`**: The program name and bundle identifier are now read from `src/config` by all build scripts (Makefile, build.bat, and Android build.gradle) instead of being hardcoded. Set `PROGNAME` and `BUNDLE_ID` in `src/config` and every platform picks them up automatically. The Android `applicationId` is now read from config at Gradle evaluation time, replacing the old sed/PowerShell rewriting hack in the mkandroid scripts.

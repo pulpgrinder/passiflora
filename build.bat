@@ -144,6 +144,11 @@ if exist "%SIGNING_SETUP_BAT%" (
     if errorlevel 1 exit /b 1
 )
 
+if not defined BUILD_TYPE (
+    set BUILD_TYPE=release
+    echo [sign-android] BUILD_TYPE not set; defaulting to release
+)
+
 call :do_android
 if errorlevel 1 exit /b 1
 

@@ -54,7 +54,7 @@ This produces `bin/macOS/<displayname>.app` — a standard macOS application bun
 | `make sign-macos` | Sign, notarize, and package for distribution (see [Code Signing for macOS](#code-signing-for-macos)) |
 | `make android` | Builds an Android .apk|
 | `BUILD_TYPE=release make android` | Builds an Android release .apk |
-| `make sign-android` | Builds an Android apk |
+| `make sign-android` | Builds + signs an Android release apk |
 | `make sign-windows` | Sign the Windows exe with Azure Trusted Signing (requires jsign) |
 | `make googleplay-android` | Build a release AAB for Google Play upload (experimental) |
 | `make www` | Build plain-browser version into `bin/WWW/` — useful for debugging using browser tools |
@@ -270,9 +270,9 @@ Produces `bin/Android/<progname>.apk` (debug build by default).
 make sign-android
 ```
 
-Produces a signed `bin/Android/<progname>.apk` (debug build by default).
+Produces a signed `bin/Android/<progname>.apk` (release build by default).
 
-To build a signed release APK:
+To build an unsigned release APK directly (without interactive signing):
 
 ```
 BUILD_TYPE=release make android
@@ -630,10 +630,10 @@ You will be prompted for:
 
 It then zipaligns (if available), signs, and verifies the APK.
 
-By default this builds a **debug** APK. To sign a release APK:
+By default this builds a **release** APK. To sign a debug APK explicitly:
 
 ```
-BUILD_TYPE=release make sign-android
+BUILD_TYPE=debug make sign-android
 ```
 
 #### Method 2 — Gradle build-time signing (environment variables)

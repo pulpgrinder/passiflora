@@ -558,7 +558,11 @@ sign-android:
 			exit 1; \
 		}; \
 	fi; \
-	$(MAKE) android || exit $$?; \
+	BUILD_TYPE_SIGN="$${BUILD_TYPE:-release}"; \
+	if [ -z "$$BUILD_TYPE" ]; then \
+		echo "sign-android: BUILD_TYPE not set; defaulting to release"; \
+	fi; \
+	BUILD_TYPE="$$BUILD_TYPE_SIGN" $(MAKE) android || exit $$?; \
 	if [ ! -f "$(ANDROID_APK)" ]; then \
 		echo "sign-android: APK not found: $(ANDROID_APK)" >&2; \
 		echo "  Run 'make android' first." >&2; \

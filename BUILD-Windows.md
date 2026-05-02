@@ -87,7 +87,7 @@ Produces `bin\Windows\<displayname>.exe`. The build automatically downloads and 
 | `.\build` or `.\build windows` | Build Windows exe |
 | `.\build android` | Build Android APK (debug) |
 | `set BUILD_TYPE=release && .\build android` | Build Android release APK (cmd.exe) |
-| `.\build sign-android` | Build + sign Android APK |
+| `.\build sign-android` | Build + sign Android release APK |
 | `.\build sign-windows` | Build + sign Windows exe with Azure Trusted Signing (requires jsign) |
 | `.\build googleplay-android` | Build release AAB for Google Play (experimental) |
 | `.\build www` | Build plain-browser version into `bin\WWW\` — useful for debugging using browser tools |
@@ -328,10 +328,10 @@ You will be prompted for:
 
 It then zipaligns (if available), signs, and verifies the APK.
 
-By default this builds a **debug** APK. To sign a release APK:
+By default this builds a **release** APK. To sign a debug APK explicitly:
 
 ```
-set BUILD_TYPE=release
+set BUILD_TYPE=debug
 .\build sign-android
 ```
 

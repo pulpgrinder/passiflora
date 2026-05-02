@@ -15,7 +15,7 @@
 | `make sign-windows` | Cross-compile and sign Windows exe with Azure Trusted Signing (requires jsign) |
 | `make android` | Build Android APK |
 | `BUILD_TYPE=release make android` | Build Android release APK |
-| `make sign-android` | Sign the Android APK with a local keystore (macOS and Linux)|
+| `make sign-android` | Build + sign Android release APK with a local keystore (macOS and Linux) |
 | `make googleplay-android` | Build a release AAB for Google Play upload (experimental) |
 | `make linux` | Build Linux binary (Linux only) -- same as `make` if you're on Linux |
 | `make www` | Build plain-browser version in `bin/WWW/` -- useful for debugging using browser tools |
@@ -32,7 +32,7 @@
 | `.\build sign-windows` | Build + sign Windows exe with Azure Trusted Signing (requires jsign) |
 | `.\build android` | Build Android APK (Windows) |
 | `set BUILD_TYPE=release && .\build android` | Build Android release APK (Windows cmd.exe) |
-| `.\build sign-android` | Build a signed Android APK (Windows) |
+| `.\build sign-android` | Build + sign Android release APK (Windows) |
 | `.\build googleplay-android` | Build a release AAB for Google Play upload (Windows, experimental) |
 | `.\build www` | Build plain-browser version in `bin\WWW\` (Windows) -- useful for debugging using browser tools |
 | `.\build icons` | Generate icon sets (Windows) |
@@ -59,6 +59,8 @@ Copy and customize one of these templates in your home keys folder so signing ta
 The `sign-windows` and `sign-android` targets automatically load these files if present.
 
 ### Android Release APK Quick Commands
+
+`sign-android` defaults to `BUILD_TYPE=release` on both Make and Windows build.bat.
 
 macOS / Linux:
 

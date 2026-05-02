@@ -73,7 +73,7 @@ Produces `bin/Linux/<displayname>`.
 | `make` or `make linux` | Build native Linux binary |
 | `make android` | Build Android APK |
 | `BUILD_TYPE=release make android` | Build Android release APK |
-| `make sign-android` | Build + sign Android APK |
+| `make sign-android` | Build + sign Android release APK |
 | `make sign-windows` | Sign the Windows exe with Azure Trusted Signing (requires jsign) |
 | `make googleplay-android` | Build a release AAB for Google Play upload. Experimental! |
 | `make www` | Build plain-browser version into `bin/WWW/` — useful for debugging using browser tools |
@@ -366,10 +366,10 @@ You will be prompted for:
 
 It then zipaligns (if available), signs, and verifies the APK.
 
-By default this builds a **debug** APK. To sign a release APK:
+By default this builds a **release** APK. To sign a debug APK explicitly:
 
 ```
-BUILD_TYPE=release make sign-android
+BUILD_TYPE=debug make sign-android
 ```
 
 #### Method 2 — Gradle build-time signing (environment variables)
