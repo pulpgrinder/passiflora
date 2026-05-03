@@ -151,17 +151,11 @@ if [ ! -x "$ANDROID_DIR/gradlew" ]; then
     GRADLE="$ANDROID_DIR/gradlew"
 fi
 
-# ── Copy Android icons into res/ if builticons exist ───────────────
+# ── Copy Android icons/resources from builticons when available ────
 ICON_SRC="$PROJECT_ROOT/src/icons/builticons/android/app/src/main/res"
 RES_DIR="$ANDROID_DIR/app/src/main/res"
 if [ -d "$ICON_SRC" ]; then
-    # Copy all mipmap and drawable directories
-    for d in "$ICON_SRC"/mipmap-* "$ICON_SRC"/drawable-* "$ICON_SRC"/drawable; do
-        [ -d "$d" ] || continue
-        DNAME=$(basename "$d")
-        mkdir -p "$RES_DIR/$DNAME"
-        cp "$d"/*.png "$RES_DIR/$DNAME/" 2>/dev/null || true
-    done
+    cp -R "$ICON_SRC"/. "$RES_DIR"/
 fi
 
 # ── Update app_name from PROGNAME ──────────────────────────────────

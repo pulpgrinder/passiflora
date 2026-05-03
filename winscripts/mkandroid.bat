@@ -77,19 +77,11 @@ if not exist "%ANDROID_DIR%\gradlew.bat" (
     set GRADLE=%ANDROID_DIR%\gradlew.bat
 )
 
-REM ── Copy Android icons into res\ if builticons exist ──
+REM ── Copy Android icons/resources from builticons when available ──
 set ICON_SRC=%PROJECT_ROOT%\src\icons\builticons\android\app\src\main\res
 set RES_DIR=%ANDROID_DIR%\app\src\main\res
 if exist "%ICON_SRC%" (
-    for /d %%D in ("%ICON_SRC%\mipmap-*" "%ICON_SRC%\drawable-*") do (
-        set DNAME=%%~nxD
-        mkdir "%RES_DIR%\!DNAME!" 2>nul
-        xcopy /Y /Q "%%D\*.png" "%RES_DIR%\!DNAME!\" >nul 2>&1
-    )
-    if exist "%ICON_SRC%\drawable" (
-        mkdir "%RES_DIR%\drawable" 2>nul
-        xcopy /Y /Q "%ICON_SRC%\drawable\*.png" "%RES_DIR%\drawable\" >nul 2>&1
-    )
+    xcopy /E /I /Y /Q "%ICON_SRC%\*" "%RES_DIR%\" >nul 2>&1
 )
 
 REM ── Update app_name from DISPLAYNAME ──

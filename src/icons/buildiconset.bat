@@ -133,12 +133,24 @@ set ANDROID=%DST_PATH%\android\app\src\main\res
 %CONVERT% "%SQUARE_FILE%" -resize 512x512 "%DST_PATH%\android\app\src\main\assets\public\assets\images\logo.png"
 %CONVERT% "%SQUARE_FILE%" -resize 512x512 "%DST_PATH%\android\play_store_icon.png"
 
+echo [INFO] Generating adaptive icon XML resources...
+if not exist "%ANDROID%\mipmap-anydpi-v26" mkdir "%ANDROID%\mipmap-anydpi-v26"
+
+(echo ^<?xml version="1.0" encoding="utf-8"?^>)                                                            > "%ANDROID%\mipmap-anydpi-v26\ic_launcher.xml"
+(echo ^<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"^>)                       >> "%ANDROID%\mipmap-anydpi-v26\ic_launcher.xml"
+(echo     ^<background android:drawable="@android:color/transparent" /^>)                                 >> "%ANDROID%\mipmap-anydpi-v26\ic_launcher.xml"
+(echo     ^<foreground android:drawable="@mipmap/ic_launcher_foreground" /^>)                             >> "%ANDROID%\mipmap-anydpi-v26\ic_launcher.xml"
+(echo     ^<monochrome android:drawable="@mipmap/ic_launcher_monochrome" /^>)                             >> "%ANDROID%\mipmap-anydpi-v26\ic_launcher.xml"
+(echo ^</adaptive-icon^>)                                                                                  >> "%ANDROID%\mipmap-anydpi-v26\ic_launcher.xml"
+
+copy "%ANDROID%\mipmap-anydpi-v26\ic_launcher.xml" "%ANDROID%\mipmap-anydpi-v26\ic_launcher_round.xml" >nul
+
 echo [INFO] Generating adaptive icon foreground layers...
-%CONVERT% "%SQUARE_FILE%" -resize 108x108 "%ANDROID%\mipmap-mdpi\ic_launcher_foreground.png"
-%CONVERT% "%SQUARE_FILE%" -resize 162x162 "%ANDROID%\mipmap-hdpi\ic_launcher_foreground.png"
-%CONVERT% "%SQUARE_FILE%" -resize 216x216 "%ANDROID%\mipmap-xhdpi\ic_launcher_foreground.png"
-%CONVERT% "%SQUARE_FILE%" -resize 324x324 "%ANDROID%\mipmap-xxhdpi\ic_launcher_foreground.png"
-%CONVERT% "%SQUARE_FILE%" -resize 432x432 "%ANDROID%\mipmap-xxxhdpi\ic_launcher_foreground.png"
+%CONVERT% "%CIRCULAR_FILE%" -resize 72x72  -background none -gravity center -extent 108x108 "%ANDROID%\mipmap-mdpi\ic_launcher_foreground.png"
+%CONVERT% "%CIRCULAR_FILE%" -resize 108x108 -background none -gravity center -extent 162x162 "%ANDROID%\mipmap-hdpi\ic_launcher_foreground.png"
+%CONVERT% "%CIRCULAR_FILE%" -resize 144x144 -background none -gravity center -extent 216x216 "%ANDROID%\mipmap-xhdpi\ic_launcher_foreground.png"
+%CONVERT% "%CIRCULAR_FILE%" -resize 216x216 -background none -gravity center -extent 324x324 "%ANDROID%\mipmap-xxhdpi\ic_launcher_foreground.png"
+%CONVERT% "%CIRCULAR_FILE%" -resize 288x288 -background none -gravity center -extent 432x432 "%ANDROID%\mipmap-xxxhdpi\ic_launcher_foreground.png"
 
 echo [INFO] Generating round launcher icons...
 %CONVERT% "%CIRCULAR_FILE%" -resize 48x48   "%ANDROID%\mipmap-mdpi\ic_launcher_round.png"
@@ -169,17 +181,17 @@ echo [INFO] Generating notification icons...
 %CONVERT% "%SQUARE_FILE%" -resize 96x96 "%ANDROID%\mipmap-xxxhdpi\ic_stat_notify.png"
 
 echo [INFO] Generating splash screens...
-%CONVERT% -size 430x320   canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 160x160 ^) -gravity center -composite "%ANDROID%\drawable\splash.png"
-%CONVERT% -size 800x480   canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 240x240 ^) -gravity center -composite "%ANDROID%\drawable-land-hdpi\splash.png"
-%CONVERT% -size 480x320   canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 160x160 ^) -gravity center -composite "%ANDROID%\drawable-land-mdpi\splash.png"
-%CONVERT% -size 1280x720  canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 360x360 ^) -gravity center -composite "%ANDROID%\drawable-land-xhdpi\splash.png"
-%CONVERT% -size 1600x960  canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 480x480 ^) -gravity center -composite "%ANDROID%\drawable-land-xxhdpi\splash.png"
-%CONVERT% -size 1920x1280 canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 640x640 ^) -gravity center -composite "%ANDROID%\drawable-land-xxxhdpi\splash.png"
-%CONVERT% -size 480x800   canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 240x240 ^) -gravity center -composite "%ANDROID%\drawable-port-hdpi\splash.png"
-%CONVERT% -size 320x480   canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 160x160 ^) -gravity center -composite "%ANDROID%\drawable-port-mdpi\splash.png"
-%CONVERT% -size 720x1280  canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 360x360 ^) -gravity center -composite "%ANDROID%\drawable-port-xhdpi\splash.png"
-%CONVERT% -size 960x1600  canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 480x480 ^) -gravity center -composite "%ANDROID%\drawable-port-xxhdpi\splash.png"
-%CONVERT% -size 1280x1920 canvas:#bbb ^( "%CIRCULAR_FILE%" -resize 640x640 ^) -gravity center -composite "%ANDROID%\drawable-port-xxxhdpi\splash.png"
+%CONVERT% -size 430x320   canvas:#bbb "%ANDROID%\drawable\splash.png"
+%CONVERT% -size 800x480   canvas:#bbb "%ANDROID%\drawable-land-hdpi\splash.png"
+%CONVERT% -size 480x320   canvas:#bbb "%ANDROID%\drawable-land-mdpi\splash.png"
+%CONVERT% -size 1280x720  canvas:#bbb "%ANDROID%\drawable-land-xhdpi\splash.png"
+%CONVERT% -size 1600x960  canvas:#bbb "%ANDROID%\drawable-land-xxhdpi\splash.png"
+%CONVERT% -size 1920x1280 canvas:#bbb "%ANDROID%\drawable-land-xxxhdpi\splash.png"
+%CONVERT% -size 480x800   canvas:#bbb "%ANDROID%\drawable-port-hdpi\splash.png"
+%CONVERT% -size 320x480   canvas:#bbb "%ANDROID%\drawable-port-mdpi\splash.png"
+%CONVERT% -size 720x1280  canvas:#bbb "%ANDROID%\drawable-port-xhdpi\splash.png"
+%CONVERT% -size 960x1600  canvas:#bbb "%ANDROID%\drawable-port-xxhdpi\splash.png"
+%CONVERT% -size 1280x1920 canvas:#bbb "%ANDROID%\drawable-port-xxxhdpi\splash.png"
 
 echo [INFO] All done! Icons generated in: %DST_PATH%
 endlocal
