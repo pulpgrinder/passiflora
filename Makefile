@@ -325,18 +325,31 @@ ifeq ($(UNAME_S),Darwin)
 	echo ""; \
 	echo "For sideloading to a local device, choose a DEVELOPMENT certificate."; \
 	echo ""; \
-	IDENTITIES=$$(security find-identity -v -p codesigning 2>/dev/null \
+	ALL_IDENTITIES=$$(security find-identity -v -p codesigning 2>/dev/null \
 		| grep -E '^\s+[0-9]+\)' | sed 's/^[[:space:]]*//'); \
+	IDENTITIES=$$(printf '%s\n' "$$ALL_IDENTITIES" | grep -v 'CSSMERR_TP_CERT_REVOKED' || true); \
 	N=0; \
-	if [ -n "$$IDENTITIES" ]; then \
+	if [ -n "$$ALL_IDENTITIES" ]; then \
 		echo "Available signing identities:"; \
 		echo ""; \
-		echo "$$IDENTITIES" | while IFS= read -r line; do \
+		I=0; \
+		echo "$$ALL_IDENTITIES" | while IFS= read -r line; do \
+			[ -n "$$line" ] || continue; \
 			DESC=$$(echo "$$line" | sed 's/.*"\(.*\)".*/\1/'); \
-			NUM=$$(echo "$$line" | sed 's/^\([0-9]*\)).*/\1/'); \
-			echo "  $$NUM) $$DESC"; \
+			if echo "$$line" | grep -q 'CSSMERR_TP_CERT_REVOKED'; then \
+				echo "  -) $$DESC (revoked)"; \
+			else \
+				I=$$((I + 1)); \
+				echo "  $$I) $$DESC"; \
+			fi; \
 		done; \
 		N=$$(echo "$$IDENTITIES" | wc -l | tr -d ' '); \
+	fi; \
+	echo ""; \
+	if [ "$$N" -eq 0 ]; then \
+		echo "sign-ios: no valid codesigning identities found." >&2; \
+		echo "  Install or renew an Apple Development certificate in Keychain Access/Xcode." >&2; \
+		exit 1; \
 	fi; \
 	echo ""; \
 	printf "Choose identity [1-$$N]: "; read CHOICE; \
@@ -363,6 +376,12 @@ ifeq ($(UNAME_S),Darwin)
 		--entitlements "$$ENT_FILE" \
 		--generate-entitlement-der \
 		"$$TMPDIR_IPA/$(DISPLAYNAME).app"; \
+	if ! codesign --verify --deep --strict --verbose=4 "$$TMPDIR_IPA/$(DISPLAYNAME).app"; then \
+		echo "" >&2; \
+		echo "sign-ios: signed app failed codesign verification." >&2; \
+		echo "  The selected identity may be revoked/invalid, or may not match the provisioning profile." >&2; \
+		exit 1; \
+	fi; \
 	\
 	echo ""; \
 	echo "sign-ios: bundle signed."; \

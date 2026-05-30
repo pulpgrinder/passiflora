@@ -54,22 +54,29 @@ fi
 choose_identity() {
     _label="$1"
     _filter="${2:-}"
-    _idents=$(security find-identity -v -p codesigning 2>/dev/null \
+    _all_idents=$(security find-identity -v -p codesigning 2>/dev/null \
         | grep -E '^\s+[0-9]+\)' | sed 's/^[[:space:]]*//')
     if [ -n "$_filter" ]; then
-        _idents=$(echo "$_idents" | grep -i "$_filter" || true)
+        _all_idents=$(echo "$_all_idents" | grep -i "$_filter" || true)
     fi
 
+    _idents=$(echo "$_all_idents" | grep -v 'CSSMERR_TP_CERT_REVOKED' || true)
+    _revoked_idents=$(echo "$_all_idents" | grep 'CSSMERR_TP_CERT_REVOKED' || true)
+
     _n=0
-    if [ -n "$_idents" ]; then
+    if [ -n "$_all_idents" ]; then
         echo "Available signing identities${_label:+ ($_label)}:"
         echo ""
-        # Re-number for display
         _i=0
-        echo "$_idents" | while IFS= read -r _line; do
-            _i=$((_i + 1))
+        echo "$_all_idents" | while IFS= read -r _line; do
+            [ -n "$_line" ] || continue
             _desc=$(echo "$_line" | sed 's/.*"\(.*\)".*/\1/')
-            echo "  $_i) $_desc"
+            if echo "$_line" | grep -q 'CSSMERR_TP_CERT_REVOKED'; then
+                echo "  -) $_desc (revoked)"
+            else
+                _i=$((_i + 1))
+                echo "  $_i) $_desc"
+            fi
         done
         _n=$(echo "$_idents" | wc -l | tr -d ' ')
     fi
@@ -203,6 +210,14 @@ if [ "$PLATFORM" = "macos" ]; then
                 --sign "$DEVID_SIGN_ID" \
                 $ENTITLEMENTS_FLAG \
                 "$BUNDLE"
+
+            if ! codesign --verify --deep --strict --verbose=4 "$BUNDLE"; then
+                echo "" >&2
+                echo "signapp: signed macOS bundle failed codesign verification." >&2
+                echo "  The selected identity may be revoked/invalid." >&2
+                [ -n "$ENT_FILE" ] && rm -f "$ENT_FILE"
+                exit 1
+            fi
             [ -n "$ENT_FILE" ] && rm -f "$ENT_FILE"
 
             echo ""
@@ -346,6 +361,14 @@ ENTEOF
                 --sign "$MAS_APP_ID" \
                 $ENTITLEMENTS_FLAG \
                 "$_mas_bundle"
+
+            if ! codesign --verify --deep --strict --verbose=4 "$_mas_bundle"; then
+                echo "" >&2
+                echo "signapp: signed App Store copy failed codesign verification." >&2
+                echo "  The selected identity may be revoked/invalid." >&2
+                [ -n "$ENT_FILE" ] && rm -f "$ENT_FILE"
+                exit 1
+            fi
             [ -n "$ENT_FILE" ] && rm -f "$ENT_FILE"
 
             echo ""
@@ -358,19 +381,25 @@ ENTEOF
             echo ""
 
             # List installer identities (not codesigning — these are in the "Mac Installer Distribution" category)
-            _inst_idents=$(security find-identity -v 2>/dev/null \
+            _all_inst_idents=$(security find-identity -v 2>/dev/null \
                 | grep -iE 'installer|3rd Party Mac Developer Installer' \
                 | grep -E '^\s+[0-9]+\)' | sed 's/^[[:space:]]*//' || true)
+            _inst_idents=$(printf '%s\n' "$_all_inst_idents" | grep -v 'CSSMERR_TP_CERT_REVOKED' || true)
 
             _in=0
-            if [ -n "$_inst_idents" ]; then
+            if [ -n "$_all_inst_idents" ]; then
                 echo "Available installer identities:"
                 echo ""
                 _i=0
-                echo "$_inst_idents" | while IFS= read -r _line; do
-                    _i=$((_i + 1))
+                echo "$_all_inst_idents" | while IFS= read -r _line; do
+                    [ -n "$_line" ] || continue
                     _desc=$(echo "$_line" | sed 's/.*"\(.*\)".*/\1/')
-                    echo "  $_i) $_desc"
+                    if echo "$_line" | grep -q 'CSSMERR_TP_CERT_REVOKED'; then
+                        echo "  -) $_desc (revoked)"
+                    else
+                        _i=$((_i + 1))
+                        echo "  $_i) $_desc"
+                    fi
                 done
                 _in=$(echo "$_inst_idents" | wc -l | tr -d ' ')
             fi
@@ -429,7 +458,7 @@ fi
 
 # ── Gather signing identities ──────────────────────────────────────
 IDENTITIES=$(security find-identity -v -p codesigning 2>/dev/null \
-    | grep -E '^\s+[0-9]+\)' | sed 's/^[[:space:]]*//')
+    | grep -E '^\s+[0-9]+\)' | grep -v 'CSSMERR_TP_CERT_REVOKED' | sed 's/^[[:space:]]*//')
 
 echo ""
 echo "=== Code Signing: $BUNDLE ==="
@@ -530,6 +559,15 @@ codesign --force \
     --generate-entitlement-der \
     $ENTITLEMENTS_FLAG \
     "$BUNDLE"
+
+if ! codesign --verify --deep --strict --verbose=4 "$BUNDLE"; then
+    echo "" >&2
+    echo "signapp: signed bundle failed codesign verification." >&2
+    echo "  This usually means the selected identity is revoked/invalid, or it does not match" >&2
+    echo "  the embedded provisioning profile for device installation." >&2
+    [ -n "$ENT_FILE" ] && rm -f "$ENT_FILE"
+    exit 1
+fi
 
 [ -n "$ENT_FILE" ] && rm -f "$ENT_FILE"
 

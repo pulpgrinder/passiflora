@@ -1,4 +1,4 @@
-{{displayname}}
+{{progname}}
 	About
 	Settings
 File
