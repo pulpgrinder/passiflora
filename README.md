@@ -138,11 +138,9 @@ Passiflora includes a basic menu system (native menu bar + sliding menu + panel 
 
 ## PassifloraConfig
 
-<<<<<<< HEAD
-Each build generates `src/www/generated/generated.js`, which includes a runtime `PassifloraConfig` object containing numerous values that may be useful at runtime. See **[PASSIFLORA-CONFIG.md](PASSIFLORA-CONFIG.md)**. Note that this is not the same as `src/config`, where you set the icons, name, etc. That's *compile-time* information. The build process uses the `src/config` file (and other compile-time information) to generate `src/www/generated/generated.js` for use at runtime. You shouldn't edit `src/www/generated/generated.js`, as any changes will be wiped out the next time you build.
-=======
-Each build generates `src/www/generated/config.js`, which defines a `PassifloraConfig` object containing:
->>>>>>> b1e93b7 (Hardening build scripts a bit more.)
+Each build generates `src/www/generated/config.js` and `src/www/generated/generated.js`, which include a runtime `PassifloraConfig` object containing values that may be useful at runtime. See **[PASSIFLORA-CONFIG.md](PASSIFLORA-CONFIG.md)**.
+
+Note that this is not the same as `src/config`, where you set icons, names, and other build-time settings. The build process uses `src/config` (and other compile-time information) to generate the runtime files in `src/www/generated/`. You generally should not edit generated files by hand, since they are regenerated on the next build.
 
 ```javascript
 let PassifloraConfig = {
