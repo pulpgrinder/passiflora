@@ -53,10 +53,9 @@ For signing targets, start from the top-level templates `signing_setup.sh` and `
 
 1. Install the prerequisites for your host system (see the guide above).
 2. Check out a fresh copy of this repo.
-<<<<<<< HEAD
-3.  Step 3 is only necessary if you want to create a new GitHub project for your app. If you don't care about that, skip to Step 4. 
+3. Step 3 is only necessary if you want to create a new GitHub project for your app. If you don't care about that, skip to Step 4.
 
-    To do this you'll (obviously) need a GitHub account. You'll also need the [GitHub CLI](https://cli.github.com/)).
+    To do this you'll (obviously) need a GitHub account. You'll also need the [GitHub CLI](https://cli.github.com/).
     
     Create your own project from the checkout:
 
@@ -72,12 +71,8 @@ make newproject
 
 You'll be prompted for a new project name. This removes the connection to the Passiflora repo, creates a fresh Git history, and pushes to a new private GitHub repository under your account.
 
-4. Put your HTML/JavaScript/CSS in `src/www`. As one might expect, your startup file should be named `index.html`.
+4. Put your HTML/JavaScript/CSS in `src/www` (making sure to leave the `passiflora` folder intact). As one might expect, your startup file should be named `index.html`.
 5. Build:
-=======
-3. Put your HTML/JavaScript/CSS in `src/www` (making sure to leave the `passiflora` folder intact).
-4. Build:
->>>>>>> b1e93b7 (Hardening build scripts a bit more.)
 
 **macOS / Linux:**
 ```
@@ -89,7 +84,7 @@ make
 .\build
 ```
 
-6. There is no step 6, at least in the sense of building a functioning binary. You'll probably want to customize some of the settings to (e.g.) set your app's name, icon, and so on (see below).
+6. Your app should now build as a functioning binary. You'll probably want to customize some settings to set your app's name, icon, and so on (see below).
 
 For information on cross-compiling (e.g., building iOS apps on macOS), all available make/build targets, and per-platform guides, see **[BUILDING.md](BUILDING.md)**.
 
