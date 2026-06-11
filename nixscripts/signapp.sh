@@ -154,12 +154,21 @@ sanitize_bundle_for_codesign() {
         return 1
     fi
 
+    # Resolve to absolute path to avoid path-handling quirks with spaces or
+    # relative paths when running xattr.
+    _bundle=$(cd "$(dirname "$_bundle")" && pwd)/$(basename "$_bundle")
+
     # Remove AppleDouble sidecars and Finder droppings anywhere in the bundle.
     find "$_bundle" -name '._*' -type f -delete 2>/dev/null || true
     find "$_bundle" -name '.DS_Store' -type f -delete 2>/dev/null || true
 
-    # Strip xattrs/resource-fork metadata that codesign rejects.
-    dot_clean -n "$_bundle" 2>/dev/null || true
+    # Merge/remove resource forks (dot_clean without -n actually performs the
+    # cleanup; -n is dry-run and does nothing).
+    dot_clean "$_bundle" 2>/dev/null || true
+
+    # Clear xattrs: explicitly on the bundle directory itself first, then
+    # recursively on every file and subdirectory inside it.
+    xattr -c "$_bundle" 2>/dev/null || true
     xattr -cr "$_bundle" 2>/dev/null || true
     xattr -rd com.apple.FinderInfo "$_bundle" 2>/dev/null || true
     xattr -rd com.apple.ResourceFork "$_bundle" 2>/dev/null || true
@@ -185,7 +194,9 @@ if [ "$PLATFORM" = "macos" ]; then
     ENT_FILE=""
     _zip_file=""
     _mas_bundle=""
-    trap '[ -n "$ENT_FILE" ] && rm -f "$ENT_FILE"; [ -n "$_zip_file" ] && rm -f "$_zip_file"; [ -n "$_mas_bundle" ] && rm -rf "$_mas_bundle"' EXIT
+    _mas_tmpdir=""
+    _devid_tmpdir=""
+    trap '[ -n "$ENT_FILE" ] && rm -f "$ENT_FILE"; [ -n "$_zip_file" ] && rm -f "$_zip_file"; [ -n "$_mas_bundle" ] && rm -rf "$_mas_bundle"; [ -n "$_mas_tmpdir" ] && rm -rf "$_mas_tmpdir"; [ -n "$_devid_tmpdir" ] && rm -rf "$_devid_tmpdir"' EXIT
 
     # ── Step 1: Developer ID signing + notarization ────────────────
     echo "━━━ Step 1: Developer ID distribution (outside App Store) ━━━"
@@ -204,14 +215,20 @@ if [ "$PLATFORM" = "macos" ]; then
             echo ""
             echo "Signing with: $DEVID_SIGN_DESC"
 
+            # Create a working copy in /tmp to avoid iCloud Drive re-adding
+            # com.apple.FinderInfo between sanitize and codesign.
+            _devid_tmpdir=$(mktemp -d /tmp/signapp-devid-XXXXXX)
+            _devid_bundle="$_devid_tmpdir/$(basename "$BUNDLE")"
+            ditto "$BUNDLE" "$_devid_bundle"
+
             make_macos_entitlements
-            sanitize_bundle_for_codesign "$BUNDLE"
+            sanitize_bundle_for_codesign "$_devid_bundle"
             codesign --deep --force --options runtime \
                 --sign "$DEVID_SIGN_ID" \
                 $ENTITLEMENTS_FLAG \
-                "$BUNDLE"
+                "$_devid_bundle"
 
-            if ! codesign --verify --deep --strict --verbose=4 "$BUNDLE"; then
+            if ! codesign --verify --deep --strict --verbose=4 "$_devid_bundle"; then
                 echo "" >&2
                 echo "signapp: signed macOS bundle failed codesign verification." >&2
                 echo "  The selected identity may be revoked/invalid." >&2
@@ -219,6 +236,11 @@ if [ "$PLATFORM" = "macos" ]; then
                 exit 1
             fi
             [ -n "$ENT_FILE" ] && rm -f "$ENT_FILE"
+
+            # Copy the signed bundle back to the original location
+            echo "signapp: copying signed bundle back to $BUNDLE"
+            rm -rf "$BUNDLE"
+            ditto "$_devid_bundle" "$BUNDLE"
 
             echo ""
             echo "signapp: $BUNDLE signed (Developer ID)."
@@ -245,7 +267,7 @@ if [ "$PLATFORM" = "macos" ]; then
                         echo ""
                         echo "signapp: zipping app bundle for notarization..."
                         _zip_file="$BUNDLE_DIR/$(basename "$BUNDLE" .app)-notarize.zip"
-                        ditto -c -k --keepParent "$BUNDLE" "$_zip_file"
+                        ditto -c -k --keepParent "$_devid_bundle" "$_zip_file"
 
                         echo "signapp: submitting to Apple notary service (this may take several minutes)..."
                         xcrun notarytool submit "$_zip_file" \
@@ -256,7 +278,11 @@ if [ "$PLATFORM" = "macos" ]; then
 
                         echo ""
                         echo "signapp: stapling notarization ticket..."
-                        xcrun stapler staple "$BUNDLE"
+                        xcrun stapler staple "$_devid_bundle"
+                        
+                        # Copy notarized bundle back to original location
+                        rm -rf "$BUNDLE"
+                        ditto "$_devid_bundle" "$BUNDLE"
 
                         echo "signapp: notarization complete. The app is ready for distribution outside the App Store."
                     fi
@@ -273,7 +299,7 @@ if [ "$PLATFORM" = "macos" ]; then
                             echo ""
                             echo "signapp: zipping app bundle for notarization..."
                             _zip_file="$BUNDLE_DIR/$(basename "$BUNDLE" .app)-notarize.zip"
-                            ditto -c -k --keepParent "$BUNDLE" "$_zip_file"
+                            ditto -c -k --keepParent "$_devid_bundle" "$_zip_file"
 
                             echo "signapp: submitting to Apple notary service (this may take several minutes)..."
                             xcrun notarytool submit "$_zip_file" \
@@ -286,7 +312,11 @@ if [ "$PLATFORM" = "macos" ]; then
 
                             echo ""
                             echo "signapp: stapling notarization ticket..."
-                            xcrun stapler staple "$BUNDLE"
+                            xcrun stapler staple "$_devid_bundle"
+                            
+                            # Copy notarized bundle back to original location
+                            rm -rf "$BUNDLE"
+                            ditto "$_devid_bundle" "$BUNDLE"
 
                             echo "signapp: notarization complete. The app is ready for distribution outside the App Store."
                         else
@@ -317,10 +347,11 @@ if [ "$PLATFORM" = "macos" ]; then
 
     if [ "$_do_mas" = "y" ] || [ "$_do_mas" = "Y" ]; then
         # We need an App Store application identity and an installer identity.
-        # Make a working copy so we don't clobber the Developer ID–signed .app.
-        _mas_bundle="$BUNDLE_DIR/$(basename "$BUNDLE" .app)-MAS.app"
-        echo "signapp: creating App Store copy → $(basename "$_mas_bundle")"
-        rm -rf "$_mas_bundle"
+        # Create the working copy in /tmp so iCloud Drive (~/Documents) cannot
+        # re-add com.apple.FinderInfo between the xattr-clear and codesign calls.
+        _mas_tmpdir=$(mktemp -d /tmp/signapp-mas-XXXXXX)
+        _mas_bundle="$_mas_tmpdir/$(basename "$BUNDLE" .app)-MAS.app"
+        echo "signapp: creating App Store copy in $_mas_tmpdir"
         ditto "$BUNDLE" "$_mas_bundle"
 
         echo ""

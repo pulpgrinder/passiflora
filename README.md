@@ -27,8 +27,6 @@ What it *doesn't* do:
 * Generate 60 petabyte binaries for a "Hello, world!" program
 * Require configuration gymnastics -- there's no need to fool with nasty-ass package.json scripts or even nastier-ass XML files -- no Maven, Ant, or Gradle config (Passiflora does *use* Gradle (technically gradlew) for Android builds, but you don't have to get the stench of it on you).
 
-![Ur Doin' It Worng](doingitwrong.jpg)
-
 Unlike Electron, Passiflora uses the system's own embeddable web browser control rather than bundling an entire browser into the executable. Bundling a web browser made sense back in the bad old days of incompatible browsers and highly-restricted web app functionality, but things have improved immensely since then.
 
 ### Executable Size
