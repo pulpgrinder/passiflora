@@ -70,7 +70,7 @@ Every macOS and iOS app needs a **bundle identifier** — a reverse-DNS string t
 ```
 BUNDLE_ID com.yourcompany.YourApp
 ```
-You can register your bundle identifier at https://developer.apple.com/account/resources/identifiers/list as the "App ID".
+
 
 The Makefile, build.bat, and Android `build.gradle` all read `BUNDLE_ID` from this file. You should change this before distributing your app.
 
@@ -84,6 +84,9 @@ The Makefile, build.bat, and Android `build.gradle` all read `BUNDLE_ID` from th
 * For Android, the same `BUNDLE_ID` is used as the `applicationId` in build.gradle. Google Play uses it to identify your app, and it cannot be changed after publishing.
 
 Pick your bundle identifier wisely and early — changing it later means the OS treats it as a different app (losing user data, preferences, keychain items, etc.).
+
+You can register your bundle identifier for the Apple ecosystem at https://developer.apple.com/account/resources/identifiers/list as the "App ID".
+
 
 ---
 
