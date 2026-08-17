@@ -70,6 +70,7 @@ Every macOS and iOS app needs a **bundle identifier** — a reverse-DNS string t
 ```
 BUNDLE_ID com.yourcompany.YourApp
 ```
+You can register your bundle identifier at https://developer.apple.com/account/resources/identifiers/list as the "App ID".
 
 The Makefile, build.bat, and Android `build.gradle` all read `BUNDLE_ID` from this file. You should change this before distributing your app.
 
