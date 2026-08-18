@@ -1,16 +1,19 @@
 /*
  * passiflora.c — A minimal HTTP server that serves files from an
- * embedded ZIP archive.  The ZIP data is compiled in as a C array
- * via #include "generated/zipdata.h".  The server has no filesystem access
- * whatsoever — all content comes from the embedded archive.
+ * embedded ZIP archive.  The ZIP is linked in as a binary blob
+ * via #include "generated/zipdata.h" (the ZIP bytes themselves live in
+ * generated/archive.zip and are linked from generated/zipdata.S with
+ * .incbin, so the C compiler never parses the archive as source).
+ * The server has no filesystem access whatsoever — all content comes
+ * from the embedded archive.
  *
  * Supports ZIP compression methods 0 (stored) and 8 (deflate).
  * The deflate decompressor is a self-contained pure-C implementation
  * of RFC 1951 with no external dependencies.
  *
  * Build:
- *   ./nixscripts/mkzipfile.sh content_dir    # generates zipdata.c
- *   cc -O2 -o passiflora passiflora.c
+ *   ./nixscripts/mkzipfile.sh content_dir generated/zipdata.h
+ *   cc -O2 -o passiflora passiflora.c zipdata.o
  *
  * Usage:
  *   ./passiflora [port]           # default port: 8080

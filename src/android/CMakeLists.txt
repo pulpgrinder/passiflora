@@ -3,10 +3,12 @@ project(passiflora C)
 
 set(SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 
-# ── Generate zipdata.c from src/www if it doesn't already exist ────
+# ── Generate embedded ZIP (archive.zip + zipdata.S + zipdata.h) ────
 # When building from Android Studio, mkzipfile.sh hasn't been run.
 # We generate it here so the build is self-contained.
-set(ZIPDATA_C ${SRC_ROOT}/src/C/generated/zipdata.h)
+set(ZIPDATA_H ${SRC_ROOT}/src/C/generated/zipdata.h)
+set(ZIPDATA_S ${SRC_ROOT}/src/C/generated/zipdata.S)
+set(ZIPDATA_ZIP ${SRC_ROOT}/src/C/generated/archive.zip)
 set(CONTENT_DIR ${SRC_ROOT}/src/www)
 set(CONFIG_JS ${CONTENT_DIR}/generated/config.js)
 
@@ -15,7 +17,7 @@ if(NOT EXISTS ${CONFIG_JS})
     file(WRITE ${CONFIG_JS} "// Auto-generated file — DO NOT EDIT. This file is overwritten on every build.\nvar PassifloraConfig = {\n  os_name: \"Android\",\n  menus: [],\n  handleMenu: function(title) { alert(\"Menu item clicked: \" + title); }\n};\n")
 endif()
 
-if(NOT EXISTS ${ZIPDATA_C})
+if(NOT EXISTS ${ZIPDATA_S} OR NOT EXISTS ${ZIPDATA_ZIP} OR NOT EXISTS ${ZIPDATA_H})
     # Find all content files so CMake re-runs when they change
     file(GLOB_RECURSE CONTENT_FILES ${CONTENT_DIR}/*)
 
@@ -23,7 +25,7 @@ if(NOT EXISTS ${ZIPDATA_C})
     find_program(BASH_EXE bash)
     if(BASH_EXE)
         execute_process(
-            COMMAND ${BASH_EXE} ${SRC_ROOT}/nixscripts/mkzipfile.sh ${CONTENT_DIR} ${ZIPDATA_C}
+            COMMAND ${BASH_EXE} ${SRC_ROOT}/nixscripts/mkzipfile.sh ${CONTENT_DIR} ${ZIPDATA_H}
             WORKING_DIRECTORY ${SRC_ROOT}
             RESULT_VARIABLE MKZIP_RESULT
         )
@@ -32,14 +34,17 @@ if(NOT EXISTS ${ZIPDATA_C})
                 "Generate zipdata.h manually: sh nixscripts/mkzipfile.sh src/www src/C/generated/zipdata.h")
         endif()
     else()
-        message(FATAL_ERROR "zipdata.c not found and bash not available. "
+        message(FATAL_ERROR "zipdata.S not found and bash not available. "
             "Generate it first: sh nixscripts/mkzipfile.sh src/www src/C/generated/zipdata.h")
     endif()
 endif()
 
+enable_language(ASM)
+
 add_library(passiflora SHARED
     ${SRC_ROOT}/src/C/passiflora.c
     ${SRC_ROOT}/src/C/UI.c
+    ${ZIPDATA_S}
 )
 
 target_include_directories(passiflora PRIVATE ${SRC_ROOT} ${SRC_ROOT}/src/C)

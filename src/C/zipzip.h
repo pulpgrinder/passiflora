@@ -11,7 +11,10 @@
  */
 
 #ifndef MAX_DECOMP_SIZE
-#define MAX_DECOMP_SIZE (64 * 1024 * 1024)  /* 64 MB per file */
+#define MAX_DECOMP_SIZE (64 * 1024 * 1024)  /* 64 MB per deflated file */
+#endif
+#ifndef MAX_STORED_SIZE
+#define MAX_STORED_SIZE (2048ULL * 1024 * 1024)  /* 2 GB per stored file */
 #endif
 
 /* ------------------------------------------------------------------ */
@@ -321,8 +324,8 @@ static unsigned char *zip_find(const unsigned char *zip, size_t zip_len,
 
         if (match) {
             if (compression == 0) {
-                /* Stored */
-                if (comp_size > MAX_DECOMP_SIZE)
+                /* Stored — videos and other already-compressed media */
+                if ((unsigned long long)comp_size > MAX_STORED_SIZE)
                     return NULL;
                 unsigned char *data = malloc(comp_size ? comp_size : 1);
                 if (!data) return NULL;

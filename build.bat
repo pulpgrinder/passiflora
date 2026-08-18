@@ -15,7 +15,7 @@ REM
 REM Requires (for windows target):
 REM   - GCC (MinGW-w64) on PATH   — or set WIN_CC
 REM   - curl on PATH               (for WebView2Loader.dll download)
-REM   - PowerShell                  (for zip/hex conversion)
+REM   - PowerShell                  (for zip creation)
 REM
 setlocal enabledelayedexpansion
 
@@ -124,7 +124,7 @@ mkdir src\C\generated 2>nul
 echo [android] Generating generated.js and generated.css...
 call "%SCRIPT_DIR%\winscripts\mkgenerated.bat" src\android\menus\menu.txt %PROGNAME% Android "%THEME%" src\config
 if errorlevel 1 exit /b 1
-echo [android] Generating zipdata.h...
+echo [android] Generating embedded archive...
 call "%SCRIPT_DIR%\winscripts\mkzipfile.bat" %CONTENT% src\C\generated\zipdata.h
 if errorlevel 1 exit /b 1
 echo [android] Building APK...
@@ -251,7 +251,7 @@ mkdir src\C\generated 2>nul
 echo [googleplay-android] Generating generated.js and generated.css...
 call "%SCRIPT_DIR%\winscripts\mkgenerated.bat" src\android\menus\menu.txt %PROGNAME% Android "%THEME%" src\config
 if errorlevel 1 exit /b 1
-echo [googleplay-android] Generating zipdata.h...
+echo [googleplay-android] Generating embedded archive...
 call "%SCRIPT_DIR%\winscripts\mkzipfile.bat" %CONTENT% src\C\generated\zipdata.h
 if errorlevel 1 exit /b 1
 echo [googleplay-android] Building AAB...
@@ -319,8 +319,8 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM ── Step 2: Generate zipdata.h (now includes generated.js) ──
-echo [windows] Generating zipdata.h from %CONTENT%...
+REM ── Step 2: Generate embedded archive (now includes generated.js) ──
+echo [windows] Generating embedded archive from %CONTENT%...
 call "%SCRIPT_DIR%\winscripts\mkzipfile.bat" %CONTENT% src\C\generated\zipdata.h
 if errorlevel 1 (
     echo [ERROR] mkzipfile.bat failed >&2
@@ -422,7 +422,14 @@ if exist "%_ICON_PATH%" (
     )
 )
 
-%WIN_CC% %WIN_CFLAGS% -I. -o "%WIN_BINDIR%\%DISPLAYNAME%.exe" src\C\passiflora.c src\C\UI.c %RES_OBJ% %WIN_LDFLAGS%
+echo [windows] Assembling embedded archive...
+%WIN_CC% -c -o src\C\generated\zipdata.o src\C\generated\zipdata.S
+if errorlevel 1 (
+    echo [ERROR] Failed to assemble zipdata.S >&2
+    exit /b 1
+)
+
+%WIN_CC% %WIN_CFLAGS% -I. -o "%WIN_BINDIR%\%DISPLAYNAME%.exe" src\C\passiflora.c src\C\UI.c src\C\generated\zipdata.o %RES_OBJ% %WIN_LDFLAGS%
 if errorlevel 1 (
     echo [ERROR] Compilation failed >&2
     exit /b 1

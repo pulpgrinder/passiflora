@@ -132,6 +132,9 @@ BINARY  = $(BINDIR)/$(PROGNAME)
 # C source layout
 SRCDIR = src/C
 GENDIR = src/C/generated
+# zipdata.o is assembled separately. Apple UI_CFLAGS includes
+# -x objective-c, so link lines pass -x none before zipdata.o
+# or clang would parse the object file as source.
 
 # Default target: build for the current platform only
 .DEFAULT_GOAL := default
@@ -217,7 +220,9 @@ ifeq ($(UNAME_S),Linux)
 	fi
 endif
 	mkdir -p $(BINDIR)
-	$(CC) $(CFLAGS) $(UI_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(LDFLAGS) $(UI_LDFLAGS)
+	$(CC) -c -o $(GENDIR)/zipdata.o $(GENDIR)/zipdata.S
+	$(CC) $(CFLAGS) $(UI_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c \
+	    -x none $(GENDIR)/zipdata.o $(LDFLAGS) $(UI_LDFLAGS)
 
 icons:
 	bash src/icons/buildiconset.sh
@@ -241,7 +246,11 @@ ifeq ($(UNAME_S),Darwin)
 	sh nixscripts/mkgenerated.sh src/iOS/menus/menu.txt "$(PROGNAME)" iOS "$(THEME)" src/config
 	sh nixscripts/mkzipfile.sh "$(CONTENT)" "$(GENDIR)/zipdata.h"
 	mkdir -p $(IOS_BINDIR)
-	$(IOS_CC) $(IOS_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(IOS_LDFLAGS)
+	$(IOS_CC) -c -arch $(IOS_ARCH) -isysroot $(IOS_SDK) \
+	    -miphoneos-version-min=$(IOS_MIN) \
+	    -o $(GENDIR)/zipdata.o $(GENDIR)/zipdata.S
+	$(IOS_CC) $(IOS_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c \
+	    -x none $(GENDIR)/zipdata.o $(IOS_LDFLAGS)
 else
 	@echo "iOS target requires macOS with Xcode." >&2; exit 1
 endif
@@ -404,7 +413,11 @@ ifeq ($(UNAME_S),Darwin)
 	sh nixscripts/mkgenerated.sh src/iOS/menus/menu.txt "$(PROGNAME)" iOS "$(THEME)" src/config
 	sh nixscripts/mkzipfile.sh "$(CONTENT)" "$(GENDIR)/zipdata.h"
 	mkdir -p $(SIMOS_BINDIR)
-	$(SIMOS_CC) $(SIMOS_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(SIMOS_LDFLAGS)
+	$(SIMOS_CC) -c -arch $(SIMOS_ARCH) -isysroot $(SIMOS_SDK) \
+	    -mios-simulator-version-min=$(IOS_MIN) \
+	    -o $(GENDIR)/zipdata.o $(GENDIR)/zipdata.S
+	$(SIMOS_CC) $(SIMOS_CFLAGS) -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c \
+	    -x none $(GENDIR)/zipdata.o $(SIMOS_LDFLAGS)
 else
 	@echo "iOS Simulator target requires macOS with Xcode." >&2; exit 1
 endif
@@ -463,15 +476,17 @@ $(WIN_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR
 	sh nixscripts/mkgenerated.sh src/Windows/menus/menu.txt "$(PROGNAME)" Windows "$(THEME)" src/config
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 	mkdir -p $(WIN_BINDIR)
+	$(WIN_CC) -c -o $(GENDIR)/zipdata.o $(GENDIR)/zipdata.S
 	@if [ -f src/icons/builticons/windows/app.ico ] && \
 	    command -v $(WIN_WINDRES) >/dev/null 2>&1; then \
 		echo '1 ICON "src/icons/builticons/windows/app.ico"' \
 		    > $(WIN_BINDIR)/app.rc; \
 		$(WIN_WINDRES) $(WIN_BINDIR)/app.rc -o $(WIN_BINDIR)/app_res.o; \
 		$(WIN_CC) $(WIN_CFLAGS) -I. -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c \
-		    $(WIN_BINDIR)/app_res.o $(WIN_LDFLAGS); \
+		    $(GENDIR)/zipdata.o $(WIN_BINDIR)/app_res.o $(WIN_LDFLAGS); \
 	else \
-		$(WIN_CC) $(WIN_CFLAGS) -I. -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(WIN_LDFLAGS); \
+		$(WIN_CC) $(WIN_CFLAGS) -I. -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c \
+		    $(GENDIR)/zipdata.o $(WIN_LDFLAGS); \
 	fi
 	@mv "$@" "$(WIN_BINDIR)/$(DISPLAYNAME).exe"
 
@@ -546,7 +561,8 @@ ifeq ($(UNAME_S),Linux)
 		echo "static const unsigned int linux_icon_png_len = 0;" >> $(LINUX_ICON_H); \
 	fi
 	mkdir -p $(BINDIR)
-	$(CC) $(CFLAGS) $(UI_CFLAGS) -o $(BINARY) $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(LDFLAGS) $(UI_LDFLAGS)
+	$(CC) -c -o $(GENDIR)/zipdata.o $(GENDIR)/zipdata.S
+	$(CC) $(CFLAGS) $(UI_CFLAGS) -o $(BINARY) $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c $(GENDIR)/zipdata.o $(LDFLAGS) $(UI_LDFLAGS)
 	@mv "$(BINARY)" "$(BINDIR)/$(DISPLAYNAME)"
 else
 	@echo "Linux target requires building on a Linux system." >&2

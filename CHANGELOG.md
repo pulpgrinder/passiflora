@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Embedded content no longer compiled as a C hex array**: `mkzipfile` now writes the content ZIP as `src/C/generated/archive.zip` and a tiny `zipdata.S` that `.incbin`s it. `zipdata.h` is just `extern` declarations. This avoids Clang's "file is too large for Clang to process" failure when an app ships large media (videos, etc.). The archive is still linked into the binary — the server still has no filesystem access to content.
+
+- **Stored ZIP entries may be up to 2 GB**: `zip_find()` previously rejected any file larger than 64 MB, which blocked serving typical video files even when they were stored uncompressed. Deflated entries remain capped at 64 MB (zip-bomb protection).
+
 ### Added
 
 - **Signing setup templates**: Added top-level `signing_setup.sh` and `signing_setup.bat` templates with documented placeholders for Android and Windows signing variables. These are intended to be copied to `~/passiflora-keys/signing_setup.sh` (macOS/Linux) or `%USERPROFILE%\passiflora-keys\signing_setup.bat` (Windows), keeping secrets outside the repository.
