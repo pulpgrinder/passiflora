@@ -11,7 +11,7 @@ REM
 REM [output] may be a directory, or a file path whose directory is used
 REM (historically zipdata.h). Default: src\C\generated
 REM
-REM Requires: PowerShell 5+
+REM Requires: PowerShell 5+ (see mkzipfile.ps1)
 REM
 setlocal enabledelayedexpansion
 
@@ -43,14 +43,16 @@ set HEADER=!OUTDIR_ABS!\zipdata.h
 set ASMFILE=!OUTDIR_ABS!\zipdata.S
 set ARCHIVE_ASM=!ARCHIVE:\=/!
 
-REM Create a temp zip file using PowerShell
 set TMPZIP=%TEMP%\mkzipfile_%RANDOM%.zip
 if exist "%TMPZIP%" del /q "%TMPZIP%"
 
-powershell -NoProfile -Command ^
-    "$src = (Resolve-Path '%SRCDIR%').Path; " ^
-    "$dst = '%TMPZIP%'; " ^
-    "Compress-Archive -Path \"$src\*\" -DestinationPath $dst -Force"
+set SCRIPT=%~dp0mkzipfile.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%" -SrcDir "%SRCDIR%" -DestZip "%TMPZIP%"
+if errorlevel 1 (
+    echo Error: failed to create or validate zip archive >&2
+    del /q "%TMPZIP%" 2>nul
+    exit /b 1
+)
 
 if not exist "%TMPZIP%" (
     echo Error: failed to create zip archive >&2

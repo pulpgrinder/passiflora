@@ -1,7 +1,7 @@
 /*
  * zipzip.h — Pure-C ZIP filesystem and DEFLATE decompressor.
  *
- * Provides zip_find() and zip_find_size() for looking up files in a
+ * Provides zip_find_ex() and zip_find_size() for looking up files in a
  * ZIP archive stored as a byte array.  Supports compression methods
  * 0 (stored) and 8 (deflate).  The deflate decompressor is a
  * self-contained implementation of RFC 1951 with no external
@@ -283,19 +283,26 @@ static int zip_path_eq(const unsigned char *a, const char *b, size_t len)
     return 1;
 }
 
-/* ------------------------------------------------------------------ */
-/*  ZIP filesystem lookup                                              */
-/*                                                                     */
-/*  Walks the local file headers in a ZIP byte array looking for a     */
-/*  matching filename.  On match, decompresses (or copies) the data   */
-/*  and returns a malloc'd buffer.  Returns NULL if not found.         */
-/* ------------------------------------------------------------------ */
-static unsigned char *zip_find(const unsigned char *zip, size_t zip_len,
-                               const char *filename,
-                               size_t *out_len)
+/*
+ * Locate a ZIP entry.
+ * For method 0 (stored): *out_ptr points into the zip image (do NOT free).
+ * For method 8 (deflate): *out_ptr is malloc'd uncompressed data (caller frees).
+ * *out_owned is set to 0 (stored) or 1 (malloc'd).
+ * Returns 1 on success, 0 if missing / error.
+ *
+ * Stored media (MP4/JPEG/etc.) can be served zero-copy, including HTTP Range
+ * slices, without allocating a full second copy of every large file.
+ */
+static int zip_find_ex(const unsigned char *zip, size_t zip_len,
+                       const char *filename,
+                       const unsigned char **out_ptr, size_t *out_len,
+                       int *out_owned)
 {
     size_t pos = 0;
     size_t fname_len = strlen(filename);
+    if (out_ptr) *out_ptr = NULL;
+    if (out_len) *out_len = 0;
+    if (out_owned) *out_owned = 0;
 
     while (pos + 30 <= zip_len) {
         uint32_t sig = read_le32(zip + pos);
@@ -311,54 +318,53 @@ static unsigned char *zip_find(const unsigned char *zip, size_t zip_len,
         pos += 30;
 
         if (pos + name_len + extra_len > zip_len)
-            return NULL;
+            return 0;
 
-        /* Check if this entry matches the requested filename */
         int match = (name_len == fname_len &&
                      zip_path_eq(zip + pos, filename, fname_len));
 
         pos += name_len + extra_len;
 
         if (pos + comp_size > zip_len)
-            return NULL;
+            return 0;
 
         if (match) {
             if (compression == 0) {
-                /* Stored — videos and other already-compressed media */
                 if ((unsigned long long)comp_size > MAX_STORED_SIZE)
-                    return NULL;
-                unsigned char *data = malloc(comp_size ? comp_size : 1);
-                if (!data) return NULL;
-                if (comp_size) memcpy(data, zip + pos, comp_size);
-                *out_len = comp_size;
-                return data;
+                    return 0;
+                if (out_ptr) *out_ptr = zip + pos;
+                if (out_len) *out_len = comp_size;
+                if (out_owned) *out_owned = 0;
+                return 1;
             } else if (compression == 8) {
-                /* Deflate */
                 if (uncomp_size > MAX_DECOMP_SIZE)
-                    return NULL;
+                    return 0;
                 unsigned char *data = malloc(uncomp_size ? uncomp_size : 1);
-                if (!data) return NULL;
+                if (!data) return 0;
                 if (uncomp_size == 0) {
-                    *out_len = 0;
-                    return data;
+                    if (out_ptr) *out_ptr = data;
+                    if (out_len) *out_len = 0;
+                    if (out_owned) *out_owned = 1;
+                    return 1;
                 }
                 size_t got = deflate_inflate(zip + pos, comp_size,
                                              data, uncomp_size);
                 if (got == (size_t)-1) {
                     free(data);
-                    return NULL;
+                    return 0;
                 }
-                *out_len = got;
-                return data;
+                if (out_ptr) *out_ptr = data;
+                if (out_len) *out_len = got;
+                if (out_owned) *out_owned = 1;
+                return 1;
             }
-            /* Unsupported compression — treat as not found */
-            return NULL;
+            return 0;
         }
 
         pos += comp_size;
     }
 
-    return NULL;  /* not found */
+    return 0;
 }
 
 /* ------------------------------------------------------------------ */

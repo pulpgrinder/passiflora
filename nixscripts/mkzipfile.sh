@@ -45,7 +45,50 @@ TMPZIP="$TMPDIR_MZ/archive.zip"
 trap 'rm -rf "$TMPDIR_MZ"' EXIT
 
 # Zip all non-hidden files from inside the directory (no path prefix).
-(cd "$SRCDIR" && find . -type f ! -name '.*' -print | sed 's|^\./||' | zip -@ "$TMPZIP") > /dev/null
+# Store already-compressed media uncompressed (-n) so the native server can
+# serve large files with zero-copy / cheap HTTP Range responses. Deflating
+# MP4/JPEG typically saves almost nothing but forces a full malloc+inflate
+# per request, which exhausts memory on iOS after repeated media loads.
+(cd "$SRCDIR" && find . -type f ! -name '.*' -print | sed 's|^\./||' | \
+    zip -n '.mp4:.MP4:.jpg:.JPG:.jpeg:.JPEG:.png:.PNG:.webp:.ttf:.woff:.woff2' -@ "$TMPZIP") > /dev/null
+
+# Guard: never ship 0-byte entries for non-empty source files, and require
+# media extensions to be ZIP stored (method 0) so zero-copy serving works.
+python3 - "$SRCDIR" "$TMPZIP" <<'PY'
+import sys, zipfile
+from pathlib import Path
+srcdir, zippath = Path(sys.argv[1]), Path(sys.argv[2])
+bad = []
+deflated_media = []
+media_ext = {'.mp4', '.jpg', '.jpeg', '.png', '.webp', '.ttf', '.woff', '.woff2'}
+with zipfile.ZipFile(zippath) as z:
+    for info in z.infolist():
+        if info.is_dir():
+            continue
+        src = srcdir / info.filename
+        if not src.is_file():
+            continue
+        disk = src.stat().st_size
+        if disk > 0 and info.file_size == 0:
+            bad.append((info.filename, disk))
+        ext = Path(info.filename).suffix.lower()
+        if ext in media_ext and info.compress_type != zipfile.ZIP_STORED:
+            deflated_media.append(info.filename)
+if bad:
+    print("mkzipfile: ERROR — zip stored empty data for non-empty files:", file=sys.stderr)
+    for name, disk in bad[:30]:
+        print(f"  {name} (disk {disk} bytes, zip 0)", file=sys.stderr)
+    if len(bad) > 30:
+        print(f"  ... and {len(bad) - 30} more", file=sys.stderr)
+    sys.exit(1)
+if deflated_media:
+    print("mkzipfile: ERROR — media should be ZIP stored (method 0), not deflated:", file=sys.stderr)
+    for name in deflated_media[:20]:
+        print(f"  {name}", file=sys.stderr)
+    sys.exit(1)
+n = sum(1 for i in zipfile.ZipFile(zippath).infolist() if not i.is_dir())
+print(f"mkzipfile: zip content check OK ({n} entries, media stored uncompressed)")
+PY
 
 cp "$TMPZIP" "$ARCHIVE"
 

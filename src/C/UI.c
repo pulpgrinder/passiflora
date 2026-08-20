@@ -82,6 +82,15 @@ static WKWebView *g_ios_webView = nil;
         [[WKWebViewConfiguration alloc] init];
     /* Allow inline media playback (no forced fullscreen) */
     config.allowsInlineMediaPlayback = YES;
+    /*
+     * Without this, iOS WKWebView requires a direct user gesture to play
+     * media. HTML5 apps often call video.play() after async UI work (zoom,
+     * navigation, network), by which time the gesture has expired and play()
+     * rejects — leaving a black or empty <video>. Allow muted / inline
+     * playback without a fresh gesture. (macOS already relaxes this when
+     * camera/mic permissions are enabled.)
+     */
+    config.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
     [config.userContentController addScriptMessageHandler:self
                                                      name:@"passifloraPosix"];
     [config.userContentController addScriptMessageHandler:self

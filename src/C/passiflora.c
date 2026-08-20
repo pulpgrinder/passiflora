@@ -409,6 +409,7 @@ static void send_response(int fd, int code, const char *status,
         "HTTP/1.1 %d %s\r\n"
         "Content-Type: %s\r\n"
         "Content-Length: %zu\r\n"
+        "Accept-Ranges: bytes\r\n"
         "X-Content-Type-Options: nosniff\r\n"
         "X-Frame-Options: DENY\r\n"
 #ifdef PERM_REMOTEDEBUGGING
@@ -425,6 +426,92 @@ static void send_response(int fd, int code, const char *status,
         send_all(fd, hdr, hlen);
     if (body && body_len)
         send_all(fd, body, body_len);
+}
+
+static void send_text(int fd, int code, const char *status, const char *msg);
+
+/*
+ * Serve a byte range (HTTP 206). Required for reliable HTML5 <video>/<audio>
+ * in iOS WKWebView — Safari issues Range requests even against localhost.
+ */
+static void send_response_range(int fd, const char *content_type,
+                                const unsigned char *body, size_t body_len,
+                                size_t start, size_t end)
+{
+    if (!body || body_len == 0 || start >= body_len) {
+        send_text(fd, 416, "Range Not Satisfiable", "Invalid range\n");
+        return;
+    }
+    if (end >= body_len) end = body_len - 1;
+    if (end < start) {
+        send_text(fd, 416, "Range Not Satisfiable", "Invalid range\n");
+        return;
+    }
+    size_t slice = end - start + 1;
+    char hdr[HDR_BUF];
+    int hlen = snprintf(hdr, sizeof hdr,
+        "HTTP/1.1 206 Partial Content\r\n"
+        "Content-Type: %s\r\n"
+        "Content-Length: %zu\r\n"
+        "Content-Range: bytes %zu-%zu/%zu\r\n"
+        "Accept-Ranges: bytes\r\n"
+        "X-Content-Type-Options: nosniff\r\n"
+        "X-Frame-Options: DENY\r\n"
+        "Connection: close\r\n"
+        "\r\n",
+        content_type, slice, start, end, body_len);
+    if (hlen > 0 && (size_t)hlen < sizeof hdr)
+        send_all(fd, hdr, hlen);
+    send_all(fd, body + start, slice);
+}
+
+/* Parse "Range: bytes=START-END" from request headers. Returns 1 if valid. */
+static int parse_byte_range(const char *hdr, size_t body_len,
+                            size_t *out_start, size_t *out_end)
+{
+    const char *p = hdr;
+    while (p && *p) {
+        const char *line = strstr(p, "\r\n");
+        const char *next = line ? line + 2 : NULL;
+        size_t len = line ? (size_t)(line - p) : strlen(p);
+        if (len > 6 && strncasecmp(p, "Range:", 6) == 0) {
+            const char *v = p + 6;
+            while (v < p + len && (*v == ' ' || *v == '\t')) v++;
+            if (strncasecmp(v, "bytes=", 6) != 0) return 0;
+            v += 6;
+            char buf[64];
+            size_t n = (size_t)((p + len) - v);
+            if (n >= sizeof buf) n = sizeof buf - 1;
+            memcpy(buf, v, n);
+            buf[n] = '\0';
+            /* Support single range only: START-END or START- or -SUFFIX */
+            unsigned long long start = 0, end = 0;
+            if (buf[0] == '-') {
+                unsigned long long suffix = strtoull(buf + 1, NULL, 10);
+                if (suffix == 0 || body_len == 0) return 0;
+                if (suffix > body_len) suffix = body_len;
+                *out_start = body_len - (size_t)suffix;
+                *out_end = body_len - 1;
+                return 1;
+            }
+            char *dash = strchr(buf, '-');
+            if (!dash) return 0;
+            *dash = '\0';
+            start = strtoull(buf, NULL, 10);
+            if (dash[1] == '\0') {
+                end = body_len ? body_len - 1 : 0;
+            } else {
+                end = strtoull(dash + 1, NULL, 10);
+            }
+            if (body_len == 0 || start >= body_len || end < start) return 0;
+            if (end >= body_len) end = body_len - 1;
+            *out_start = (size_t)start;
+            *out_end = (size_t)end;
+            return 1;
+        }
+        p = next;
+    }
+    return 0;
 }
 
 static void send_text(int fd, int code, const char *status, const char *msg)
@@ -1204,19 +1291,28 @@ static void handle_request(int fd)
         return;
     }
 
-    /* GET — decompress and serve */
-    size_t data_len;
-    unsigned char *data = zip_find(zipdata, zipdata_len,
-                                   filename, &data_len);
-    if (!data) {
+    /* GET — serve from ZIP (honor Range for HTML5 media seeking).
+     * Stored entries are served zero-copy from the embedded archive so
+     * each large-file Range request does not malloc another full copy. */
+    const unsigned char *data = NULL;
+    size_t data_len = 0;
+    int data_owned = 0;
+    if (!zip_find_ex(zipdata, zipdata_len, filename,
+                     &data, &data_len, &data_owned) || !data) {
         send_text(fd, 404, "Not Found", "404 — file not found\n");
         free(hdr);
         return;
     }
 
-    send_response(fd, 200, "OK", mime, data, data_len);
+    size_t range_start = 0, range_end = 0;
+    if (parse_byte_range(hdr, data_len, &range_start, &range_end)) {
+        send_response_range(fd, mime, data, data_len, range_start, range_end);
+    } else {
+        send_response(fd, 200, "OK", mime, data, data_len);
+    }
 
-    free(data);
+    if (data_owned)
+        free((void *)data);
     free(hdr);
 }
 
