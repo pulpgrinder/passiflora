@@ -1197,7 +1197,8 @@ typedef struct {
     /* 20 */ void *remove_AcceleratorKeyPressed;
     /* 21 */ void *get_ParentWindow;
     /* 22 */ void *put_ParentWindow;
-    /* 23 */ void *NotifyParentWindowPositionChanged;
+    /* 23 */ HRESULT (STDMETHODCALLTYPE *NotifyParentWindowPositionChanged)(
+                 ICoreWebView2Controller*);
     /* 24 */ void *Close;
     /* 25 */ HRESULT (STDMETHODCALLTYPE *get_CoreWebView2)(
                  ICoreWebView2Controller*,ICoreWebView2**);
@@ -1725,13 +1726,80 @@ static void win_call_handlemenu(WV2State *st, const char *title)
     st->webview->lpVtbl->ExecuteScript(st->webview, wjs, NULL);
 }
 
-/* ---- Helper: resize WebView after menu show/hide ---- */
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED 0x02E0
+#endif
+
+/* DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 == (HANDLE)-4 */
+static void win_enable_dpi_awareness(void)
+{
+    HMODULE user32 = GetModuleHandleA("user32.dll");
+    if (user32) {
+        typedef BOOL (WINAPI *PFN_SetProcessDpiAwarenessContext)(HANDLE);
+        PFN_SetProcessDpiAwarenessContext setCtx =
+            (PFN_SetProcessDpiAwarenessContext)(void *)
+                GetProcAddress(user32, "SetProcessDpiAwarenessContext");
+        if (setCtx) {
+            if (setCtx((HANDLE)(INT_PTR)-4)) return; /* PER_MONITOR_AWARE_V2 */
+            if (setCtx((HANDLE)(INT_PTR)-3)) return; /* PER_MONITOR_AWARE */
+        }
+    }
+    {
+        HMODULE shcore = LoadLibraryA("Shcore.dll");
+        if (shcore) {
+            typedef HRESULT (WINAPI *PFN_SetProcessDpiAwareness)(int);
+            PFN_SetProcessDpiAwareness setAwareness =
+                (PFN_SetProcessDpiAwareness)(void *)
+                    GetProcAddress(shcore, "SetProcessDpiAwareness");
+            /* PROCESS_PER_MONITOR_DPI_AWARE = 2 */
+            if (setAwareness && SUCCEEDED(setAwareness(2))) {
+                FreeLibrary(shcore);
+                return;
+            }
+            FreeLibrary(shcore);
+        }
+    }
+    if (user32) {
+        typedef BOOL (WINAPI *PFN_SetProcessDPIAware)(void);
+        PFN_SetProcessDPIAware setAware =
+            (PFN_SetProcessDPIAware)(void *)
+                GetProcAddress(user32, "SetProcessDPIAware");
+        if (setAware) setAware();
+    }
+}
+
+static UINT win_system_dpi(void)
+{
+    HMODULE user32 = GetModuleHandleA("user32.dll");
+    if (user32) {
+        typedef UINT (WINAPI *PFN_GetDpiForSystem)(void);
+        PFN_GetDpiForSystem getDpi =
+            (PFN_GetDpiForSystem)(void *)GetProcAddress(user32, "GetDpiForSystem");
+        if (getDpi) {
+            UINT dpi = getDpi();
+            if (dpi) return dpi;
+        }
+    }
+    {
+        HDC hdc = GetDC(NULL);
+        UINT dpi = 96;
+        if (hdc) {
+            int v = GetDeviceCaps(hdc, LOGPIXELSX);
+            if (v > 0) dpi = (UINT)v;
+            ReleaseDC(NULL, hdc);
+        }
+        return dpi;
+    }
+}
+
+/* ---- Helper: resize WebView after menu show/hide / DPI change ---- */
 static void wv2_resize_to_client(HWND hwnd)
 {
     if (g_wv2.ctrl) {
         RECT rc;
         GetClientRect(hwnd, &rc);
         g_wv2.ctrl->lpVtbl->put_Bounds(g_wv2.ctrl, rc);
+        g_wv2.ctrl->lpVtbl->NotifyParentWindowPositionChanged(g_wv2.ctrl);
     }
 }
 
@@ -1743,6 +1811,22 @@ static LRESULT CALLBACK ZSWndProc(HWND hwnd, UINT msg,
     case WM_SIZE:
         wv2_resize_to_client(hwnd);
         return 0;
+    case WM_MOVE:
+        if (g_wv2.ctrl)
+            g_wv2.ctrl->lpVtbl->NotifyParentWindowPositionChanged(g_wv2.ctrl);
+        return 0;
+    case WM_DPICHANGED: {
+        RECT *suggested = (RECT *)lp;
+        if (suggested) {
+            SetWindowPos(hwnd, NULL,
+                suggested->left, suggested->top,
+                suggested->right - suggested->left,
+                suggested->bottom - suggested->top,
+                SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        wv2_resize_to_client(hwnd);
+        return 0;
+    }
     case WM_COMMAND: {
         int id = LOWORD(wp);
         int idx = id - WIN_MENU_ID_BASE;
@@ -1816,8 +1900,28 @@ void ui_open(int port)
 {
     g_wv2.port = port;
 
+    /* Before any HWND: otherwise Windows bitmap-stretches a 96-DPI
+     * framebuffer (fuzzy content on high-DPI hosts, including
+     * Parallels Desktop on a Retina Mac). */
+    win_enable_dpi_awareness();
+
     OleInitialize(NULL);
     HINSTANCE hInst = GetModuleHandle(NULL);
+    UINT dpi = win_system_dpi();
+    int smx = GetSystemMetrics(SM_CXSMICON);
+    int smy = GetSystemMetrics(SM_CYSMICON);
+    {
+        typedef int (WINAPI *PFN_GetSystemMetricsForDpi)(int, UINT);
+        HMODULE user32 = GetModuleHandleA("user32.dll");
+        PFN_GetSystemMetricsForDpi gsm = user32
+            ? (PFN_GetSystemMetricsForDpi)(void *)
+                  GetProcAddress(user32, "GetSystemMetricsForDpi")
+            : NULL;
+        if (gsm) {
+            smx = gsm(SM_CXSMICON, dpi);
+            smy = gsm(SM_CYSMICON, dpi);
+        }
+    }
 
     WNDCLASSEXA wc;
     memset(&wc, 0, sizeof wc);
@@ -1829,16 +1933,14 @@ void ui_open(int port)
     wc.lpszClassName = "PassifloraWnd";
     wc.hIcon         = LoadIconA(hInst, MAKEINTRESOURCEA(1));
     wc.hIconSm       = (HICON)LoadImageA(hInst, MAKEINTRESOURCEA(1),
-                            IMAGE_ICON,
-                            GetSystemMetrics(SM_CXSMICON),
-                            GetSystemMetrics(SM_CYSMICON),
-                            LR_DEFAULTCOLOR);
+                            IMAGE_ICON, smx, smy, LR_DEFAULTCOLOR);
     RegisterClassExA(&wc);
 
     g_wv2.hwnd = CreateWindowExA(
         0, "PassifloraWnd", MENU_DISPLAYNAME,
         WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, 1024, 768,
+        CW_USEDEFAULT, CW_USEDEFAULT,
+        MulDiv(1024, (int)dpi, 96), MulDiv(768, (int)dpi, 96),
         NULL, NULL, hInst, NULL);
 
     /* Build menu bar (hidden until Alt is pressed) */

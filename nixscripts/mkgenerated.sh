@@ -75,6 +75,9 @@ if [ "$USE_PASSIFLORAUI" = "true" ]; then
     sh "$SCRIPT_DIR/mkpanels.sh" "$PANELS_DIR" "$PANELS_TMP"
     printf '\n' >> "$GENERATED_JS"
     cat "$PANELS_TMP" >> "$GENERATED_JS"
+
+    printf '\n' >> "$GENERATED_JS"
+    cat "$PASSIFLORA_DIR/UI/android-select.js" >> "$GENERATED_JS"
 fi
 
 echo "mkgenerated: $GENERATED_JS built"

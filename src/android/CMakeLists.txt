@@ -47,10 +47,14 @@ add_library(passiflora SHARED
     ${ZIPDATA_S}
 )
 
+# archive.zip can be hundreds of MB; DWARF for the .incbin blob is unusable and
+# AGP's RelWithDebInfo mergeNativeDebugMetadata copies it until the disk fills.
+set_source_files_properties(${ZIPDATA_S} PROPERTIES COMPILE_FLAGS "-g0")
+
 target_include_directories(passiflora PRIVATE ${SRC_ROOT} ${SRC_ROOT}/src/C)
 
 # ── Compiler hardening ────────────────────────────────────────────
-target_compile_options(passiflora PRIVATE -Wall -Wextra -O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2)
+target_compile_options(passiflora PRIVATE -Wall -Wextra -O2 -g0 -fstack-protector-strong -D_FORTIFY_SOURCE=2)
 target_link_options(passiflora PRIVATE -Wl,-z,relro,-z,now)
 
 # ── Read PROGNAME from Makefile ────────────────────────────────────

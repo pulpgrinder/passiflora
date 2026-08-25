@@ -32,7 +32,8 @@
 #include <time.h>
 #include <pthread.h>
 
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(__linux__) && !defined(__ANDROID__) \
+    && (defined(PERM_CAMERA) || defined(PERM_MICROPHONE))
 #include <glib.h>  /* g_free for GLib-allocated strings */
 #endif
 
@@ -717,7 +718,8 @@ char *passiflora_posix_call(const char *params)
     (void)func;  /* may be unused if no native handlers are compiled */
 
     /* ---- startRecording (Linux GStreamer) ---- */
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(__linux__) && !defined(__ANDROID__) \
+    && (defined(PERM_CAMERA) || defined(PERM_MICROPHONE))
     if (strcmp(func, "startRecording") == 0) {
         extern char *gst_start_recording(const char *path, int has_video, int has_audio);
         char rec_video[8], rec_audio[8];

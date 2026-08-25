@@ -389,3 +389,103 @@ ul.passiflora_menu li:has(+ li.passiflora_menu_separator) {
     padding: 16px;
     color: var(--slide-body-color);
 }
+
+/* Android WebView: native <select> popups clip long lists (theme picker). */
+.select-wrap {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+}
+
+html.is-android .select-wrap::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+    right: 0.7em;
+    top: 50%;
+    width: 0.38em;
+    height: 0.38em;
+    margin-top: -0.28em;
+    border-right: 2px solid var(--slide-body-color, #111);
+    border-bottom: 2px solid var(--slide-body-color, #111);
+    transform: rotate(45deg);
+}
+
+html.is-android select.select-native-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+html.is-android .select-proxy {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    font: inherit;
+    font-size: 1rem;
+    line-height: 1.25;
+    text-align: left;
+    padding: 0.4em 1.8em 0.4em 0.5em;
+    border-radius: 8px;
+    border: 1px solid var(--accent-color, #888);
+    background-color: var(--slide-body-background-color, #fff);
+    color: var(--slide-body-color, #111);
+    cursor: pointer;
+}
+
+.select-picker-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: var(--overlay-color, rgba(0, 0, 0, 0.45));
+}
+
+.select-picker-sheet {
+    box-sizing: border-box;
+    width: min(28rem, 100%);
+    max-height: min(70vh, 100%);
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    background: var(--slide-body-background-color, #fff);
+    color: var(--slide-body-color, #111);
+    border: 1px solid var(--accent-color, #888);
+    border-radius: 10px;
+}
+
+.select-picker-option {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0.7em 1em;
+    border: none;
+    border-bottom: 1px solid var(--border-color, #888);
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 1rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.select-picker-option:last-child {
+    border-bottom: none;
+}
+
+.select-picker-option.is-selected {
+    font-weight: 700;
+    background: var(--menu-background-color, #ddd);
+    color: var(--menu-color, inherit);
+}

@@ -131,7 +131,8 @@ REM ── Generate AndroidManifest.xml ─────────────�
 set MANIFEST=%ANDROID_DIR%\app\src\main\AndroidManifest.xml
 (
     echo ^<?xml version="1.0" encoding="utf-8"?^>
-    echo ^<manifest xmlns:android="http://schemas.android.com/apk/res/android"^>
+    echo ^<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    echo     android:installLocation="auto"^>
     echo.
     echo     ^<uses-permission android:name="android.permission.INTERNET" /^>
     if "!PERM_LOCATION!"=="true" (
@@ -189,8 +190,13 @@ if /I "%BUILD_FORMAT%"=="aab" (
     set GRADLE_TASK=assemble!_BT_FIRST!!_BT_REST!
     echo mkandroid: building %BUILD_TYPE% APK ^(!GRADLE_TASK!^)...
 )
+set ABI_PROP=
+if defined ANDROID_ABI (
+    echo mkandroid: ANDROID_ABI=!ANDROID_ABI!
+    set ABI_PROP=-Pandroid.abi=!ANDROID_ABI!
+)
 pushd "%ANDROID_DIR%"
-call "%GRADLE%" !GRADLE_TASK! --quiet --project-cache-dir "%PROJECT_ROOT%\bin\Android\gradle-cache"
+call "%GRADLE%" !GRADLE_TASK! --quiet --project-cache-dir "%PROJECT_ROOT%\bin\Android\gradle-cache" !ABI_PROP!
 if !errorlevel! neq 0 (
     echo mkandroid: Gradle build failed >&2
     popd
@@ -210,10 +216,17 @@ if /I "%BUILD_FORMAT%"=="aab" (
 ) else (
     set APK_DIR=%PROJECT_ROOT%\bin\Android\gradle-build\app\outputs\apk\%BUILD_TYPE%
     set APK=
-    for %%F in ("!APK_DIR!\*.apk") do (
-        set APK=%%F
-        goto :found_output
+    set X86_APK=
+    for %%F in ("!APK_DIR!\*arm64-v8a*.apk") do set APK=%%F
+    for %%F in ("!APK_DIR!\*x86_64*.apk") do set X86_APK=%%F
+    if "!APK!"=="" set APK=!X86_APK!
+    if "!APK!"=="" (
+        for %%F in ("!APK_DIR!\*.apk") do (
+            set APK=%%F
+            goto :found_output
+        )
     )
+    if not "!APK!"=="" goto :found_output
 )
 echo mkandroid: Build output not found >&2
 exit /b 1
@@ -225,6 +238,10 @@ if /I "%BUILD_FORMAT%"=="aab" (
 ) else (
     copy /Y "!APK!" "%PROJECT_ROOT%\bin\Android\%PROGNAME%.apk" >nul
     echo mkandroid: bin\Android\%PROGNAME%.apk created
+    if not "!X86_APK!"=="" if /I not "!X86_APK!"=="!APK!" (
+        copy /Y "!X86_APK!" "%PROJECT_ROOT%\bin\Android\%PROGNAME%-x86_64.apk" >nul
+        echo mkandroid: bin\Android\%PROGNAME%-x86_64.apk created
+    )
 )
 
 endlocal

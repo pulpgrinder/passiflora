@@ -472,22 +472,25 @@ $(WV2_LOADER_H):
 	@rm -f $(WIN_BINDIR)/WebView2Loader.dll
 	@echo "$(WV2_LOADER_H) generated (embedded WebView2Loader.dll)"
 
-$(WIN_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/win_menu.h $(WV2_LOADER_H) $(WEB_SOURCES) $(FRAMEWORK_SOURCES)
+$(WIN_BINARY): $(SRCDIR)/passiflora.c $(SRCDIR)/zipzip.h $(SRCDIR)/UI.c $(GENDIR)/win_menu.h $(WV2_LOADER_H) src/Windows/app.manifest $(WEB_SOURCES) $(FRAMEWORK_SOURCES)
 	sh nixscripts/mkgenerated.sh src/Windows/menus/menu.txt "$(PROGNAME)" Windows "$(THEME)" src/config
 	sh nixscripts/mkzipfile.sh $(CONTENT) $(GENDIR)/zipdata.h
 	mkdir -p $(WIN_BINDIR)
 	$(WIN_CC) -c -o $(GENDIR)/zipdata.o $(GENDIR)/zipdata.S
-	@if [ -f src/icons/builticons/windows/app.ico ] && \
-	    command -v $(WIN_WINDRES) >/dev/null 2>&1; then \
-		echo '1 ICON "src/icons/builticons/windows/app.ico"' \
-		    > $(WIN_BINDIR)/app.rc; \
-		$(WIN_WINDRES) $(WIN_BINDIR)/app.rc -o $(WIN_BINDIR)/app_res.o; \
-		$(WIN_CC) $(WIN_CFLAGS) -I. -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c \
-		    $(GENDIR)/zipdata.o $(WIN_BINDIR)/app_res.o $(WIN_LDFLAGS); \
-	else \
-		$(WIN_CC) $(WIN_CFLAGS) -I. -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c \
-		    $(GENDIR)/zipdata.o $(WIN_LDFLAGS); \
-	fi
+	@RES_OBJ=""; \
+	if command -v $(WIN_WINDRES) >/dev/null 2>&1; then \
+		{ \
+			echo '1 24 "src/Windows/app.manifest"'; \
+			if [ -f src/icons/builticons/windows/app.ico ]; then \
+				echo '1 ICON "src/icons/builticons/windows/app.ico"'; \
+			fi; \
+		} > $(WIN_BINDIR)/app.rc; \
+		if $(WIN_WINDRES) $(WIN_BINDIR)/app.rc -o $(WIN_BINDIR)/app_res.o; then \
+			RES_OBJ="$(WIN_BINDIR)/app_res.o"; \
+		fi; \
+	fi; \
+	$(WIN_CC) $(WIN_CFLAGS) -I. -o $@ $(SRCDIR)/passiflora.c $(SRCDIR)/UI.c \
+	    $(GENDIR)/zipdata.o $$RES_OBJ $(WIN_LDFLAGS)
 	@mv "$@" "$(WIN_BINDIR)/$(DISPLAYNAME).exe"
 
 # ── Windows signing (Azure Trusted Signing via jsign) ──────────────
@@ -640,7 +643,6 @@ sign-android:
 			exit 1; \
 		fi; \
 	fi; \
-	echo "sign-android: zipaligning APK..."; \
 	ZIPALIGN=""; \
 	if [ -n "$$ANDROID_HOME" ]; then \
 		ZIPALIGN=$$(find "$$ANDROID_HOME/build-tools" -name zipalign -type f 2>/dev/null | sort -V | tail -1); \
@@ -648,17 +650,25 @@ sign-android:
 	if [ -z "$$ZIPALIGN" ] && command -v zipalign >/dev/null 2>&1; then \
 		ZIPALIGN=zipalign; \
 	fi; \
-	if [ -n "$$ZIPALIGN" ]; then \
-		$$ZIPALIGN -f 4 "$(ANDROID_APK)" "$(ANDROID_APK).aligned"; \
-		mv "$(ANDROID_APK).aligned" "$(ANDROID_APK)"; \
-	else \
+	if [ -z "$$ZIPALIGN" ]; then \
 		echo "sign-android: warning: zipalign not found, skipping alignment." >&2; \
 	fi; \
-	echo "sign-android: signing $(ANDROID_APK)..."; \
-	printf '%s' "$$KS_PASS" | $$APKSIGNER sign --ks "$$KS_FILE" --ks-pass stdin "$(ANDROID_APK)"; \
-	echo "sign-android: verifying signature..."; \
-	$$APKSIGNER verify "$(ANDROID_APK)"; \
-	echo "sign-android: $(ANDROID_APK) signed successfully."
+	APKS="$(ANDROID_APK)"; \
+	if [ -f "bin/Android/$(PROGNAME)-x86_64.apk" ]; then \
+		APKS="$$APKS bin/Android/$(PROGNAME)-x86_64.apk"; \
+	fi; \
+	for apk in $$APKS; do \
+		if [ -n "$$ZIPALIGN" ]; then \
+			echo "sign-android: zipaligning $$apk..."; \
+			$$ZIPALIGN -f 4 "$$apk" "$$apk.aligned"; \
+			mv "$$apk.aligned" "$$apk"; \
+		fi; \
+		echo "sign-android: signing $$apk..."; \
+		printf '%s' "$$KS_PASS" | $$APKSIGNER sign --ks "$$KS_FILE" --ks-pass stdin "$$apk"; \
+		echo "sign-android: verifying signature..."; \
+		$$APKSIGNER verify "$$apk"; \
+		echo "sign-android: $$apk signed successfully."; \
+	done
 
 # ── WWW (plain browser — no native build) ──────────────────────────
 WWW_BINDIR = bin/WWW

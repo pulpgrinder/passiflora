@@ -57,7 +57,8 @@ esac
 MANIFEST="$ANDROID_DIR/app/src/main/AndroidManifest.xml"
 {
     printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>'
-    printf '%s\n' '<manifest xmlns:android="http://schemas.android.com/apk/res/android">'
+    printf '%s\n' '<manifest xmlns:android="http://schemas.android.com/apk/res/android"'
+    printf '%s\n' '    android:installLocation="auto">'
     printf '\n'
     printf '%s\n' '    <uses-permission android:name="android.permission.INTERNET" />'
     [ "$PERM_LOCATION" = "true" ] && {
@@ -184,11 +185,18 @@ else
     GRADLE_TASK="assemble${_BT_CAP}"
     echo "mkandroid: building $BUILD_TYPE APK ($GRADLE_TASK)..."
 fi
+_ABI_PROP=""
+if [ -n "${ANDROID_ABI:-}" ]; then
+    echo "mkandroid: ANDROID_ABI=$ANDROID_ABI"
+    _ABI_PROP="-Pandroid.abi=$ANDROID_ABI"
+fi
+# shellcheck disable=SC2086
 (cd "$ANDROID_DIR" && "$GRADLE" "$GRADLE_TASK" --quiet \
     -PPERM_LOCATION="$PERM_LOCATION" \
     -PPERM_CAMERA="$PERM_CAMERA" \
     -PPERM_MICROPHONE="$PERM_MICROPHONE" \
     -PPERM_REMOTEDEBUGGING="$PERM_REMOTEDEBUGGING" \
+    $_ABI_PROP \
     --project-cache-dir "$PROJECT_ROOT/bin/Android/gradle-cache")
 
 # ── Copy output to bin/Android/ ────────────────────────────────────
@@ -204,11 +212,19 @@ if [ "$BUILD_FORMAT" = "aab" ]; then
         exit 1
     fi
 else
-    APK=$(find "$PROJECT_ROOT/bin/Android/gradle-build/app/outputs/apk/$BUILD_TYPE" \
-          -name "*.apk" 2>/dev/null | head -1)
+    APK_DIR="$PROJECT_ROOT/bin/Android/gradle-build/app/outputs/apk/$BUILD_TYPE"
+    ARM_APK=$(find "$APK_DIR" -name '*arm64-v8a*.apk' 2>/dev/null | head -1)
+    X86_APK=$(find "$APK_DIR" -name '*x86_64*.apk' 2>/dev/null | head -1)
+    APK="$ARM_APK"
+    [ -z "$APK" ] && APK="$X86_APK"
+    [ -z "$APK" ] && APK=$(find "$APK_DIR" -name '*.apk' 2>/dev/null | head -1)
     if [ -n "$APK" ]; then
         cp "$APK" "$PROJECT_ROOT/bin/Android/${PROGNAME}.apk"
-        echo "mkandroid: bin/Android/${PROGNAME}.apk created"
+        echo "mkandroid: bin/Android/${PROGNAME}.apk created ($(basename "$APK"))"
+        if [ -n "$X86_APK" ] && [ "$X86_APK" != "$APK" ]; then
+            cp "$X86_APK" "$PROJECT_ROOT/bin/Android/${PROGNAME}-x86_64.apk"
+            echo "mkandroid: bin/Android/${PROGNAME}-x86_64.apk created"
+        fi
     else
         echo "mkandroid: APK not found in build output" >&2
         exit 1

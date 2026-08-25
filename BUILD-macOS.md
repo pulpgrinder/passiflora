@@ -296,19 +296,21 @@ This target is also included in `make sign-all`.
 
 ### Testing in the Android Emulator
 
-If you have Android Studio installed, you can load the built APK into the Android Emulator:
+Build the APK from the command line, then use Android Studio only to host the emulator.
 
-1. Open Android Studio.
-2. Open the **Device Manager** (the phone+tablet icon in the toolbar, or **Tools → Device Manager**).
-3. Create a virtual device if you haven't already: click **Create Device**, choose a hardware profile (e.g., Pixel 8), select a system image, and click **Finish**.
-4. Start the emulator by clicking the **Play** button next to your virtual device.
-5. Once the emulator is running, drag and drop the `.apk` file from `bin/Android/` onto the emulator window. Android will install and launch it automatically.
+Match `ANDROID_ABI` to the AVD (`arm64-v8a` on Apple Silicon images such as Pixel 7; `x86_64` on older Intel AVDs). The AVD **Internal Storage** / `disk.dataPartition.size` must be larger than the APK (many stock AVDs are only 800 MB):
 
-   Alternatively, you can install from the command line with `adb`:
+```
+ANDROID_ABI=arm64-v8a make sign-android
+adb install --no-incremental -r bin/Android/<progname>.apk
+```
 
-   ```
-   adb install bin/Android/<progname>.apk
-   ```
+Without `ANDROID_ABI`, the default `bin/Android/<progname>.apk` is arm64; `bin/Android/<progname>-x86_64.apk` is the emulator sidecar when both ABIs are built.
+
+1. Open Android Studio → **Device Manager** and start (or create) a virtual device.
+2. Confirm the AVD ABI and data-partition size, then install with `adb` as above.
+
+   If `adb` is not on `PATH`: `$ANDROID_HOME/platform-tools/adb`.
 
 ---
 

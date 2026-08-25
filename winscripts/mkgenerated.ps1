@@ -78,6 +78,9 @@ try {
         & powershell -NoProfile -ExecutionPolicy Bypass -File "$ScriptDir\mkpanels.ps1" "$PanelsDir" "$PanelsTmp"
         [void]$jsContent.AppendLine("")
         [void]$jsContent.Append([System.IO.File]::ReadAllText($PanelsTmp))
+
+        [void]$jsContent.AppendLine("")
+        [void]$jsContent.Append([System.IO.File]::ReadAllText("$PassifloraDir\UI\android-select.js"))
     }
 
     [System.IO.File]::WriteAllText($GeneratedJS, $jsContent.ToString(), [System.Text.UTF8Encoding]::new($false))

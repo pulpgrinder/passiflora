@@ -213,33 +213,37 @@ if defined ANDROID_HOME (
         set ZIPALIGN=%%F
     )
 )
-if not "%ZIPALIGN%"=="" (
-    echo [sign-android] Zipaligning APK...
-    "%ZIPALIGN%" -f 4 "%ANDROID_APK%" "%ANDROID_APK%.aligned"
-    if errorlevel 1 (
-        echo [sign-android] zipalign failed >&2
-        exit /b 1
-    )
-    move /Y "%ANDROID_APK%.aligned" "%ANDROID_APK%" >nul
-) else (
+if "%ZIPALIGN%"=="" (
     echo [sign-android] Warning: zipalign not found, skipping alignment.
 )
 
-echo [sign-android] Signing %ANDROID_APK%...
-echo %KS_PASS%| call "%APKSIGNER%" sign --ks "%KS_FILE%" --ks-pass stdin "%ANDROID_APK%"
-if errorlevel 1 (
-    echo [sign-android] Signing failed >&2
-    exit /b 1
+set ANDROID_APK_X86=%SCRIPT_DIR%\bin\Android\%PROGNAME%-x86_64.apk
+for %%A in ("%ANDROID_APK%" "%ANDROID_APK_X86%") do (
+    if exist %%A (
+        if not "%ZIPALIGN%"=="" (
+            echo [sign-android] Zipaligning %%A...
+            "%ZIPALIGN%" -f 4 %%A "%%~A.aligned"
+            if errorlevel 1 (
+                echo [sign-android] zipalign failed >&2
+                exit /b 1
+            )
+            move /Y "%%~A.aligned" %%A >nul
+        )
+        echo [sign-android] Signing %%A...
+        echo %KS_PASS%| call "%APKSIGNER%" sign --ks "%KS_FILE%" --ks-pass stdin %%A
+        if errorlevel 1 (
+            echo [sign-android] Signing failed >&2
+            exit /b 1
+        )
+        echo [sign-android] Verifying signature...
+        call "%APKSIGNER%" verify %%A
+        if errorlevel 1 (
+            echo [sign-android] Verification failed >&2
+            exit /b 1
+        )
+        echo [sign-android] %%A signed successfully.
+    )
 )
-
-echo [sign-android] Verifying signature...
-call "%APKSIGNER%" verify "%ANDROID_APK%"
-if errorlevel 1 (
-    echo [sign-android] Verification failed >&2
-    exit /b 1
-)
-
-echo [sign-android] %ANDROID_APK% signed successfully.
 goto :eof
 
 REM ================================================================
@@ -383,42 +387,44 @@ REM ── Step 4: Compile ──
 echo [windows] Compiling %DISPLAYNAME%.exe...
 mkdir "%WIN_BINDIR%" 2>nul
 
-REM Check for icon and windres for embedding app icon + VERSIONINFO
+REM Embed DPI-awareness manifest + optional icon + VERSIONINFO
 set RES_OBJ=
+set _MANIFEST_PATH=%SCRIPT_DIR%\src\Windows\app.manifest
 set _ICON_PATH=%SCRIPT_DIR%\src\icons\builticons\windows\app.ico
-if exist "%_ICON_PATH%" (
-    where %WIN_WINDRES% >nul 2>&1
+where %WIN_WINDRES% >nul 2>&1
+if !errorlevel! equ 0 (
+    set "_MANIFEST_FWD=!_MANIFEST_PATH:\=/!"
+    set "_ICON_FWD=!_ICON_PATH:\=/!"
+    > "%WIN_BINDIR%\app.rc" (
+        echo 1 24 "!_MANIFEST_FWD!"
+        echo.
+        if exist "%_ICON_PATH%" echo 1 ICON "!_ICON_FWD!"
+        echo.
+        echo 1 VERSIONINFO
+        echo FILEVERSION 1,0,0,0
+        echo PRODUCTVERSION 1,0,0,0
+        echo BEGIN
+        echo   BLOCK "StringFileInfo"
+        echo   BEGIN
+        echo     BLOCK "040904b0"
+        echo     BEGIN
+        echo       VALUE "ProductName", "!DISPLAYNAME!\0"
+        echo       VALUE "FileDescription", "!DISPLAYNAME!\0"
+        echo       VALUE "FileVersion", "!VERSION!\0"
+        echo       VALUE "ProductVersion", "!VERSION!\0"
+        echo       VALUE "InternalName", "!PROGNAME!\0"
+        echo       VALUE "OriginalFilename", "!DISPLAYNAME!.exe\0"
+        echo     END
+        echo   END
+        echo   BLOCK "VarFileInfo"
+        echo   BEGIN
+        echo     VALUE "Translation", 0x0409, 0x04B0
+        echo   END
+        echo END
+    )
+    %WIN_WINDRES% "%WIN_BINDIR%\app.rc" -o "%WIN_BINDIR%\app_res.o"
     if !errorlevel! equ 0 (
-        set "_ICON_FWD=!_ICON_PATH:\=/!"
-        > "%WIN_BINDIR%\app.rc" (
-            echo 1 ICON "!_ICON_FWD!"
-            echo.
-            echo 1 VERSIONINFO
-            echo FILEVERSION 1,0,0,0
-            echo PRODUCTVERSION 1,0,0,0
-            echo BEGIN
-            echo   BLOCK "StringFileInfo"
-            echo   BEGIN
-            echo     BLOCK "040904b0"
-            echo     BEGIN
-            echo       VALUE "ProductName", "!DISPLAYNAME!\0"
-            echo       VALUE "FileDescription", "!DISPLAYNAME!\0"
-            echo       VALUE "FileVersion", "!VERSION!\0"
-            echo       VALUE "ProductVersion", "!VERSION!\0"
-            echo       VALUE "InternalName", "!PROGNAME!\0"
-            echo       VALUE "OriginalFilename", "!DISPLAYNAME!.exe\0"
-            echo     END
-            echo   END
-            echo   BLOCK "VarFileInfo"
-            echo   BEGIN
-            echo     VALUE "Translation", 0x0409, 0x04B0
-            echo   END
-            echo END
-        )
-        %WIN_WINDRES% "%WIN_BINDIR%\app.rc" -o "%WIN_BINDIR%\app_res.o"
-        if !errorlevel! equ 0 (
-            set RES_OBJ=%WIN_BINDIR%\app_res.o
-        )
+        set RES_OBJ=%WIN_BINDIR%\app_res.o
     )
 )
 

@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Android `<select>` lists cannot scroll to the end**: Android WebView’s native picker clips long option lists (the Settings theme list is 100+ items) in landscape and does not scroll. When `usepassifloraui` is on, Android gets a scrollable in-page sheet instead of the OS popup.
+
+- **Android `mergeReleaseNativeDebugMetadata` disk full**: Release native builds no longer emit DWARF / native debug metadata for the embedded content archive. AGP’s default RelWithDebInfo path was copying multi-GB unstripped `.so` files and failing with “No space left on device”.
+
+- **Android ABI selection for emulators**: `ANDROID_ABI=arm64-v8a` or `ANDROID_ABI=x86_64` builds a single-ABI APK for the matching device/AVD. Unset, APKs split by ABI so a fat package does not duplicate native content. `make sign-android` signs both the arm64 APK and the `*-x86_64.apk` sidecar when present. Manifest `installLocation` is `auto`. Emulator docs now cover ABI matching, AVD data-partition size, and `adb install --no-incremental`.
+
+- **Linux link without camera/microphone**: `passiflora_posix_call` no longer references GStreamer recording helpers (`gst_start_recording`, `gst_stop_recording`, `gst_diagnose_audio`) unless `usecamera` or `usemicrophone` is enabled. Those functions are only compiled in `UI.c` when those flags are set, so a default Linux build failed to link with undefined references.
+
+- **Windows high-DPI image scaling**: The Win32 host now opts into per-monitor DPI awareness (manifest + runtime), sizes the initial window in physical pixels, and tells WebView2 when the window moves or the DPI changes. Without this, Windows bitmap-stretches a 96-DPI framebuffer — the usual cause of fuzzy WebView content under Parallels Desktop on a Retina Mac.
+
 ### Changed
 
 - **Embedded content no longer compiled as a C hex array**: `mkzipfile` now writes the content ZIP as `src/C/generated/archive.zip` and a tiny `zipdata.S` that `.incbin`s it. `zipdata.h` is just `extern` declarations. This avoids Clang's "file is too large for Clang to process" failure when an app ships large media (videos, etc.). The archive is still linked into the binary — the server still has no filesystem access to content.

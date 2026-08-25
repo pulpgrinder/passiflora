@@ -10,6 +10,18 @@ android {
     compileSdk 35
     ndkVersion '29.0.14206865'
 
+    // ANDROID_ABI=x86_64 (env or -Pandroid.abi) builds only the emulator ABI.
+    // Unset → both ABIs, split into per-ABI APKs so native content is not
+    // duplicated in one fat package.
+    def abiProp = project.findProperty('android.abi') ?: System.getenv('ANDROID_ABI')
+    def requestedAbis = (abiProp ? abiProp.toString() : 'arm64-v8a,x86_64')
+            .split(',')
+            .collect { it.trim() }
+            .findAll { it }
+    if (requestedAbis.isEmpty()) {
+        requestedAbis = ['arm64-v8a', 'x86_64']
+    }
+
     defaultConfig {
         // Read config file for applicationId and permissions
         def configFile = rootProject.file("../../src/config")
@@ -28,7 +40,7 @@ android {
         versionName "1.0.0"
 
         ndk {
-            abiFilters 'arm64-v8a', 'x86_64'
+            abiFilters.addAll(requestedAbis)
         }
 
         // Permission flags: use -P Gradle properties (set by mkandroid.sh)
@@ -42,6 +54,15 @@ android {
         buildConfigField "boolean", "PERM_CAMERA",       perm('usecamera')
         buildConfigField "boolean", "PERM_MICROPHONE",   perm('usemicrophone')
         buildConfigField "boolean", "PERM_REMOTEDEBUGGING",   perm('allowremotedebugging')
+    }
+
+    splits {
+        abi {
+            enable requestedAbis.size() > 1
+            reset()
+            requestedAbis.each { include it }
+            universalApk false
+        }
     }
 
     buildFeatures {
@@ -75,10 +96,14 @@ android {
     }
 
     buildTypes {
+        debug {
+            ndk { debugSymbolLevel 'none' }
+        }
         release {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            ndk { debugSymbolLevel 'none' }
             if (signingConfigs.hasProperty('release')) {
                 signingConfig signingConfigs.release
             }
